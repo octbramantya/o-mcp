@@ -1,0 +1,16 @@
+# secrets
+.env
+.env.*
+
+# personal Claude Code files
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+
+# macOS
+.DS_Store

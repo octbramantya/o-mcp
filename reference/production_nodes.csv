@@ -1,0 +1,52 @@
+﻿Production;Department;Process;Device;device_id;multiplier
+Production;Fabric;WJL;WJL1;18;1
+Production;Fabric;WJL;WJL2;19;1
+Production;Fabric;WJL;WJL3;33;1
+Production;Fabric;WJL;WJL4;104;1
+Production;Fabric;PKN;PKN;17;1
+Production;Fabric;AJL;AJL1;30;1
+Production;Fabric;AJL;AJL2;29;1
+Production;Fabric;Tricot;MC Tricoat 1;35;1
+Production;Fabric;Tricot;MC Tricoat 2;36;1
+Production;Fabric;WSBC;Warping;21;1
+Production;Fabric;WSBC;Sizing;20;1
+Production;Fabric;Beam;Celup 1A;14;1
+Production;Fabric;Beam;Celup 1B;13;1
+Production;Fabric;Rapid;Celup 2;15;1
+Production;Fabric;Press;Celup 3;7;1
+Production;Fabric;Raincoat;Raincoat;6;1
+Production;Fabric;Packing;Packing;10;1
+Production;Fabric;Lab;Laboratorium;16;1
+Production;Fabric;PKR;Finishing 1;9;1
+Production;Fabric;Garuk;Finishing 2.2;5;1
+Production;Fabric;Garuk;WWTP;139;-1
+Production;Fabric;Garuk;SIPPA;138;-1
+Production;Yarn;Spinning;MC SP D;79;1
+Production;Yarn;Spinning;MC SP E;76;1
+Production;Yarn;Spinning;MC SP F;77;1
+Production;Yarn;Spinning;MC SP G;78;1
+Production;Yarn;Spinning;MC SP H;80;1
+Production;Yarn;Spinning;MC SP I;81;1
+Production;Yarn;Spinning;MC SP J;82;1
+Production;Yarn;MC Motor;MC 1;37;1
+Production;Yarn;MC Motor;MC 2;38;1
+Production;Yarn;MC Motor;MC 3;103;1
+Production;Yarn;MC Motor;MC 4;40;1
+Production;Yarn;MC Motor;MC 7;43;1
+Production;Yarn;MC Motor;MC 8;44;1
+Production;Yarn;MC Motor;MC 9;55;1
+Production;Yarn;MC Motor;MC 10;45;1
+Production;Yarn;MC Motor;MC 11;46;1
+Production;Yarn;MC Motor;MC 12;56;1
+Production;Yarn;Rewinding;Rewinding;54;1
+Production;Yarn;Heater;MC 1;60;1
+Production;Yarn;Heater;MC 2;61;1
+Production;Yarn;Heater;MC 3;57;1
+Production;Yarn;Heater;MC 4;58;1
+Production;Yarn;Heater;MC 7;62;1
+Production;Yarn;Heater;MC 8;63;1
+Production;Yarn;Heater;MC 10;64;1
+Production;Yarn;Twisting;MC ATY;101;1
+Production;Yarn;Twisting;MC302(1-8);69;1
+Production;Yarn;Twisting;MC302(9-22);102;1
+Production;Yarn;Twisting;MC303(1-9);100;1

@@ -1,0 +1,106 @@
+tenant_id,node_code,node_name,node_class,fed_by,in_utility,edge_class,device_ids,attrs_json,effective_from,effective_to,notes
+3,INCOMING_PLN,Incoming PLN 1,SOURCE,,ELECTRICITY,,94,"{""voltage_level"":""20kV""}",,,grid import (dev 94 MAIN-PLN); replaces old node GRID
+3,GAS_ENGINE,Gas Engine,SOURCE,,ELECTRICITY,,,"{""fuel"":""NATURAL_GAS""}",,,NO DEVICE YET - add device_id once metered
+3,PLTS_A,PLTS A,SOURCE,,ELECTRICITY,,27,"{""type"":""PV""}",,,PV (dev 27 PVA)
+3,PLTS_B,PLTS B,SOURCE,,ELECTRICITY,,11,"{""type"":""PV""}",,,PV (dev 11 PVB)
+3,PLTS_A4,PLTS A4,SOURCE,,ELECTRICITY,,167,"{""type"":""PV""}",,,PV - unmapped today (dev 167 PLTSC)
+3,PLTS_TEXTURE,PLTS Texture,SOURCE,,ELECTRICITY,,168,"{""type"":""PV""}",,,PV - unmapped today (dev 168 PLTSD)
+3,FACTORY_AB,Incoming Factory A&B,BUS,,ELECTRICITY,,84,"{""voltage_level"":""400V""}",,,main incomer - expect fed_by INCOMING_PLN;GAS_ENGINE
+3,LVMDB_A1,LVMDB A1,BUS,,ELECTRICITY,,23,,,,distribution board - unmapped today
+3,LVMDB_A2,LVMDB A2,BUS,,ELECTRICITY,,24,,,,distribution board - unmapped today
+3,LVMDB_A5,LVMDB A5,BUS,,ELECTRICITY,,28,,,,distribution board - unmapped today
+3,LVMDB_B2,LVMDB B2,BUS,,ELECTRICITY,,12,,,,distribution board - unmapped today
+3,LVMDP_SPINNING_1,LVMDP Spinning 1,BUS,,ELECTRICITY,,85,,,,distribution board - unmapped today
+3,LVMDP_SPINNING_2,LVMDP Spinning 2,BUS,,ELECTRICITY,,90,,,,distribution board - unmapped today
+3,LVMDP_SPINNING_3,LVMDP Spinning 3,BUS,,ELECTRICITY,,74,,,,CHECK: dev 74 is mapped to node COMP_SP3 under COMPRESSOR today - looks like a seeding error
+3,LVMDB_TF630,LVMDB TF 630kVA,BUS,,ELECTRICITY,,106,"{""rated_kva"":630}",,,distribution board - unmapped today
+3,LVMDB_TEXTURE,LVMDB Texture TF 1600kVA,BUS,,ELECTRICITY,,107,"{""rated_kva"":1600}",,,distribution board - unmapped today
+3,LVMDB_TEXTURE_2,LVMDB Texture TF 2000kVA,BUS,,ELECTRICITY,,163,"{""rated_kva"":2000}",,,distribution board - unmapped today
+3,AHU_LINE1,AHU Line 1,LOAD,,ELECTRICITY,,88,,,,Purchased Energy / Utilities / HVAC / AHU Line 1
+3,AHU_LINE2,AHU Line 2,LOAD,,ELECTRICITY,,89,,,,Purchased Energy / Utilities / HVAC / AHU Line 2
+3,AJL1,AJL1,LOAD,,ELECTRICITY,,30,,,,DE-DUPLICATED (double-seeded: 30;30) | Purchased Energy / Production / Fabric / AJL / AJL1
+3,AJL2,AJL2,LOAD,,ELECTRICITY,,29,,,,DE-DUPLICATED (double-seeded: 29;29) | Purchased Energy / Production / Fabric / AJL / AJL2
+3,BOILER_HTO,Boiler HTO,CONVERSION,,ELECTRICITY,,3,,,,Purchased Energy / Utilities / Boiler / Boiler HTO
+3,BOILER_MIURA,Boiler Miura,CONVERSION,,ELECTRICITY,,8,,,,Purchased Energy / Utilities / Boiler / Boiler Miura
+3,CELUP_1A,Celup 1A,LOAD,,ELECTRICITY,,14,,,,DE-DUPLICATED (double-seeded: 14;14) | Purchased Energy / Production / Fabric / Beam / Celup 1A
+3,CELUP_1B,Celup 1B,LOAD,,ELECTRICITY,,13,,,,DE-DUPLICATED (double-seeded: 13;13) | Purchased Energy / Production / Fabric / Beam / Celup 1B
+3,CELUP_2,Celup 2,LOAD,,ELECTRICITY,,15,,,,DE-DUPLICATED (double-seeded: 15;15) | Purchased Energy / Production / Fabric / Rapid / Celup 2
+3,CELUP_3,Celup 3,LOAD,,ELECTRICITY,,7,,,,DE-DUPLICATED (double-seeded: 7;7) | Purchased Energy / Production / Fabric / Press / Celup 3
+3,COMP_100HP,Comp 100HP,CONVERSION,,ELECTRICITY,,4,,,,Purchased Energy / Utilities / Compressor / Comp 100HP
+3,COMP_AIKI,Comp Aiki,CONVERSION,,ELECTRICITY,,105,,,,Purchased Energy / Utilities / Compressor / Comp Aiki
+3,COMP_COBELCO300HP,Comp Cobelco 300HP,CONVERSION,,ELECTRICITY,,52,,,,Purchased Energy / Utilities / Compressor / Comp Cobelco 300HP
+3,COMP_FUSHENG300HP,Comp Fusheng 300HP,CONVERSION,,ELECTRICITY,,51,,,,Purchased Energy / Utilities / Compressor / Comp Fusheng 300HP
+3,COMP_INTERLACE,Comp Interlace,CONVERSION,,ELECTRICITY,,73,,,,Purchased Energy / Utilities / Compressor / Comp Interlace
+3,COMP_KAESER,Comp Kaeser,CONVERSION,,ELECTRICITY,,71,,,,Purchased Energy / Utilities / Compressor / Comp Kaeser
+3,COMP_SCR2200,Comp SCR2200,CONVERSION,,ELECTRICITY,,98,,,,Purchased Energy / Utilities / Compressor / Comp SCR2200
+3,COMP_SP3,Comp SP3,CONVERSION,,ELECTRICITY,,74,,,,"CHECK: dev 74 is LVMDP Spinning 3, not a compressor - see LVMDP_SPINNING_3 | Purchased Energy / Utilities / Compressor / Comp SP3"
+3,COMP_TURBO300HP,Comp Turbo 300HP,CONVERSION,,ELECTRICITY,,53,,,,Purchased Energy / Utilities / Compressor / Comp Turbo 300HP
+3,COMP_WINDER,Comp Winder,CONVERSION,,ELECTRICITY,,72,,,,Purchased Energy / Utilities / Compressor / Comp Winder
+3,FINISHING_1,Finishing 1,LOAD,,ELECTRICITY,,9,,,,DE-DUPLICATED (double-seeded: 9;9) | Purchased Energy / Production / Fabric / PKR / Finishing 1
+3,FINISHING_22,Finishing 2.2,LOAD,,ELECTRICITY,,5;138:-1;139:-1,,,,DE-DUPLICATED (double-seeded: 5;5;138:-1;138:-1;139:-1;139:-1) | Purchased Energy / Production / Fabric / Garuk / Finishing 2.2
+3,HEATER_1,MC 1,LOAD,,ELECTRICITY,,60,,,,Purchased Energy / Production / Yarn / Heater / MC 1
+3,HEATER_10,MC 10,LOAD,,ELECTRICITY,,64,,,,Purchased Energy / Production / Yarn / Heater / MC 10
+3,HEATER_2,MC 2,LOAD,,ELECTRICITY,,61,,,,Purchased Energy / Production / Yarn / Heater / MC 2
+3,HEATER_3,MC 3,LOAD,,ELECTRICITY,,57,,,,Purchased Energy / Production / Yarn / Heater / MC 3
+3,HEATER_4,MC 4,LOAD,,ELECTRICITY,,58,,,,Purchased Energy / Production / Yarn / Heater / MC 4
+3,HEATER_7,MC 7,LOAD,,ELECTRICITY,,62,,,,Purchased Energy / Production / Yarn / Heater / MC 7
+3,HEATER_8,MC 8,LOAD,,ELECTRICITY,,63,,,,Purchased Energy / Production / Yarn / Heater / MC 8
+3,HVAC_A3,HVAC A3,LOAD,,ELECTRICITY,,25,,,,Purchased Energy / Utilities / HVAC / HVAC A3
+3,HVAC_A4,HVAC A4,LOAD,,ELECTRICITY,,26;98:-1,,,,Purchased Energy / Utilities / HVAC / HVAC A4
+3,HVAC_AHU,HVAC AHU,LOAD,,ELECTRICITY,,50,,,,Purchased Energy / Utilities / HVAC / HVAC AHU
+3,HVAC_CHILLER1,HVAC Chiller 1,LOAD,,ELECTRICITY,,86,,,,Purchased Energy / Utilities / HVAC / HVAC Chiller 1
+3,HVAC_CHILLER2,HVAC Chiller 2,LOAD,,ELECTRICITY,,87,,,,Purchased Energy / Utilities / HVAC / HVAC Chiller 2
+3,LAB_DEVICE,Laboratorium,LOAD,,ELECTRICITY,,16,,,,DE-DUPLICATED (double-seeded: 16;16) | Purchased Energy / Production / Fabric / Lab / Laboratorium
+3,LIGHTING_MAIN,Lighting Main,LOAD,,ELECTRICITY,,48,,,,Purchased Energy / Utilities / Lighting / Lighting Main
+3,MC302_1_8,MC302(1-8),LOAD,,ELECTRICITY,,69,,,,Purchased Energy / Production / Yarn / Twisting / MC302(1-8)
+3,MC302_9_22,MC302(9-22),LOAD,,ELECTRICITY,,102,,,,Purchased Energy / Production / Yarn / Twisting / MC302(9-22)
+3,MC303_1_9,MC303(1-9),LOAD,,ELECTRICITY,,100,,,,Purchased Energy / Production / Yarn / Twisting / MC303(1-9)
+3,MC_ATY,MC ATY,LOAD,,ELECTRICITY,,101,,,,Purchased Energy / Production / Yarn / Twisting / MC ATY
+3,MC_MOTOR_1,MC 1,LOAD,,ELECTRICITY,,37,,,,Purchased Energy / Production / Yarn / MC Motor / MC 1
+3,MC_MOTOR_10,MC 10,LOAD,,ELECTRICITY,,45,,,,Purchased Energy / Production / Yarn / MC Motor / MC 10
+3,MC_MOTOR_11,MC 11,LOAD,,ELECTRICITY,,46,,,,Purchased Energy / Production / Yarn / MC Motor / MC 11
+3,MC_MOTOR_12,MC 12,LOAD,,ELECTRICITY,,56,,,,Purchased Energy / Production / Yarn / MC Motor / MC 12
+3,MC_MOTOR_2,MC 2,LOAD,,ELECTRICITY,,38,,,,Purchased Energy / Production / Yarn / MC Motor / MC 2
+3,MC_MOTOR_3,MC 3,LOAD,,ELECTRICITY,,103,,,,Purchased Energy / Production / Yarn / MC Motor / MC 3
+3,MC_MOTOR_4,MC 4,LOAD,,ELECTRICITY,,40,,,,Purchased Energy / Production / Yarn / MC Motor / MC 4
+3,MC_MOTOR_7,MC 7,LOAD,,ELECTRICITY,,43,,,,Purchased Energy / Production / Yarn / MC Motor / MC 7
+3,MC_MOTOR_8,MC 8,LOAD,,ELECTRICITY,,44,,,,Purchased Energy / Production / Yarn / MC Motor / MC 8
+3,MC_MOTOR_9,MC 9,LOAD,,ELECTRICITY,,55,,,,Purchased Energy / Production / Yarn / MC Motor / MC 9
+3,MC_SP_D,MC SP D,LOAD,,ELECTRICITY,,79,,,,Purchased Energy / Production / Yarn / Spinning / MC SP D
+3,MC_SP_E,MC SP E,LOAD,,ELECTRICITY,,76,,,,Purchased Energy / Production / Yarn / Spinning / MC SP E
+3,MC_SP_F,MC SP F,LOAD,,ELECTRICITY,,77,,,,Purchased Energy / Production / Yarn / Spinning / MC SP F
+3,MC_SP_G,MC SP G,LOAD,,ELECTRICITY,,78,,,,Purchased Energy / Production / Yarn / Spinning / MC SP G
+3,MC_SP_H,MC SP H,LOAD,,ELECTRICITY,,80,,,,Purchased Energy / Production / Yarn / Spinning / MC SP H
+3,MC_SP_I,MC SP I,LOAD,,ELECTRICITY,,81,,,,Purchased Energy / Production / Yarn / Spinning / MC SP I
+3,MC_SP_J,MC SP J,LOAD,,ELECTRICITY,,82,,,,Purchased Energy / Production / Yarn / Spinning / MC SP J
+3,PACKING_DEVICE,Packing,LOAD,,ELECTRICITY,,10,,,,DE-DUPLICATED (double-seeded: 10;10) | Purchased Energy / Production / Fabric / Packing / Packing
+3,PKN_DEVICE,PKN,LOAD,,ELECTRICITY,,17,,,,DE-DUPLICATED (double-seeded: 17;17) | Purchased Energy / Production / Fabric / PKN / PKN
+3,RAINCOAT_DEVICE,Raincoat,LOAD,,ELECTRICITY,,6,,,,DE-DUPLICATED (double-seeded: 6;6) | Purchased Energy / Production / Fabric / Raincoat / Raincoat
+3,REWINDING_DEVICE,Rewinding,LOAD,,ELECTRICITY,,54,,,,Purchased Energy / Production / Yarn / Rewinding / Rewinding
+3,SIZING,Sizing,LOAD,,ELECTRICITY,,20,,,,DE-DUPLICATED (double-seeded: 20;20) | Purchased Energy / Production / Fabric / WSBC / Sizing
+3,TRICOT1,MC Tricoat 1,LOAD,,ELECTRICITY,,35,,,,DE-DUPLICATED (double-seeded: 35;35) | Purchased Energy / Production / Fabric / Tricot / MC Tricoat 1
+3,TRICOT2,MC Tricoat 2,LOAD,,ELECTRICITY,,36,,,,DE-DUPLICATED (double-seeded: 36;36) | Purchased Energy / Production / Fabric / Tricot / MC Tricoat 2
+3,WARPING,Warping,LOAD,,ELECTRICITY,,21,,,,DE-DUPLICATED (double-seeded: 21;21) | Purchased Energy / Production / Fabric / WSBC / Warping
+3,WJL1,WJL1,LOAD,,ELECTRICITY,,18,,,,DE-DUPLICATED (double-seeded: 18;18) | Purchased Energy / Production / Fabric / WJL / WJL1
+3,WJL2,WJL2,LOAD,,ELECTRICITY,,19,,,,DE-DUPLICATED (double-seeded: 19;19) | Purchased Energy / Production / Fabric / WJL / WJL2
+3,WJL3,WJL3,LOAD,,ELECTRICITY,,33,,,,DE-DUPLICATED (double-seeded: 33;33) | Purchased Energy / Production / Fabric / WJL / WJL3
+3,WJL4,WJL4,LOAD,,ELECTRICITY,,104,,,,DE-DUPLICATED (double-seeded: 104;104) | Purchased Energy / Production / Fabric / WJL / WJL4
+3,WTP_1,WTP 1,LOAD,,ELECTRICITY,,91,,,,Purchased Energy / Utilities / WTP / WTP 1
+3,WTP_2,WTP 2,LOAD,,ELECTRICITY,,92,,,,Purchased Energy / Utilities / WTP / WTP 2
+3,TRICOT,Tricot,LOAD,,ELECTRICITY,,34,,,,unmapped today (SPW Power Meter)
+3,HEATER_MC11,Heater MC11,LOAD,,ELECTRICITY,,59,,,,unmapped today (HMC-11 Power Meter)
+3,CLARIFIER_WTP_1,Clarifier WTP 1,STORAGE,,WATER,,95,,,,unmapped today (FLO-02 Flow Meter)
+3,CLARIFIER_WTP_2,Clarifier WTP 2,STORAGE,,WATER,,96,,,,unmapped today (FLO-03 Flow Meter)
+3,FLOW_METER_SOFTENER_1,Flow Meter Softener 1,STORAGE,,WATER,,97,,,,unmapped today (FLO-01 Flow Meter)
+3,HEATER_TOTAL,Heater Total,LOAD,,ELECTRICITY,,99,,,,unmapped today (HMC-00 Power Meter)
+3,WORKSHOP,Workshop,LOAD,,ELECTRICITY,,135,,,,unmapped today (WRS Power Meter)
+3,AIR_DRYER,Air Dryer,LOAD,,ELECTRICITY,,136,,,,unmapped today (DRY Power Meter)
+3,COMPRESSOR_CUCUK,Compressor CUCUK,CONVERSION,,ELECTRICITY,,137,,,,unmapped today (COMP-10 Power Meter)
+3,AHU_LINE_3,AHU Line 3,LOAD,,ELECTRICITY,,140,,,,unmapped today (AHU-03 Power Meter)
+3,MC303_BARU,MC303 Baru,LOAD,,ELECTRICITY,,158,,,,unmapped today (MC303-2 Power Meter)
+3,MC302_BARU,MC302 Baru,LOAD,,ELECTRICITY,,159,,,,unmapped today (MC302-3 Power Meter)
+3,MC_5,MC 5,LOAD,,ELECTRICITY,,160,,,,unmapped today (MC5 Power Meter)
+3,MC_13,MC 13,LOAD,,ELECTRICITY,,161,,,,unmapped today (MC13 Power Meter)
+3,TANK_SOFTENER_3,Tank Softener-3,STORAGE,,WATER,,164,,,,unmapped today (FLO-04 Flow Meter)
+3,TANK_SOFTENER_4,Tank Softener-4,STORAGE,,WATER,,165,,,,unmapped today (FLO-05 Flow Meter)
+3,TANK_SOFTENER_5,Tank Softener-5,STORAGE,,WATER,,166,,,,unmapped today (FLO-06 Flow Meter)

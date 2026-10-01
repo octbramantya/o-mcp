@@ -1,0 +1,64 @@
+Panel Name,Current Rating [A]
+Incoming PLN,
+Factory A&B,
+LVMDB A1,3200
+WJL1,800
+WJL2,800
+WJL3,800
+WJL4,630
+PKN,400
+"AHU 4,5,6,7",400
+"AHU 2,3",400
+LVMDB A2,3200
+AJL1,800
+"AHU 8, 9",100
+AJL2,800
+"AHU 10, 11",100
+Tricot,800
+MC Tricot 1,400
+MC Tricot 2,400
+AHU 14,63
+Sizing Area,400
+Office R&D,125
+Cooling Tower,400
+Warping,400
+"AHU 12, 13",100
+Compressor Cucuk,400
+LVMDB A3,3200
+LVMDB A4,3200
+PLTS A4,
+Compressor SCR2200,800
+Spare,630
+Cooling Tower,400
+Workshop,250
+Spare,125
+LVMDB A5,3200
+PLTS A5,800
+Compressor 400HP,800
+Compressor 300HP,630
+Air Dryer,250
+LVMDB B2,3200
+PLTS B2,3200
+Celup 1A,800
+Celup 1B,630
+Celup 2,800
+Celup 3,630
+WTP 2,630
+Packing Warehouse,400
+Laboratorium,400
+Finishing 1,1250
+Finishing 2.1,800
+Finishing 2.2,1000
+Garuk,630
+WWTP,630
+SIPPA,
+Boiler Miura 20ton,400
+Compressor 100HP,400
+Raincoat,630
+LVMDB Spinning 1,3200
+LVMDB Texture TF1600kVA,
+LVMDB Texture TF2000kVA,3200
+PLTS Texture,
+LVMDB TF630kVA,1250
+LVMDB Spinning 2,3200
+LVMDB Spinning 3,3200

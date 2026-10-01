@@ -1,0 +1,10 @@
+[project]
+name = "o-mcp"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]

@@ -1,0 +1,64 @@
+panel_name,rating_a,node_code,node_name,node_class,note
+Incoming PLN,630,INCOMING_PLN,Incoming PLN 1,SOURCE,"received 2026-09-28; 20 kV switchgear - 630 A at 20 kV, not 400 V"
+Factory A&B,630,FACTORY_AB,Incoming Factory A&B,BUS,"received 2026-09-28; 20 kV switchgear - 630 A at 20 kV, not 400 V"
+LVMDB A1,3200,LVMDB_A1,LVMDB A1,BUS,
+WJL1,800,WJL1,WJL1,BUS,fed_by confirms
+WJL2,800,WJL2,WJL2,LOAD,fed_by confirms
+WJL3,800,WJL3,WJL3,LOAD,fed_by confirms
+WJL4,630,WJL4,WJL4,LOAD,fed_by confirms
+PKN,400,PKN_DEVICE,PKN,LOAD,fed_by confirms
+"AHU 4,5,6,7",400,AHU_4_7,AHU_4_7,LOAD,fed_by confirms
+"AHU 2,3",400,AHU_2_3,AHU_2_3,LOAD,fed_by confirms
+LVMDB A2,3200,LVMDB_A2,LVMDB A2,BUS,
+AJL1,800,AJL1,AJL1,LOAD,fed_by confirms
+"AHU 8, 9",100,,,,NO NODE IN GRAPH - deferred pending confirmation (design 4.6)
+AJL2,800,AJL2,AJL2,BUS,fed_by confirms
+"AHU 10, 11",100,AHU_10_11,AHU 10-11,LOAD,fed_by confirms
+Tricot,800,TRICOT,Tricot,BUS,fed_by confirms
+MC Tricot 1,400,TRICOT1,MC Tricoat 1,LOAD,fed_by confirms
+MC Tricot 2,400,TRICOT2,MC Tricoat 2,LOAD,fed_by confirms
+AHU 14,63,AHU_14,AHU 14,LOAD,fed_by confirms
+Sizing Area,400,SIZING,Sizing,LOAD,fed_by confirms
+Office R&D,125,OFFICE,Office RND,LOAD,fed_by confirms
+Cooling Tower,400,COOLING1,Cooling Tower A2,LOAD,fed_by confirms
+Warping,400,WARPING,Warping,BUS,fed_by confirms
+"AHU 12, 13",100,AHU_12_13,AHU 12-13,LOAD,fed_by confirms
+Compressor Cucuk,400,COMPRESSOR_CUCUK,Compressor CUCUK,CONVERSION,fed_by confirms
+LVMDB A3,3200,LVMDB_A3,LVMDB_A3,BUS,
+LVMDB A4,3200,LVMDB_A4,LVMDB_A4,BUS,
+PLTS A4,,PLTS_A4,PLTS A4,SOURCE,"PV source, feeds LVMDB_A4 (fed_by is empty by design)"
+Compressor SCR2200,800,COMP_SCR2200,Comp SCR2200,CONVERSION,fed_by confirms
+Spare,630,,,,no node — spare way
+Cooling Tower,400,COOLING2,Cooling Tower A4,LOAD,fed_by confirms
+Workshop,250,WORKSHOP,Workshop,LOAD,fed_by confirms
+Spare,125,,,,no node — spare way
+LVMDB A5,3200,LVMDB_A5,LVMDB A5,BUS,
+PLTS A5,800,PLTS_A5,PLTS A5,SOURCE,"PV source, feeds LVMDB_A5; renamed from PLTS_A to match site (design 4.5)"
+Compressor 400HP,800,COMP_400HP,Compressor 400 HP,LOAD,fed_by confirms
+Compressor 300HP,630,COMP_300HP,Compressor 300 HP,LOAD,fed_by confirms
+Air Dryer,250,AIR_DRYER,Air Dryer,LOAD,fed_by confirms
+LVMDB B2,3200,LVMDB_B2,LVMDB B2,BUS,
+PLTS B2,3200,PLTS_B2,PLTS B2,SOURCE,"PV source, feeds LVMDB_B2; renamed from PLTS_B to match site (design 4.5)"
+Celup 1A,800,CELUP_1A,Celup 1A,LOAD,fed_by confirms
+Celup 1B,630,CELUP_1B,Celup 1B,LOAD,fed_by confirms
+Celup 2,800,CELUP_2,Celup 2,LOAD,fed_by confirms
+Celup 3,630,CELUP_3,Celup 3,LOAD,fed_by confirms
+WTP 2,630,WTP_2,WTP 2,LOAD,confirmed 2026-09-28: fed_by LVMDB_TF630; the list's grouping under LVMDB B2 is wrong
+Packing Warehouse,400,PACKING_DEVICE,Packing,LOAD,fed_by confirms
+Laboratorium,400,LAB_DEVICE,Laboratorium,LOAD,fed_by confirms
+Finishing 1,1250,FINISHING_1,Finishing 1,LOAD,fed_by confirms
+Finishing 2.1,800,FINISHING_21,Finishing 2.1,LOAD,fed_by confirms
+Finishing 2.2,1000,FINISHING_22,Finishing 2.2,BUS,fed_by confirms
+Garuk,630,GARUK,GARUK,LOAD,fed_by confirms
+WWTP,630,WWTP,WWTP,LOAD,fed_by confirms
+SIPPA,,SIPPA,SIPPA,LOAD,fed_by confirms
+Boiler Miura 20ton,400,BOILER_MIURA,Boiler Miura,CONVERSION,fed_by confirms
+Compressor 100HP,400,COMP_100HP,Comp 100HP,CONVERSION,fed_by confirms
+Raincoat,630,RAINCOAT_DEVICE,Raincoat,LOAD,fed_by confirms
+LVMDB Spinning 1,3200,LVMDP_SPINNING_1,LVMDP Spinning 1,BUS,
+LVMDB Texture TF1600kVA,,LVMDB_TEXTURE,LVMDB Texture TF 1600kVA,BUS,
+LVMDB Texture TF2000kVA,3200,LVMDB_TEXTURE_2,LVMDB Texture TF 2000kVA,BUS,
+PLTS Texture,2000,PLTS_TEXTURE,PLTS Texture,SOURCE,"received 2026-09-28; PV source, feeds LVMDB_TEXTURE / _2"
+LVMDB TF630kVA,1250,LVMDB_TF630,LVMDB TF 630kVA,BUS,
+LVMDB Spinning 2,3200,LVMDP_SPINNING_2,LVMDP Spinning 2,BUS,
+LVMDB Spinning 3,3200,LVMDP_SPINNING_3,LVMDP Spinning 3,BUS,

@@ -1,0 +1,12 @@
+capbank_name,after_node,capacity_kvar,rated_voltage,pf_target,is_apfc,steps,capacity_step
+CB_MDP3,LVMDP_SPINNING_1,700,400,0.98,inactive,14,50
+CB_MDP2,LVSDP_SP2_2,640,400,0.98,normal,16,40
+CB_MDP1,LVSDP_SP2_1,640,400,0.98,normal,16,40
+CB_SPINNING_3,LVMDP_SPINNING_3,480,400,0.98,normal,12,40
+CB_TEXTURE_1600,LVMDB_TEXTURE,400,400,0.98,normal,8,50
+CB_A1,LVMDB_A1,300,400,0.98,normal,6,50
+CB_A2,LVMDB_A2,300,400,0.98,normal,6,50
+CB_A3,LVMDB_A3,300,400,0.98,normal,6,50
+CB_A4,LVMDB_A4,150,400,0.98,normal,4,"[1,2] = 25; [3-4] = 50"
+CB_A5,LVMDB_A5,150,400,0.98,normal,4,"[1,2] = 25; [3-4] = 50"
+CB_B2,LVMDB_B2,300,400,0.98,normal,6,50
