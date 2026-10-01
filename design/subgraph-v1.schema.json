@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/subgraph/v1",
+  "title": "o-mcp/subgraph version 1",
+  "description": "Part of a plant's energy and water network as of one date: a root node, everything below it down to a depth, and the parents that feed into that part from outside it. Edges point the way energy or water flows. Only rows in effect on query.as_of are included. Explained further in design/subgraph-format.md. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "nodes", "edges", "findings"],
+  "properties": {
+    "schema": {
+      "const": "o-mcp/subgraph",
+      "description": "Names the format. Check it, and version, before reading anything else."
+    },
+    "version": {
+      "const": 1,
+      "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."
+    },
+    "query": {
+      "type": "object",
+      "description": "What was asked for.",
+      "required": ["tenant", "root", "as_of", "depth", "utility"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "root": {"type": "string", "description": "The node code asked for. If no node with this code is in effect on as_of, nodes is empty."},
+        "as_of": {"type": "string", "format": "date", "description": "The day the plant is described as of, YYYY-MM-DD."},
+        "depth": {"type": "integer", "minimum": 1, "description": "How many levels below the root were followed."},
+        "utility": {"type": ["string", "null"], "description": "When set, only edges of this utility (ELECTRICITY, WATER, AIR, GAS, STEAM) were followed and returned. Null means all utilities."}
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Every node in the document, each once. Ordered by scope (reached, parent, context), then depth, then code.",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "class", "type", "attrs", "scope", "depth", "children_total", "children_not_included"],
+        "properties": {
+          "code": {"type": "string", "description": "The node's code, unique within the tenant. Edges and findings refer to nodes by this code."},
+          "name": {"type": "string", "description": "Human-readable name, as the site calls it."},
+          "class": {
+            "enum": ["SOURCE", "BUS", "DISTRIBUTION", "CONVERSION", "STORAGE", "LOAD"],
+            "description": "Broad role. SOURCE: brings energy or water in (grid incomer, PV plant, generator, well). BUS: a point where flow is shared out (switchboard, header). CONVERSION: turns one utility into another (an air compressor uses electricity, makes compressed air). STORAGE: holds or compensates (tank, capacitor bank). LOAD: consumes."
+          },
+          "type": {"type": ["string", "null"], "description": "Specific node type from the ontology, such as MAIN_LV_BOARD, PV_PLANT or AIR_COMPRESSOR. Null if not yet typed."},
+          "attrs": {
+            "type": "object",
+            "description": "The node's recorded properties. A missing key means not recorded; that is a problem only if a PROPERTY_GAP finding names it. The unit is in the key: nominal_v and tx_primary_v in volts, rated_kva in kVA, rated_kw in kW, rated_kvar in kvar, main_breaker_a in amperes. On a board fed by a transformer, rated_kva, tx_primary_v and tx_equipment_code describe that transformer."
+          },
+          "scope": {
+            "enum": ["reached", "parent", "context"],
+            "description": "Why the node is here. reached: part of the asked-for section, found walking down from the root. parent: not part of it, but feeds a reached node from outside (a second board, a PV plant, a generator). context: feeds a parent node; present only so that edge has both ends."
+          },
+          "depth": {"type": ["integer", "null"], "minimum": 0, "description": "For reached nodes, the fewest edges from the root (the root is 0; a node reachable two ways gets the shorter). Not a voltage level or a rank. Null for parent and context nodes."},
+          "children_total": {"type": "integer", "minimum": 0, "description": "How many nodes this node feeds, in or out of the document."},
+          "children_not_included": {"type": "integer", "minimum": 0, "description": "Of those, how many are not in the document. Above zero means the section stops here; it does not mean the node feeds nothing."}
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Every edge into a reached or parent node, so each reached node's full set of parents is present. Both ends of every edge are in nodes. Ordered by from, to, id.",
+      "items": {
+        "type": "object",
+        "required": ["id", "from", "to", "type", "class", "utility", "carries_flow", "effective_from", "effective_to"],
+        "properties": {
+          "id": {"type": "integer", "description": "The edge's database id."},
+          "from": {"type": "string", "description": "Code of the node the flow comes from."},
+          "to": {"type": "string", "description": "Code of the node the flow goes to."},
+          "type": {"type": ["string", "null"], "description": "Specific edge type from the ontology, such as TRANSFORMER (a 20/0.4 kV transformer between the two nodes), SUPPLY_LV (a low-voltage feeder), PV_INJECTION or PF_COMPENSATION. Null if not yet typed."},
+          "class": {"type": "string", "description": "Broad edge class, such as FEEDER, CABLE, PIPE or COMPENSATION."},
+          "utility": {"type": "string", "description": "What flows along it: ELECTRICITY, WATER, AIR, GAS or STEAM."},
+          "carries_flow": {"type": "boolean", "description": "False for a connection that moves no energy or water, such as a capacitor bank on a board. Do not add such edges into flow totals."},
+          "effective_from": {"type": "string", "description": "When this edge became true, YYYY-MM-DD, or \"-infinity\" for since before records began."},
+          "effective_to": {"type": ["string", "null"], "description": "Last day this edge is true, YYYY-MM-DD, or null while it still is."}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "What the server noticed about these nodes and edges. Computed by the server; display them, do not work them out again. Each has a code and a message to show a person as is. Ordered by code, then subject.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A reached node with more than one live parent that is not a source. The plant may have only one: this is an open question for the site, not a fact.",
+            "required": ["code", "node", "parents", "message"],
+            "properties": {
+              "code": {"const": "MULTIPLE_LIVE_PARENTS"},
+              "node": {"type": "string", "description": "Code of the node."},
+              "parents": {"type": "array", "items": {"type": "string"}, "description": "Codes of its parents, alphabetical."},
+              "message": {"type": "string", "description": "One sentence for a person."}
+            }
+          },
+          {
+            "type": "object",
+            "description": "A node that is not a bus but feeds more than one node, so the busbar they share on site has no node of its own. Expected where a site has one incomer.",
+            "required": ["code", "node", "children", "message"],
+            "properties": {
+              "code": {"const": "IMPLICIT_BUS"},
+              "node": {"type": "string", "description": "Code of the node."},
+              "children": {"type": "integer", "description": "How many nodes it feeds directly, counting only edges that carry flow."},
+              "message": {"type": "string", "description": "One sentence for a person."}
+            }
+          },
+          {
+            "type": "object",
+            "description": "A property that a named reader needs and the node does not have, from graph.v_property_gaps. A property that is merely absent and not needed is not a gap. Judged on current values, so it does not change with as_of.",
+            "required": ["code", "node", "property", "kind", "status", "used_by", "detail", "message"],
+            "properties": {
+              "code": {"const": "PROPERTY_GAP"},
+              "node": {"type": "string", "description": "Code of the node."},
+              "property": {"type": "string", "description": "The missing key, as it would appear in attrs."},
+              "kind": {"type": "string", "description": "Where the value would come from, such as NAMEPLATE (read off the equipment) or DESIGN."},
+              "status": {"type": "string", "description": "What is wrong, such as MISSING."},
+              "used_by": {"type": ["string", "null"], "description": "The report or program that needs it."},
+              "detail": {"type": ["string", "null"], "description": "Extra detail, when there is any."},
+              "message": {"type": "string", "description": "One sentence for a person."}
+            }
+          },
+          {
+            "type": "object",
+            "description": "An edge that breaks the edge ontology, from graph.v_edge_gaps. Judged on today's graph, so it does not change with as_of.",
+            "required": ["code", "edge", "from", "to", "status", "message"],
+            "properties": {
+              "code": {"const": "EDGE_GAP"},
+              "edge": {"type": "integer", "description": "Id of the edge."},
+              "from": {"type": "string", "description": "Code of the node it comes from."},
+              "to": {"type": "string", "description": "Code of the node it goes to."},
+              "status": {"type": "string", "description": "UNTYPED (no edge type), ENDPOINT_UNTYPED (an end has no node type) or ILLEGAL_ENDPOINT (its edge type does not allow these node types)."},
+              "message": {"type": "string", "description": "One sentence for a person."}
+            }
+          }
+        ]
+      }
+    }
+  }
+}

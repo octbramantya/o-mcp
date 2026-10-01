@@ -24,6 +24,11 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
 | `tools/validate_brick.py` | checks Brick class names against a downloaded Brick TTL |
+| `tools/sld.py`, `tools/sld.sql` | draws a single-line diagram (SVG) of one node down to `--depth` levels at `--as-of`, from the effective window. Read-only; output goes to `logs/<label>/`. `--save-json` writes the data as an `o-mcp/subgraph` v1 document |
+| `design/subgraph-v1.schema.json` | the definition of the `o-mcp/subgraph` v1 format (JSON Schema, a description on every field). The MCP topology tools' `outputSchema` |
+| `design/subgraph-format.md` | the same format explained: guarantees, findings, and the versioning rule |
+| `design/mcp-tools.md` | drafts for the MCP server: the `plant_section` tool's description and input schema, and how a model learns what the response means |
+| `tools/check_subgraph.py` | checks v1 documents against the schema, strictly: `uv run --no-project --with jsonschema tools/check_subgraph.py doc.json` |
 
 ## What stayed in `../prs_diags`
 
