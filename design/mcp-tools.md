@@ -166,7 +166,7 @@ Checked against the migrations on 2026-10-01:
 
 ### Gaps to close before building
 
-1. **Node and edge classes have no table.** The definitions would live in server code, which
+1. **Node and edge classes have no table.** *Closed by migration 033: `graph.node_class` and `graph.edge_class`, and endpoint rules checked by trigger.* The definitions would live in server code, which
    breaks "a description is written once, in the database". Either a small migration adds
    `graph.node_class` and `graph.edge_class` (code, description) with the check constraints
    becoming foreign keys, or the server reads the class text from `subgraph-v1.schema.json` so it

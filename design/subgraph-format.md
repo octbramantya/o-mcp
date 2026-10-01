@@ -76,7 +76,7 @@ before reading anything else, and refuses a document it does not know.
 | `id` | integer | `graph.edge.id` |
 | `from`, `to` | string | node codes, in the direction energy or water flows |
 | `type` | string or null | `edge_type`, from the ontology |
-| `class` | string | `edge_class` |
+| `class` | string | `FEEDER`, `PIPE` or `COMPENSATION`: the conveyance. What the relation means is in `type` |
 | `utility` | string | `utility_code` |
 | `carries_flow` | boolean | false for edges that move no energy, such as a capacitor bank's connection |
 | `effective_from` | date string | when the edge became true; `"-infinity"` means since before records began |

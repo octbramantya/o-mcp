@@ -131,7 +131,7 @@ CREATE INDEX idx_node_attrs         ON graph.node USING gin (attrs);
 | `STORAGE` | battery, capacitor bank | air receiver / tank |
 | `LOAD` | motor, HVAC, machine | pneumatic consumer |
 
-> **`DISTRIBUTION` was retired by migration 032 (2026-10-01).** Migration 026 moved the main/sub level into `node_type`: `MAIN_LV_BOARD` and `SUB_BOARD` are both `BUS` subtypes of `SWITCHBOARD`, and the readers that care about the level key on the type. No node, type or endpoint rule ever used the class. A level below a bus is a node type, never a class. The DDL above and the water class table further down show the design as it stood in 008.
+> **`DISTRIBUTION` was retired by migration 032 (2026-10-01).** Migration 026 moved the main/sub level into `node_type`: `MAIN_LV_BOARD` and `SUB_BOARD` are both `BUS` subtypes of `SWITCHBOARD`, and the readers that care about the level key on the type. No node, type or endpoint rule ever used the class. A level below a bus is a node type, never a class. Since migration 033 the classes are rows of `graph.node_class`, each with its description, and the class columns are foreign keys to it. The DDL above and the water class table further down show the design as it stood in 008.
 
 `attrs` is free-form per class — `voltage_level`, `rated_capacity_kva`, `phases` for electricity; `operating_pressure_bar`, `volume_m3` for air. Kept in JSONB rather than columns because the useful attributes differ per utility and per class.
 
@@ -164,6 +164,7 @@ CREATE TABLE graph.edge (
     CONSTRAINT ck_edge_class CHECK (edge_class IN
         ('FEEDER','CABLE','BUSTIE','PIPE','HEADER_BRANCH','DUCT','CONVERSION',
          'COMPENSATION')),                                 -- added by 024
+    -- 033 replaced this check with fk_edge_class -> graph.edge_class (FEEDER, PIPE, COMPENSATION)
     CONSTRAINT ck_edge_dates CHECK (effective_to IS NULL OR effective_to >= effective_from)
 );
 

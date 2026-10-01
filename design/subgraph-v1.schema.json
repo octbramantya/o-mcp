@@ -37,7 +37,7 @@
           "name": {"type": "string", "description": "Human-readable name, as the site calls it."},
           "class": {
             "enum": ["SOURCE", "BUS", "CONVERSION", "STORAGE", "LOAD"],
-            "description": "Broad role. SOURCE: brings energy or water in (grid incomer, PV plant, generator, well). BUS: a point where flow is shared out (switchboard, header); a main board and a sub-board are both BUS, told apart by type (MAIN_LV_BOARD, SUB_BOARD). CONVERSION: turns one utility into another (an air compressor uses electricity, makes compressed air). STORAGE: holds or compensates (tank, capacitor bank). LOAD: consumes."
+            "description": "Broad role. SOURCE: brings energy or water in (grid incomer, PV plant, generator, well). BUS: a point where flow is shared out (switchboard, header); a main board and a sub-board are both BUS, told apart by type (MAIN_LV_BOARD, SUB_BOARD). CONVERSION: output differs from input, either a different utility (an air compressor takes electricity and delivers compressed air) or the same utility changed and with some lost (a clarifier, an RO unit); inflow need not equal outflow. STORAGE: holds or compensates (tank, capacitor bank). LOAD: consumes."
           },
           "type": {"type": ["string", "null"], "description": "Specific node type from the ontology, such as MAIN_LV_BOARD, PV_PLANT or AIR_COMPRESSOR. Null if not yet typed."},
           "attrs": {
@@ -65,7 +65,7 @@
           "from": {"type": "string", "description": "Code of the node the flow comes from."},
           "to": {"type": "string", "description": "Code of the node the flow goes to."},
           "type": {"type": ["string", "null"], "description": "Specific edge type from the ontology, such as TRANSFORMER (a 20/0.4 kV transformer between the two nodes), SUPPLY_LV (a low-voltage feeder), PV_INJECTION or PF_COMPENSATION. Null if not yet typed."},
-          "class": {"type": "string", "description": "Broad edge class, such as FEEDER, CABLE, PIPE or COMPENSATION."},
+          "class": {"enum": ["FEEDER", "PIPE", "COMPENSATION"], "description": "Broad edge class, the conveyance. FEEDER: an electrical connection (what kind is in type). PIPE: a pipe carrying the utility. COMPENSATION: a capacitor bank's connection, which moves no energy."},
           "utility": {"type": "string", "description": "What flows along it: ELECTRICITY, WATER, AIR, GAS or STEAM."},
           "carries_flow": {"type": "boolean", "description": "False for a connection that moves no energy or water, such as a capacitor bank on a board. Do not add such edges into flow totals."},
           "effective_from": {"type": "string", "description": "When this edge became true, YYYY-MM-DD, or \"-infinity\" for since before records began."},

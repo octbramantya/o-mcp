@@ -79,7 +79,7 @@ into a table where the solver can read them.
 | 7 | **No edge properties in this step** | Corrected 2026-09-28. 026 already put the transformer's nameplate on the board node -- all 12 boards carry `rated_kva` and `tx_primary_v`, and `tx_impedance_pct` is already an allowed key there. Putting them on the edge as well would recreate the "one fact spelled three ways" problem step 1 removed. No edge carries `attrs` today and there is no edge-scoped fact waiting to be recorded, so `edge_type_property` and an edge attrs trigger would be machinery with nothing to hold. Deferred until an edge fact exists (`normally_open` on a bus tie is the likely first). |
 | 8 | The transformer is the **edge**, not a new node | Adding 12 `CONVERSION` nodes would re-parent 12 boards, invalidate every `fed_by` in the seed CSVs, and change every path length the solver walks. The edge already sits exactly where the transformer sits. |
 | 9 | `impedance_pct` is defined now even though we do not have it | It becomes a named MISSING row against `harmonics_report` instead of an absence nobody is tracking. See §6. |
-| 10 | Unused classes stay in `ck_edge_class`, ungeseeded | `CABLE`, `BUSTIE`, `DUCT`, `HEADER_BRANCH`, `CONVERSION` get no `edge_type` rows until something uses them. Declaring types for hypothetical topology is how the current dead vocabulary happened. |
+| 10 | Unused classes stay in `ck_edge_class`, ungeseeded | `CABLE`, `BUSTIE`, `DUCT`, `HEADER_BRANCH`, `CONVERSION` get no `edge_type` rows until something uses them. Declaring types for hypothetical topology is how the current dead vocabulary happened. *Superseded by migration 033: the five are retired, and `graph.edge_class` holds `FEEDER`, `PIPE`, `COMPENSATION` with a description each.* |
 
 ---
 

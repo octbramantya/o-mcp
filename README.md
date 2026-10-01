@@ -19,7 +19,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–032`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–033`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -67,6 +67,11 @@ that path to `design/trafo_tenant_3.csv`, relative to this repository.
 Migration 032 (**applied on dev 2026-10-01, not yet on production**) retires the unused
 `DISTRIBUTION` node class: a level below a bus is a node type (`SUB_BOARD`), never a class.
 `design/subgraph-v1.schema.json` already lists the five classes.
+
+Migration 033 (**applied on dev 2026-10-01, not yet on production**) gives classes a table each,
+`graph.node_class` (5) and `graph.edge_class` (3: `FEEDER`, `PIPE`, `COMPENSATION`), with a
+description per class, turns the four class checks into foreign keys, retires the five edge
+classes nothing ever used, and checks endpoint rules by trigger.
 
 ## Two rules worth not rediscovering
 
