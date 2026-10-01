@@ -24,6 +24,10 @@ before reading anything else, and refuses a document it does not know.
 - **Adding** a field is allowed within version 1. Readers ignore fields they do not know.
 - **Removing or renaming** a field, or **changing what a field means**, makes version 2.
 
+One exception, made while nothing consumed the format: migration 034 (2026-10-01) added the
+node class `TREATMENT` and narrowed `CONVERSION`, moving the water treatment types out of it,
+within version 1. Once a reader exists, a change like that is a version 2.
+
 ## Guarantees
 
 - Every list is present and is a list, possibly empty. Never `null`.
@@ -61,7 +65,7 @@ before reading anything else, and refuses a document it does not know.
 |---|---|---|
 | `code` | string | `graph.node.node_code`, unique per tenant |
 | `name` | string | `node_name` |
-| `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `STORAGE` or `LOAD`. A main board and a sub-board are both `BUS`; `type` tells them apart (`MAIN_LV_BOARD`, `SUB_BOARD`) |
+| `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `TREATMENT`, `STORAGE` or `LOAD`. `CONVERSION` delivers a different utility from what it takes in (compressor, boiler); `TREATMENT` passes the same utility through, changed and with some lost (softener, RO unit). A main board and a sub-board are both `BUS`; `type` tells them apart (`MAIN_LV_BOARD`, `SUB_BOARD`) |
 | `type` | string or null | `node_type`, from the ontology |
 | `attrs` | object | the node's properties, as stored. Units are in the key: `nominal_v` and `tx_primary_v` in volts, `rated_kva` in kVA, `rated_kw` in kW, `main_breaker_a` in amperes. Absent means not recorded |
 | `scope` | string | `reached`: on the walk down from the root. `parent`: not reached, but feeds a reached node (a second board, a PV plant, a generator). `context`: neither, but feeds a `parent` node; included only so its edge has both ends |

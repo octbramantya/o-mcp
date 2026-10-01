@@ -132,6 +132,8 @@ CREATE INDEX idx_node_attrs         ON graph.node USING gin (attrs);
 | `LOAD` | motor, HVAC, machine | pneumatic consumer |
 
 > **`DISTRIBUTION` was retired by migration 032 (2026-10-01).** Migration 026 moved the main/sub level into `node_type`: `MAIN_LV_BOARD` and `SUB_BOARD` are both `BUS` subtypes of `SWITCHBOARD`, and the readers that care about the level key on the type. No node, type or endpoint rule ever used the class. A level below a bus is a node type, never a class. Since migration 033 the classes are rows of `graph.node_class`, each with its description, and the class columns are foreign keys to it. The DDL above and the water class table further down show the design as it stood in 008.
+>
+> **`TREATMENT` was added by migration 034 (2026-10-01).** `CONVERSION` now means a different utility leaves than the energy that went in (compressor, boiler). Water treatment stages pass the same utility through, changed and with some lost, so `CLARIFIER`, `SOFTENER`, `RO_UNIT` and `REACTION_TANK` moved to `TREATMENT`; so will an air dryer. In the tables here, read the water stages and the dryer as `TREATMENT`.
 
 `attrs` is free-form per class — `voltage_level`, `rated_capacity_kva`, `phases` for electricity; `operating_pressure_bar`, `volume_m3` for air. Kept in JSONB rather than columns because the useful attributes differ per utility and per class.
 
@@ -1242,7 +1244,7 @@ off the pipe it is tapped into with `#device`. Instruments stop being topology.
    | `SOURCE` | deep well, PDAM connection, recycled return from WWTP |
    | `BUS` | header, manifold, ring main — a pipe with multiple taps and no inventory |
    | `DISTRIBUTION` | department sub-manifold *(class retired by 032: a sub-manifold is a `BUS`)* |
-   | `CONVERSION` | clarifier, softener, RO skid, filter — passes water through and loses some |
+   | `CONVERSION` | clarifier, softener, RO skid, filter — passes water through and loses some *(`TREATMENT` since 034)* |
    | `STORAGE` | tank, reservoir, clearwell — **holds inventory** |
    | `LOAD` | dyeing, boiler feed, cooling-tower makeup, domestic |
 

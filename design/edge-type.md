@@ -438,7 +438,8 @@ Remaining:
   Left open deliberately: `AIR_DRYER` is typed `AIR_COMPRESSOR` because that is what the
   review accepted, but a dryer is not a compressor and will inflate any aggregate summing the
   type as air production. Flagged `REVIEW:` in 030 §2.4; the fix is one `UPDATE` plus an
-  `AIR_DRYER` type and its endpoint rows.
+  `AIR_DRYER` type and its endpoint rows. *Since migration 034 that type belongs in class
+  `TREATMENT`, not `CONVERSION`: air in, drier air out, some lost to purge.*
 - Time-varying topology (`effective_from` / `effective_to` on typed edges) beyond what the
   existing columns already do.
 - Any change to `ck_edge_class`. The five unused classes stay declared and unseeded.
