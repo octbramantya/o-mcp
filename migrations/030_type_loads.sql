@@ -1,70 +1,3 @@
-#!/usr/bin/env python3
-"""Emit migrations/030_type_loads.sql from design/draft_load_types.csv.
-
-Regenerate from here; do not hand-edit the .sql. Same discipline as gen_028.py:
-the CSV the user reviewed is the source of truth and the migration is a
-mechanical rendering of it, so the two cannot drift.
-"""
-import csv
-import pathlib
-import textwrap
-from collections import Counter
-
-HERE = pathlib.Path(__file__).resolve().parent.parent          # the o-mcp folder
-CSV = HERE / "design/draft_load_types.csv"
-OUT = HERE / "migrations/030_type_loads.sql"
-
-# node_class for each target type. Only AIR_COMPRESSOR and SUB_BOARD are class
-# changes; every other target is already LOAD-classed, so the node keeps its class.
-CLASS_OF = {
-    "PRODUCTION_MACHINE": "LOAD",
-    "AHU": "LOAD",
-    "LIGHTING": "LOAD",
-    "PUMP": "LOAD",
-    "GENERIC_LOAD": "LOAD",
-    "PROCESS_HEATER": "LOAD",       # new in this migration
-    "WATER_PROCESS": "LOAD",        # new in this migration
-    "AIR_COMPRESSOR": "CONVERSION",
-    "SUB_BOARD": "BUS",
-}
-
-rows = list(csv.DictReader(CSV.open()))
-plan = []
-for r in rows:
-    t = r["proposed_type"].replace(" (class change)", "").strip()
-    if t not in CLASS_OF:
-        raise SystemExit(f"{r['node_code']}: unknown proposed_type {t!r}")
-    plan.append((r["node_code"], t, CLASS_OF[t], r["node_class"]))
-
-if len({c for c, *_ in plan}) != len(plan):
-    raise SystemExit("duplicate node_code in the CSV")
-
-plan.sort()
-moved = [p for p in plan if p[2] != p[3]]
-kept = [p for p in plan if p[2] == p[3]]
-tally = Counter(t for _, t, _, _ in plan)
-width = max(len(c) for c, _, _, _ in plan)
-
-plan_values = ",\n".join(
-    f"    ({repr(c):<{width + 2}}, {t!r:<20}, {cls!r})" for c, t, cls, _ in plan
-).replace('"', "'")
-
-tally_lines = "\n".join(
-    f"--   {n:>3}  {t}" + ("   (node_class change)" if CLASS_OF[t] != "LOAD" else "")
-    for t, n in tally.most_common()
-)
-moved_list = ", ".join(f"'{c}'" for c, _, _, _ in moved)
-
-# Exactly what string_agg(format('%s %s->%s', ...) ORDER BY node_code) must produce
-# if this migration did what it says. Anything else aborts.
-expected_moves = "; ".join(f"{c} {old}->{new}" for c, _, new, old in moved)
-
-undo_kept = "\n".join(
-    "--       " + line
-    for line in textwrap.wrap(", ".join(f"'{c}'" for c, _, _, _ in kept), width=78)
-)
-
-sql = f"""\
 -- Migration: 030_type_loads.sql
 -- Description: Give every remaining untyped node a node_type.
 -- Author: Claude
@@ -75,7 +8,7 @@ sql = f"""\
 -- WHY
 -- ---
 -- 026 created the node_type vocabulary and 028 the edge_type vocabulary, but
--- {len(plan)} nodes were still untyped. Each is reachable only by node_code -- which
+-- 100 nodes were still untyped. Each is reachable only by node_code -- which
 -- means reachable only by someone who already knows the name -- and each is the
 -- reason a graph.v_edge_gaps row reads ENDPOINT_UNTYPED instead of being checked
 -- against an endpoint rule.
@@ -85,9 +18,17 @@ sql = f"""\
 -- mostly right today is worth more than a null that is unarguable. Retyping is
 -- one UPDATE and nothing downstream caches it.
 --
-{tally_lines}
+--    44  PRODUCTION_MACHINE
+--    11  AHU
+--    11  WATER_PROCESS
+--    10  PROCESS_HEATER
+--     9  GENERIC_LOAD
+--     6  PUMP
+--     3  AIR_COMPRESSOR   (node_class change)
+--     3  SUB_BOARD   (node_class change)
+--     3  LIGHTING
 --
--- Two of the {len(plan)} are inactive: MC302_BARU and MC303_BARU, whose every edge
+-- Two of the 100 are inactive: MC302_BARU and MC303_BARU, whose every edge
 -- carries effective_to = '-infinity'. By this graph's convention that means they
 -- were never true -- they came from the SLD that was later redrawn, not from a
 -- decommissioning. They are typed anyway: node_type is descriptive, a null would
@@ -96,7 +37,7 @@ sql = f"""\
 --
 -- WHAT THIS COSTS
 -- ---------------
--- Typing has one consequence, and it is the wanted one. The {len(moved)} reclassified
+-- Typing has one consequence, and it is the wanted one. The 6 reclassified
 -- nodes acquire REQUIRED properties they do not have:
 --
 --   AIR_COMPRESSOR needs rated_kw       (harmonics_report.py rating fallback)
@@ -124,25 +65,25 @@ sql = f"""\
 --    inherit nothing. PROCESS_HEATER gets two OPTIONAL properties and therefore
 --    still contributes no gap rows.
 
-\\set ON_ERROR_STOP on
+\set ON_ERROR_STOP on
 
 -- ============================================================================
 -- 1. Evidence (read-only)
 -- ============================================================================
 
-\\echo ''
-\\echo '=== 1.1 Untyped nodes before ==='
+\echo ''
+\echo '=== 1.1 Untyped nodes before ==='
 SELECT node_class, is_active, count(*) FROM graph.node
 WHERE tenant_id = 3 AND node_type IS NULL GROUP BY 1, 2 ORDER BY 1, 2;
--- expect {len(plan)} in total, all LOAD, two of them inactive
+-- expect 100 in total, all LOAD, two of them inactive
 
-\\echo ''
-\\echo '=== 1.2 Edge gap counts before ==='
+\echo ''
+\echo '=== 1.2 Edge gap counts before ==='
 SELECT status, count(*) FROM graph.v_edge_gaps WHERE tenant_id = 3
 GROUP BY 1 ORDER BY 1;
 
-\\echo ''
-\\echo '=== 1.3 Property gap counts before ==='
+\echo ''
+\echo '=== 1.3 Property gap counts before ==='
 SELECT status, count(*) FROM graph.v_property_gaps WHERE tenant_id = 3
 GROUP BY 1 ORDER BY 1;
 
@@ -166,7 +107,106 @@ CREATE TEMP TABLE _plan (
 ) ON COMMIT DROP;
 
 INSERT INTO _plan (node_code, node_type, node_class) VALUES
-{plan_values};
+    ('AHU_10_11'      , 'AHU'               , 'LOAD'),
+    ('AHU_12_13'      , 'AHU'               , 'LOAD'),
+    ('AHU_14'         , 'AHU'               , 'LOAD'),
+    ('AHU_2_3'        , 'AHU'               , 'LOAD'),
+    ('AHU_4_7'        , 'AHU'               , 'LOAD'),
+    ('AHU_LINE1'      , 'AHU'               , 'LOAD'),
+    ('AHU_LINE2'      , 'AHU'               , 'LOAD'),
+    ('AHU_LINE3'      , 'AHU'               , 'LOAD'),
+    ('AIR_DRYER'      , 'AIR_COMPRESSOR'    , 'CONVERSION'),
+    ('AJL1'           , 'GENERIC_LOAD'      , 'LOAD'),
+    ('CELUP_1A'       , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('CELUP_1B'       , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('CELUP_2'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('CELUP_3'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('COMP_300HP'     , 'AIR_COMPRESSOR'    , 'CONVERSION'),
+    ('COMP_400HP'     , 'AIR_COMPRESSOR'    , 'CONVERSION'),
+    ('COOLING1'       , 'PUMP'              , 'LOAD'),
+    ('COOLING2'       , 'PUMP'              , 'LOAD'),
+    ('DRYER_INT_1'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('FINISHING_1'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('FINISHING_21'   , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('FLR_124'        , 'GENERIC_LOAD'      , 'LOAD'),
+    ('GARUK'          , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('HEATER_1'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_10'      , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_11'      , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_2'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_3'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_4'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_5'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_6'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_7'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_8'       , 'PROCESS_HEATER'    , 'LOAD'),
+    ('HEATER_TOTAL'   , 'SUB_BOARD'         , 'BUS'),
+    ('HVAC_AHU'       , 'AHU'               , 'LOAD'),
+    ('HVAC_CHILLER1'  , 'AHU'               , 'LOAD'),
+    ('HVAC_CHILLER2'  , 'AHU'               , 'LOAD'),
+    ('LABKNIT'        , 'GENERIC_LOAD'      , 'LOAD'),
+    ('LAB_DEVICE'     , 'GENERIC_LOAD'      , 'LOAD'),
+    ('LIGHTING_MAIN'  , 'LIGHTING'          , 'LOAD'),
+    ('LIGHT_INT_1'    , 'LIGHTING'          , 'LOAD'),
+    ('LIGHT_INT_2'    , 'LIGHTING'          , 'LOAD'),
+    ('MC302_1_8'      , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC302_BARU'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC303_1_9'      , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC303_BARU'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_302_9_11'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_ATY'         , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_1'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_10'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_11'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_12'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_13'    , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_2'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_3'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_4'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_5'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_6'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_7'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_8'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_MOTOR_9'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_A'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_B'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_C'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_D'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_E'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_F'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_G'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_H'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_I'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MC_SP_J'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('MDP_MC_13'      , 'SUB_BOARD'         , 'BUS'),
+    ('OFFICE'         , 'GENERIC_LOAD'      , 'LOAD'),
+    ('OFFICE_2'       , 'GENERIC_LOAD'      , 'LOAD'),
+    ('PACKING_DEVICE' , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('PKN_DEVICE'     , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('PUMP_COOL_WND'  , 'PUMP'              , 'LOAD'),
+    ('RAINCOAT_DEVICE', 'PRODUCTION_MACHINE', 'LOAD'),
+    ('SIPPA'          , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('SIZING'         , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('TRICOT1'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('TRICOT2'        , 'PRODUCTION_MACHINE', 'LOAD'),
+    ('WJL2'           , 'GENERIC_LOAD'      , 'LOAD'),
+    ('WJL3'           , 'SUB_BOARD'         , 'BUS'),
+    ('WJL4'           , 'GENERIC_LOAD'      , 'LOAD'),
+    ('WORKSHOP'       , 'GENERIC_LOAD'      , 'LOAD'),
+    ('WTP1_ATY'       , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP1_IPAL'      , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP1_OVR'       , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP1_REUSE'     , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP1_SPN'       , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP1_WJL_REC'   , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP1_WVN'       , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP2_BEAM'      , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP2_IPAL'      , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP2_PROC'      , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP2_RPD'       , 'WATER_PROCESS'     , 'LOAD'),
+    ('WTP_1'          , 'PUMP'              , 'LOAD'),
+    ('WTP_2'          , 'PUMP'              , 'LOAD'),
+    ('WWTP'           , 'PUMP'              , 'LOAD');
 
 CREATE TEMP TABLE _before ON COMMIT DROP AS
 SELECT (SELECT count(*) FROM graph.node WHERE tenant_id = 3)        AS nodes,
@@ -252,7 +292,7 @@ INSERT INTO graph.type_property (node_type, attr_key, requirement, used_by) VALU
 -- ----------------------------------------------------------------------------
 -- node_type and node_class are set together because fk_node_node_type is
 -- composite on (node_type, node_class); splitting them fails the FK mid-update.
--- For the {len(kept)} nodes that keep their class the class assignment is a no-op.
+-- For the 94 nodes that keep their class the class assignment is a no-op.
 --
 --   AIR_DRYER, COMP_300HP, COMP_400HP  LOAD -> CONVERSION/AIR_COMPRESSOR
 --     16 peers on this site are already CONVERSION/AIR_COMPRESSOR; these three
@@ -301,7 +341,7 @@ BEGIN
       FROM _class_before c
       JOIN graph.node n ON n.tenant_id = 3 AND n.node_code = c.node_code
      WHERE n.node_class IS DISTINCT FROM c.node_class;
-    IF COALESCE(bad, '(none)') <> {expected_moves!r} THEN
+    IF COALESCE(bad, '(none)') <> 'AIR_DRYER LOAD->CONVERSION; COMP_300HP LOAD->CONVERSION; COMP_400HP LOAD->CONVERSION; HEATER_TOTAL LOAD->BUS; MDP_MC_13 LOAD->BUS; WJL3 LOAD->BUS' THEN
         RAISE EXCEPTION 'unexpected set of node_class changes: %', COALESCE(bad, '(none)');
     END IF;
 
@@ -332,7 +372,7 @@ BEGIN
         RAISE EXCEPTION 'v_property_gaps still reports UNTYPED nodes';
     END IF;
 
-    RAISE NOTICE 'OK: % nodes typed, {len(moved)} reclassified; edge gaps % -> %, '
+    RAISE NOTICE 'OK: % nodes typed, 6 reclassified; edge gaps % -> %, '
                  'property gaps (excl. UNTYPED) % -> %',
                  (SELECT count(*) FROM _plan),
                  b.edge_gaps,
@@ -347,13 +387,13 @@ END $post$;
 -- 3. Verification -- read this BEFORE committing
 -- ============================================================================
 
-\\echo ''
-\\echo '=== 3.1 Every node is typed; distribution by class and type ==='
+\echo ''
+\echo '=== 3.1 Every node is typed; distribution by class and type ==='
 SELECT node_class, node_type, count(*) FROM graph.node
 WHERE tenant_id = 3 GROUP BY 1, 2 ORDER BY 1, 2;
 
-\\echo ''
-\\echo '=== 3.2 The reclassified nodes, with their live neighbours ==='
+\echo ''
+\echo '=== 3.2 The reclassified nodes, with their live neighbours ==='
 SELECT n.node_code, n.node_class, n.node_type,
        (SELECT string_agg(f.node_code, '/' ORDER BY f.node_code)
           FROM graph.edge e JOIN graph.node f ON f.id = e.from_node_id
@@ -365,33 +405,33 @@ SELECT n.node_code, n.node_class, n.node_type,
            AND e.effective_from <= CURRENT_DATE
            AND (e.effective_to IS NULL OR e.effective_to >= CURRENT_DATE)) AS children
 FROM graph.node n
-WHERE n.tenant_id = 3 AND n.node_code IN ({moved_list})
+WHERE n.tenant_id = 3 AND n.node_code IN ('AIR_DRYER', 'COMP_300HP', 'COMP_400HP', 'HEATER_TOTAL', 'MDP_MC_13', 'WJL3')
 ORDER BY n.node_class, n.node_code;
 
-\\echo ''
-\\echo '=== 3.3 Edge gap counts after ==='
+\echo ''
+\echo '=== 3.3 Edge gap counts after ==='
 SELECT status, count(*) FROM graph.v_edge_gaps WHERE tenant_id = 3
 GROUP BY 1 ORDER BY 1;
 -- ENDPOINT_UNTYPED must be gone. Any UNTYPED left is an edge with no edge_type,
 -- which this migration does not touch.
 
-\\echo ''
-\\echo '=== 3.4 The new site questions typing has created ==='
+\echo ''
+\echo '=== 3.4 The new site questions typing has created ==='
 SELECT node_code, node_type, attr_key, status, used_by
 FROM graph.v_property_gaps
-WHERE tenant_id = 3 AND node_code IN ({moved_list})
+WHERE tenant_id = 3 AND node_code IN ('AIR_DRYER', 'COMP_300HP', 'COMP_400HP', 'HEATER_TOTAL', 'MDP_MC_13', 'WJL3')
 ORDER BY node_code, attr_key;
 -- expect rated_kw on the three compressors, and main_breaker_a plus nominal_v on
 -- the three boards -- except WJL3, which already has main_breaker_a
 
-\\echo ''
-\\echo '=== 3.5 Property gap counts after ==='
+\echo ''
+\echo '=== 3.5 Property gap counts after ==='
 SELECT status, count(*) FROM graph.v_property_gaps WHERE tenant_id = 3
 GROUP BY 1 ORDER BY 1;
 -- UNTYPED gone; MISSING up by exactly the rows listed in 3.4
 
-\\echo ''
-\\echo '=== 3.6 What the vocabulary can now answer that node_code could not ==='
+\echo ''
+\echo '=== 3.6 What the vocabulary can now answer that node_code could not ==='
 SELECT node_type, count(*) AS nodes,
        count(*) FILTER (WHERE EXISTS (
            SELECT 1 FROM graph.measurement m
@@ -411,18 +451,27 @@ COMMIT;
 --
 -- BEGIN;
 -- UPDATE graph.node SET node_class = 'LOAD', node_type = NULL
---  WHERE tenant_id = 3 AND node_code IN ({moved_list});
+--  WHERE tenant_id = 3 AND node_code IN ('AIR_DRYER', 'COMP_300HP', 'COMP_400HP', 'HEATER_TOTAL', 'MDP_MC_13', 'WJL3');
 -- UPDATE graph.node SET node_type = NULL
 --  WHERE tenant_id = 3 AND node_code IN (
-{undo_kept}
+--       'AHU_10_11', 'AHU_12_13', 'AHU_14', 'AHU_2_3', 'AHU_4_7', 'AHU_LINE1',
+--       'AHU_LINE2', 'AHU_LINE3', 'AJL1', 'CELUP_1A', 'CELUP_1B', 'CELUP_2',
+--       'CELUP_3', 'COOLING1', 'COOLING2', 'DRYER_INT_1', 'FINISHING_1',
+--       'FINISHING_21', 'FLR_124', 'GARUK', 'HEATER_1', 'HEATER_10', 'HEATER_11',
+--       'HEATER_2', 'HEATER_3', 'HEATER_4', 'HEATER_5', 'HEATER_6', 'HEATER_7',
+--       'HEATER_8', 'HVAC_AHU', 'HVAC_CHILLER1', 'HVAC_CHILLER2', 'LABKNIT',
+--       'LAB_DEVICE', 'LIGHTING_MAIN', 'LIGHT_INT_1', 'LIGHT_INT_2', 'MC302_1_8',
+--       'MC302_BARU', 'MC303_1_9', 'MC303_BARU', 'MC_302_9_11', 'MC_ATY',
+--       'MC_MOTOR_1', 'MC_MOTOR_10', 'MC_MOTOR_11', 'MC_MOTOR_12', 'MC_MOTOR_13',
+--       'MC_MOTOR_2', 'MC_MOTOR_3', 'MC_MOTOR_4', 'MC_MOTOR_5', 'MC_MOTOR_6',
+--       'MC_MOTOR_7', 'MC_MOTOR_8', 'MC_MOTOR_9', 'MC_SP_A', 'MC_SP_B', 'MC_SP_C',
+--       'MC_SP_D', 'MC_SP_E', 'MC_SP_F', 'MC_SP_G', 'MC_SP_H', 'MC_SP_I', 'MC_SP_J',
+--       'OFFICE', 'OFFICE_2', 'PACKING_DEVICE', 'PKN_DEVICE', 'PUMP_COOL_WND',
+--       'RAINCOAT_DEVICE', 'SIPPA', 'SIZING', 'TRICOT1', 'TRICOT2', 'WJL2', 'WJL4',
+--       'WORKSHOP', 'WTP1_ATY', 'WTP1_IPAL', 'WTP1_OVR', 'WTP1_REUSE', 'WTP1_SPN',
+--       'WTP1_WJL_REC', 'WTP1_WVN', 'WTP2_BEAM', 'WTP2_IPAL', 'WTP2_PROC', 'WTP2_RPD',
+--       'WTP_1', 'WTP_2', 'WWTP'
 --  );
 -- DELETE FROM graph.type_property WHERE node_type IN ('PROCESS_HEATER', 'WATER_PROCESS');
 -- DELETE FROM graph.node_type     WHERE code      IN ('PROCESS_HEATER', 'WATER_PROCESS');
 -- COMMIT;
-"""
-
-OUT.write_text(sql)
-print(f"wrote {OUT}  ({len(sql.splitlines())} lines)")
-print(f"  {len(plan)} nodes: {len(kept)} typed in place, {len(moved)} reclassified")
-for t, n in tally.most_common():
-    print(f"  {n:>3}  {t}  -> node_class {CLASS_OF[t]}")

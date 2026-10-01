@@ -1,10 +1,14 @@
 # secrets
 .env
 .env.*
+!.env.example
 
 # personal Claude Code files
 CLAUDE.local.md
 .claude/settings.local.json
+
+# migrate.sh run logs (may contain plant data)
+logs/
 
 # Python
 __pycache__/

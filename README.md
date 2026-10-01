@@ -19,19 +19,19 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–031`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
+| `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
+| `tools/validate_brick.py` | checks Brick class names against a downloaded Brick TTL |
 
-## What deliberately stayed in `../prs_diags`
+## What stayed in `../prs_diags`
 
-**Applied migrations**, in `../prs_diags/docs/database/migrations/` (`001…030`). They are
-one numbered sequence against one live database, and splitting a sequence across two folders
-invites two migration 031s. The graph lineage inside it is
-`008 009 010 011 012 016 024 025 026 027 028 029 030` plus `rollback_graph.sql` and
-`028_pre_solver_bodies.sql`.
-
-**Convention: future graph migrations are still written into that folder**, designed from
-here. If that ever stops feeling right, move the whole `migrations/` directory at once
-rather than part of it.
+**Migrations `001–007`, `014`, `015`, `022`** and `rollback.sql` / `rollback_demand_daily.sql`:
+the `prs` schema, the legacy drops and `public.demand_daily`. The graph migrations moved here
+on 2026-10-01 (see `../prs_diags/docs/database/MOVED.md`). **The numbering is still one
+sequence across both folders**: a new migration takes the next number after the highest in
+*both* `migrations/` folders, so the two never both hold the same number.
 
 Also left behind, because they are not ontology: the general valkyrie reference
 (`docs/database/README.md`, `public-views.md`, `public-functions.md`, `schema/`), the
@@ -54,11 +54,10 @@ Tenant 3, applied and verified on valkyrie:
 
 ## Loose end from the move
 
-`graph.property.external_ref` for `tx_equipment_code` still holds the string
-`docs/database/design/trafo_tenant_3.csv`, which is now
-`../o-mcp/design/trafo_tenant_3.csv`. Migration 028 was left matching what was applied
-rather than edited after the fact, so correcting the stored value needs a one-line
-migration 031.
+`graph.property.external_ref` for `tx_equipment_code` still holds
+`docs/database/design/trafo_tenant_3.csv`. Migration 031 (**applied on dev 2026-10-01, not yet on
+production**) moves Brick and SAREF references into `graph.vocabulary_alignment` and corrects
+that path to `design/trafo_tenant_3.csv`, relative to this repository.
 
 ## Two rules worth not rediscovering
 
@@ -79,16 +78,54 @@ retroactively wrong. `DELETE` only when the wrong belief has no evidential value
 engineers do not insert panels; they realise the SLD we hold is incorrect and request a
 redraw, which is `'-infinity'`, not a date.
 
-## Reaching the database
+## Databases and migrations
+
+Develop against a **development database**, not valkyrie. Its connection goes in `.env`
+(gitignored; copy `.env.example`), and superuser access there is fine. The migrations check
+the data before changing anything (for example 031 refuses to run unless there are exactly 24
+node types), so dev must match production where the migrations look. Rebuild it before
+testing each migration:
 
 ```bash
-ssh -f -N -o ExitOnForwardFailure=yes -L 15432:localhost:5432 ec2-ssm
+tools/dev_refresh.sh -s .env.prod-ro --confirm dev                              # structure + graph data
+tools/dev_refresh.sh -s .env.prod-ro --telemetry 2026-09-07 2026-09-14 --confirm dev   # + a telemetry week, for solver changes
 ```
 
-Credentials come from a gitignored `.env` read by a `db.py` helper with no fallbacks — the
-old pattern of `os.getenv('IOP_DB_PASSWORD', '<literal>')` failed open, and silently. The
-role is read-only (`grafReader`) by default; write credentials are granted per session and
-reverted.
+`.env.prod-ro` holds read-only production credentials (`grafReader`) for that session, and the
+tunnel must be up. The script drops and recreates the dev database. It copies the full
+structure, plus the data of `graph`, `public.devices` and `public.quantities` (graph's foreign
+keys point at those two), and creates the roles as `NOLOGIN` without passwords. Telemetry is
+copied only when asked for: without it, solver before/after checks compare empty to empty.
+
+Dev doesn't need TimescaleDB. Hypertables and continuous aggregates become plain tables with
+the same columns, so views over them keep working. Objects that can't exist without
+TimescaleDB are reported and skipped. The run fails unless every `graph` object and every
+copied row count matches production.
+
+```bash
+tools/migrate.sh status                      # what this database has run; read-only
+tools/migrate.sh apply 031 --confirm dev     # run one migration and record it
+```
+
+**Promotion to production means replaying the same files, never copying the dev database.**
+Each database keeps its own ledger, so `status` against production lists exactly what is
+pending there:
+
+1. Write the migration in `migrations/`, apply it to dev, and check the output.
+2. Create `.env.prod` for that session only, with `DB_LABEL=prod` and write credentials, and open the tunnel:
+   `ssh -f -N -o ExitOnForwardFailure=yes -L 15432:localhost:5432 ec2-ssm`
+3. `tools/migrate.sh -e .env.prod status`, then `tools/migrate.sh -e .env.prod apply NNN --confirm prod`.
+4. Delete `.env.prod` and revert the write credentials.
+
+The same checks that ran on dev run again on production. If production differs from what
+dev was restored from, the migration aborts inside its transaction and changes nothing.
+After a migration is applied anywhere, don't edit it: `status` flags any file whose hash no
+longer matches its ledger row.
+
+**First use of each database:** `init` creates the ledger. Then `baseline 030` records the
+migrations that ran before the ledger existed, without running them again.
+
+Each run's output goes to `logs/<label>/` (gitignored).
 
 ## Next
 
