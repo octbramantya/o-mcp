@@ -19,7 +19,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–034`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–036`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -76,6 +76,13 @@ classes nothing ever used, and checks endpoint rules by trigger.
 Migration 034 (**applied on dev 2026-10-01, not yet on production**) adds the node class `TREATMENT`
 and moves `WATER_TREATMENT` and its four subtypes, with their nodes, out of `CONVERSION`, which
 now means only a change of utility (compressor, boiler).
+
+Migrations 035 and 036 (**applied on dev 2026-10-01, not yet on production**) add the node class
+`SINK` (where the utility leaves the graph unconsumed), narrow `LOAD`, and redraw the water exits:
+the two IPALs become `WASTEWATER_TREATMENT` with an outfall each, `WTP1_OVR` an outfall,
+`WTP1_REUSE` a `RECYCLE_CUT` re-entering at `WTP1_RAN`, and `WTP1_WJL_REC` the tank it is,
+now feeding Tandon Bio. 035 also deletes the 11 dead `SUPPLY_LV` rules that let a `LOAD`
+feed something.
 
 ## Two rules worth not rediscovering
 

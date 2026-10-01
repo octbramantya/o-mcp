@@ -21,7 +21,9 @@ gets a dot on every bar it is connected to, and each bar spans only what is conn
 Everything drawn comes from the document. The findings in it are drawn, not recomputed: a node
 with two live parents says so, and a property gap from graph.v_property_gaps shows as "missing ..."
 and as "? A" on its breaker; a deliberate blank shows nothing. A node with several children but no
-bus node gets an "implicit bus", and a parent that fits none of the above is named "also fed by".
+bus node is drawn fanning out from a bar, labelled "implicit bus" when the document has an
+IMPLICIT_BUS finding for it (never for a tank), and a parent that fits none of the above is named
+"also fed by".
 """
 import argparse
 import datetime
@@ -138,11 +140,14 @@ class Layout:
             sys.exit(f"sld.py: no node in the effective window matches the root (as_of {data['as_of']})")
         self.depth = data["depth"]
         self.gaps, self.multi = defaultdict(set), {}     # from the document's findings, not worked out here
+        self.implicit = set()
         for f in data.get("findings") or []:
             if f["code"] == "PROPERTY_GAP":
                 self.gaps[f["node"]].add(f["property"])
             elif f["code"] == "MULTIPLE_LIVE_PARENTS":
                 self.multi[f["node"]] = f["parents"]
+            elif f["code"] == "IMPLICIT_BUS":
+                self.implicit.add(f["node"])
         edges = sorted(data["edges"] or [], key=lambda e: (not e["carries_flow"], e["from"]))
         parents_info = {p["code"]: p for p in data.get("parents") or []}
         up_edges = data.get("up_edges") or []
@@ -415,6 +420,10 @@ def glyph(svg, n, col, x, y):
     if n["class"] == "LOAD":
         svg.shape(f'<path d="M{x - 8:g} {y:g} L{x + 8:g} {y:g} L{x:g} {y + 13:g} Z" fill="{col}"/>')
         return y + 30
+    if n["class"] == "SINK":       # leaves the graph unconsumed: hollow, so it never reads as a load
+        svg.shape(f'<path d="M{x - 8:g} {y:g} L{x + 8:g} {y:g} L{x:g} {y + 13:g} Z" fill="{PAPER}"'
+                  f' stroke="{col}" stroke-width="2"/>')
+        return y + 30
     if n["class"] == "SOURCE":
         svg.source(x, y, n["type"], col)
         return y + 40
@@ -516,8 +525,9 @@ def render(data):
                         xs = [lay.main_x[k] for k in lay.kids[m]]
                         svg.line(x, conn_y[m], x, y, col)
                         svg.bar(min(xs + [x]) - 30, max(xs + [x]) + 30, y, col, 3)
-                        svg.text(min(xs + [x]) - 30, y - 6, f"implicit bus, no node ({m})", 10, col, "start",
-                                 italic=True, halo=True)
+                        if m in lay.implicit:    # a tank also fans out here, but no bus is missing
+                            svg.text(min(xs + [x]) - 30, y - 6, f"implicit bus, no node ({m})", 10, col,
+                                     "start", italic=True, halo=True)
                         out_y[m] = y
                     else:
                         out_y[m] = conn_y[m]
@@ -592,8 +602,8 @@ def render(data):
     frame.text(MARGIN + 66, ly, "≥ 1 kV", 11, MV, "start")
     frame.line(MARGIN + 115, ly - 4, MARGIN + 140, ly - 4, LV, 4)
     frame.text(MARGIN + 146, ly, "< 1 kV", 11, LV, "start")
-    frame.text(MARGIN + 200, ly, "☒ breaker  ·  ▼ load  ·  ▢ conversion / storage  ·  PV / G source  ·  "
-               "dashed = carries no flow", 11, MUTED, "start")
+    frame.text(MARGIN + 200, ly, "☒ breaker  ·  ▼ load  ·  ▽ sink  ·  ▢ conversion / treatment / storage  ·  "
+               "PV / G source  ·  dashed = carries no flow", 11, MUTED, "start")
     frame.text(MARGIN + 35, ly + 18, "feeders above a bar, loads below  ·  ● connected to this bar; a line crossing "
                "a bar without a dot is not", 11, MUTED, "start")
     frame.text(MARGIN + 35, ly + 36, "? / missing = a gap in graph.v_property_gaps  ·  2 live parents = connected to "

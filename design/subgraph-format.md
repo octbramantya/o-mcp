@@ -26,7 +26,8 @@ before reading anything else, and refuses a document it does not know.
 
 One exception, made while nothing consumed the format: migration 034 (2026-10-01) added the
 node class `TREATMENT` and narrowed `CONVERSION`, moving the water treatment types out of it,
-within version 1. Once a reader exists, a change like that is a version 2.
+within version 1. Migration 035 did the same for `SINK`, narrowing `LOAD`. Once a reader exists,
+a change like that is a version 2.
 
 ## Guarantees
 
@@ -65,7 +66,7 @@ within version 1. Once a reader exists, a change like that is a version 2.
 |---|---|---|
 | `code` | string | `graph.node.node_code`, unique per tenant |
 | `name` | string | `node_name` |
-| `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `TREATMENT`, `STORAGE` or `LOAD`. `CONVERSION` delivers a different utility from what it takes in (compressor, boiler); `TREATMENT` passes the same utility through, changed and with some lost (softener, RO unit). A main board and a sub-board are both `BUS`; `type` tells them apart (`MAIN_LV_BOARD`, `SUB_BOARD`) |
+| `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `TREATMENT`, `STORAGE`, `LOAD` or `SINK`. `SINK` is where the utility leaves the graph unconsumed (an outfall, an overflow, or a recycle cut naming where it re-enters in `attrs.reenters_at`); keep it out of consumption totals. `CONVERSION` delivers a different utility from what it takes in (compressor, boiler); `TREATMENT` passes the same utility through, changed and with some lost (softener, RO unit). A main board and a sub-board are both `BUS`; `type` tells them apart (`MAIN_LV_BOARD`, `SUB_BOARD`) |
 | `type` | string or null | `node_type`, from the ontology |
 | `attrs` | object | the node's properties, as stored. Units are in the key: `nominal_v` and `tx_primary_v` in volts, `rated_kva` in kVA, `rated_kw` in kW, `main_breaker_a` in amperes. Absent means not recorded |
 | `scope` | string | `reached`: on the walk down from the root. `parent`: not reached, but feeds a reached node (a second board, a PV plant, a generator). `context`: neither, but feeds a `parent` node; included only so its edge has both ends |
@@ -96,8 +97,8 @@ as is. The server computes findings; readers display them and should not work th
 
 | code | fields (besides `message`) | meaning |
 |---|---|---|
-| `MULTIPLE_LIVE_PARENTS` | `node`, `parents[]` | a reached node with more than one live parent that is not a source. The plant may have only one; this is a question for the site, not a fact |
-| `IMPLICIT_BUS` | `node`, `children` | a node that is not a bus but has more than one flow child, so a busbar exists on site with no node of its own (`INCOMING_PLN` on tenant 3) |
+| `MULTIPLE_LIVE_PARENTS` | `node`, `parents[]` | a reached node with more than one live parent that is not a source. The plant may have only one; this is a question for the site, not a fact. Not raised for `STORAGE` nodes, where several inflows are ordinary |
+| `IMPLICIT_BUS` | `node`, `children` | a node that is not a bus but has more than one flow child, so a busbar exists on site with no node of its own (`INCOMING_PLN` on tenant 3). Not raised for `STORAGE` nodes: a tank pools what it holds |
 | `PROPERTY_GAP` | `node`, `property`, `kind`, `status`, `used_by`, `detail` | a row of `graph.v_property_gaps`: a property a real reader needs (`used_by`) that the node lacks. A property that is merely absent, and not needed, is not a gap |
 | `EDGE_GAP` | `edge`, `from`, `to`, `status` | a row of `graph.v_edge_gaps` for an edge in the document |
 

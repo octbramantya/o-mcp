@@ -62,6 +62,7 @@ live_n AS (
   JOIN live_n t ON t.id = e.to_node_id
   JOIN live_n f ON f.id = e.from_node_id
   WHERE f.node_class <> 'SOURCE'
+    AND t.node_class <> 'STORAGE'   -- a tank with several inflows is ordinary
   GROUP BY t.node_code
   HAVING count(*) > 1
   UNION ALL
@@ -72,7 +73,7 @@ live_n AS (
   FROM incl i
   JOIN live_n n ON n.id = i.node_id
   JOIN live_e e ON e.from_node_id = n.id AND e.carries_flow
-  WHERE n.node_class <> 'BUS'
+  WHERE n.node_class NOT IN ('BUS', 'STORAGE')   -- a tank pools what it holds; no busbar is missing
   GROUP BY n.node_code
   HAVING count(*) > 1
   UNION ALL
