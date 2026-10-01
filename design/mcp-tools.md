@@ -37,6 +37,7 @@ Named for what it returns, not for the table it reads.
 > `findings` are computed by the server; quote their `message` rather than working them out
 > yourself. `MULTIPLE_LIVE_PARENTS` is an open question for the site, not a fact.
 > `PROPERTY_GAP` lists values a report needs and the site has not supplied.
+> For what a type, edge type or property means, call `plant_vocabulary`.
 
 **Input schema:**
 
@@ -73,3 +74,107 @@ model reasons from the JSON.
 
 **Resource:** `o-mcp://formats/subgraph/v1` serves `design/subgraph-format.md` and the schema,
 for a model or person who wants the full explanation. A fallback, not a prerequisite.
+
+## `plant_vocabulary`
+
+The ontology a `plant_section` result is written in: what each node type, edge type and
+property means, and which connections and properties each type allows. A tool rather than only a
+resource because the model must be able to look a term up by itself, mid-answer, and every MCP
+client supports tools; resources are application-controlled, and many clients surface them only
+when the user attaches one.
+
+Three layers, cheapest first:
+
+| layer | what | when the model sees it |
+|---|---|---|
+| 1 | Any input that takes a type or class is a `oneOf` of `{const, description}`, not a bare `enum` | always, at no extra call |
+| 2 | `plant_vocabulary` | when it decides it needs a definition |
+| 3 | The same content at `o-mcp://ontology/{kind}` and `o-mcp://ontology/{kind}/{code}` | when a person or client attaches it |
+
+All three come from one query, so a description is written once, in the database.
+
+**Description** (what the model reads):
+
+> Defines the terms `plant_section` uses: node classes, node types, edge types and properties.
+> Call it when a type or property in a result is unfamiliar, or before saying what a type can
+> connect to or which values a report needs. With no arguments it returns everything (a few
+> kilobytes); `kind` and `code` narrow it.
+
+**Input schema:**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {"enum": ["node_type", "edge_type", "property"],
+             "description": "Return only this kind of term. Omit for everything."},
+    "code": {"type": "string",
+             "description": "One term, e.g. SUB_BOARD, PV_INJECTION or main_breaker_a. Exact match; on a miss the server returns the nearest codes."}
+  }
+}
+```
+
+No `as_of`. The ontology has no valid-time history (`type-property.md`: like `node_class`,
+`node_type` has none), so the CLAUDE.md rule for topology tools does not apply. If the ontology
+ever gets history, `as_of` becomes required here too, and that is a version 2.
+
+**Output:** a new format, `o-mcp/vocabulary` version 1, with its own schema file written when the
+tool is built, under the same rules as `o-mcp/subgraph` (versioned, strict check, descriptions on
+every field). Sketch:
+
+```json
+{
+  "schema": "o-mcp/vocabulary", "version": 1,
+  "node_classes": [{"code": "BUS", "description": "..."}],
+  "node_types":   [{"code": "SUB_BOARD", "class": "BUS", "parent": "SWITCHBOARD", "abstract": false,
+                    "name": "Sub board", "description": "...",
+                    "properties": [{"key": "main_breaker_a", "requirement": "REQUIRED", "used_by": "..."}]}],
+  "edge_types":   [{"code": "PV_INJECTION", "class": "FEEDER", "utility": "ELECTRICITY",
+                    "carries_flow": true, "is_transform": false, "description": "...",
+                    "endpoints": [{"from": "PV_PLANT", "from_is": "type", "to": "SUB_BOARD", "to_is": "type"}]}],
+  "properties":   [{"key": "main_breaker_a", "datatype": "number", "unit": "A", "min": 1, "max": 10000,
+                    "enum_values": null, "kind": "NAMEPLATE", "description": "..."}],
+  "utilities":    [{"code": "WATER", "name": "...", "base_unit": "..."}]
+}
+```
+
+- `endpoints[].from_is` / `to_is`: an endpoint rule names either a node type or a whole class
+  (`SUPPLY_LV  MAIN_LV_BOARD -> LOAD`). The server says which, so the model never has to guess
+  whether `LOAD` is a type.
+- `abstract`: `SWITCHBOARD` and `WATER_TREATMENT` hold shared properties and are never assigned
+  to a node. Derived as "has subtypes" until there is a column for it (gap 2 below).
+- Abstract types are returned, because their properties are inherited and their names appear as
+  `parent`.
+
+**Resource:** `o-mcp://ontology/node_type`, `.../edge_type`, `.../property`, and
+`.../{kind}/{code}` for one term, each the matching slice of the same document.
+
+### Where each description comes from
+
+Checked against the migrations on 2026-10-01:
+
+| term | source | state |
+|---|---|---|
+| node type | `graph.node_type.description` (nullable) | filled for all 24 types (22 in 026, 2 in 030). Boards, sources and water stages are precise; some loads only restate the name (`PUMP`: "Pump load.") |
+| edge type | `graph.edge_type.description` (NOT NULL) | all 10, and the best in the ontology: `PV_INJECTION` says where the meter is tapped, `PF_COMPENSATION` why it carries no flow |
+| property | `graph.property.description` (NOT NULL), plus `datatype`, `unit`, range, `enum_values`, `kind` | all 26. The rating rules live here: `rated_kva` and `main_breaker_a` say which is the loading denominator on which board |
+| type ↔ property | `graph.type_property` (`requirement`, `used_by`) | complete; no description needed |
+| endpoint rule | `graph.edge_type_endpoint` | 85 rules; no description needed |
+| utility | `graph.utility` (`name`, `base_unit`) | no description column; the names are self-explanatory |
+| node class | **nowhere in the database** | only the check constraint (five values since 032), `design/graph-network-design.md`, and the class description in `subgraph-v1.schema.json` |
+| edge class | **nowhere in the database** | only `ck_edge_type_class` (eight values) |
+
+### Gaps to close before building
+
+1. **Node and edge classes have no table.** The definitions would live in server code, which
+   breaks "a description is written once, in the database". Either a small migration adds
+   `graph.node_class` and `graph.edge_class` (code, description) with the check constraints
+   becoming foreign keys, or the server reads the class text from `subgraph-v1.schema.json` so it
+   at least has one source. The migration is the cleaner of the two.
+2. **No `is_abstract` column on `node_type`.** "Has subtypes" is right for the two abstract types
+   today, but a future abstract type with no subtypes yet, or a concrete type that gains one,
+   would be misreported.
+3. **Thin load descriptions.** `PUMP`, `AHU`, `LIGHTING` and `PRODUCTION_MACHINE` restate their
+   names. Harmless for a model, but this is where a sentence on what the type covers (and what it
+   does not, such as `AIR_DRYER` typed `AIR_COMPRESSOR`) would help most. A data migration, no
+   schema change.

@@ -27,7 +27,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `tools/sld.py`, `tools/sld.sql` | draws a single-line diagram (SVG) of one node down to `--depth` levels at `--as-of`, from the effective window. Read-only; output goes to `logs/<label>/`. `--save-json` writes the data as an `o-mcp/subgraph` v1 document |
 | `design/subgraph-v1.schema.json` | the definition of the `o-mcp/subgraph` v1 format (JSON Schema, a description on every field). The MCP topology tools' `outputSchema` |
 | `design/subgraph-format.md` | the same format explained: guarantees, findings, and the versioning rule |
-| `design/mcp-tools.md` | drafts for the MCP server: the `plant_section` tool's description and input schema, and how a model learns what the response means |
+| `design/mcp-tools.md` | drafts for the MCP server: the `plant_section` and `plant_vocabulary` tools' descriptions and input schemas, how a model learns what a response means, and where each ontology description comes from |
 | `tools/check_subgraph.py` | checks v1 documents against the schema, strictly: `uv run --no-project --with jsonschema tools/check_subgraph.py doc.json` |
 
 ## What stayed in `../prs_diags`
