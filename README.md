@@ -19,7 +19,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–031`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–032`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -49,7 +49,7 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 Tenant 3, applied and verified on valkyrie:
 
 - **188 nodes, 222 edges.** Every node carries a `node_type`; `graph.v_edge_gaps` is empty.
-- **22 node types** across `SOURCE / BUS / CONVERSION / STORAGE / LOAD`, **10 edge types**
+- **24 node types** across `SOURCE / BUS / CONVERSION / STORAGE / LOAD`, **10 edge types**
   with 85 endpoint rules.
 - `graph.v_property_gaps` holds **31 MISSING** rows — the site-check list. Each names a
   reader in `used_by`; a property is REQUIRED only if a real reader needs it.
@@ -63,6 +63,10 @@ Tenant 3, applied and verified on valkyrie:
 `docs/database/design/trafo_tenant_3.csv`. Migration 031 (**applied on dev 2026-10-01, not yet on
 production**) moves Brick and SAREF references into `graph.vocabulary_alignment` and corrects
 that path to `design/trafo_tenant_3.csv`, relative to this repository.
+
+Migration 032 (**applied on dev 2026-10-01, not yet on production**) retires the unused
+`DISTRIBUTION` node class: a level below a bus is a node type (`SUB_BOARD`), never a class.
+`design/subgraph-v1.schema.json` already lists the five classes.
 
 ## Two rules worth not rediscovering
 

@@ -131,6 +131,8 @@ CREATE INDEX idx_node_attrs         ON graph.node USING gin (attrs);
 | `STORAGE` | battery, capacitor bank | air receiver / tank |
 | `LOAD` | motor, HVAC, machine | pneumatic consumer |
 
+> **`DISTRIBUTION` was retired by migration 032 (2026-10-01).** Migration 026 moved the main/sub level into `node_type`: `MAIN_LV_BOARD` and `SUB_BOARD` are both `BUS` subtypes of `SWITCHBOARD`, and the readers that care about the level key on the type. No node, type or endpoint rule ever used the class. A level below a bus is a node type, never a class. The DDL above and the water class table further down show the design as it stood in 008.
+
 `attrs` is free-form per class — `voltage_level`, `rated_capacity_kva`, `phases` for electricity; `operating_pressure_bar`, `volume_m3` for air. Kept in JSONB rather than columns because the useful attributes differ per utility and per class.
 
 **`node_class` is descriptive, not structural.** The solver reads it nowhere; traversal, aggregation and residuals are driven entirely by topology (`in_degree` / `out_degree`) and measurements. Reclassifying a node — the engineers report that what you drew as a `LOAD` is really another board — is an `UPDATE` plus new child rows. The node keeps its `id`, `node_code` and measurements, and its parent's arithmetic is unchanged. The only visible effect is correct: `out_degree` becomes non-zero, so the node becomes eligible for an `UNACCOUNTED` residual. Note `node_class` has no temporal versioning, so a reclassification applies retroactively across all history; record *when* you learned it by setting `effective_from` on the new edges instead.
@@ -1107,7 +1109,7 @@ is how you read an SLD — you trace what feeds a board, not what a board feeds.
 | `tenant_id` | yes | 3 = the plant with the SLD |
 | `node_code` | yes | unique per tenant, `UPPER_SNAKE` |
 | `node_name` | yes | display name shown in the Sankey |
-| `node_class` | yes | `SOURCE` / `BUS` / `DISTRIBUTION` / `CONVERSION` / `STORAGE` / `LOAD` |
+| `node_class` | yes | `SOURCE` / `BUS` / `CONVERSION` / `STORAGE` / `LOAD` (`DISTRIBUTION` was retired by migration 032; a sub-panel is `BUS` with type `SUB_BOARD`) |
 | `is_passthrough` | — | `TRUE` = this node consumes nothing of its own. Blank = `FALSE`. Structural, not descriptive — see §4.3 and rule 6 below |
 | `fed_by` | — | `;`-separated upstream `node_code`s. **Blank for sources.** One entry per in-edge; `#device` attaches a meter to that in-edge |
 | `in_utility` | yes | default utility for this row's `fed_by` edges *and* its `device_ids` |
@@ -1238,7 +1240,7 @@ off the pipe it is tapped into with `#device`. Instruments stop being topology.
    |---|---|
    | `SOURCE` | deep well, PDAM connection, recycled return from WWTP |
    | `BUS` | header, manifold, ring main — a pipe with multiple taps and no inventory |
-   | `DISTRIBUTION` | department sub-manifold |
+   | `DISTRIBUTION` | department sub-manifold *(class retired by 032: a sub-manifold is a `BUS`)* |
    | `CONVERSION` | clarifier, softener, RO skid, filter — passes water through and loses some |
    | `STORAGE` | tank, reservoir, clearwell — **holds inventory** |
    | `LOAD` | dyeing, boiler feed, cooling-tower makeup, domestic |

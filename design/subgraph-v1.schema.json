@@ -36,8 +36,8 @@
           "code": {"type": "string", "description": "The node's code, unique within the tenant. Edges and findings refer to nodes by this code."},
           "name": {"type": "string", "description": "Human-readable name, as the site calls it."},
           "class": {
-            "enum": ["SOURCE", "BUS", "DISTRIBUTION", "CONVERSION", "STORAGE", "LOAD"],
-            "description": "Broad role. SOURCE: brings energy or water in (grid incomer, PV plant, generator, well). BUS: a point where flow is shared out (switchboard, header). CONVERSION: turns one utility into another (an air compressor uses electricity, makes compressed air). STORAGE: holds or compensates (tank, capacitor bank). LOAD: consumes."
+            "enum": ["SOURCE", "BUS", "CONVERSION", "STORAGE", "LOAD"],
+            "description": "Broad role. SOURCE: brings energy or water in (grid incomer, PV plant, generator, well). BUS: a point where flow is shared out (switchboard, header); a main board and a sub-board are both BUS, told apart by type (MAIN_LV_BOARD, SUB_BOARD). CONVERSION: turns one utility into another (an air compressor uses electricity, makes compressed air). STORAGE: holds or compensates (tank, capacitor bank). LOAD: consumes."
           },
           "type": {"type": ["string", "null"], "description": "Specific node type from the ontology, such as MAIN_LV_BOARD, PV_PLANT or AIR_COMPRESSOR. Null if not yet typed."},
           "attrs": {

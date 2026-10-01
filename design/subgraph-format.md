@@ -61,7 +61,7 @@ before reading anything else, and refuses a document it does not know.
 |---|---|---|
 | `code` | string | `graph.node.node_code`, unique per tenant |
 | `name` | string | `node_name` |
-| `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `STORAGE` or `LOAD` |
+| `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `STORAGE` or `LOAD`. A main board and a sub-board are both `BUS`; `type` tells them apart (`MAIN_LV_BOARD`, `SUB_BOARD`) |
 | `type` | string or null | `node_type`, from the ontology |
 | `attrs` | object | the node's properties, as stored. Units are in the key: `nominal_v` and `tx_primary_v` in volts, `rated_kva` in kVA, `rated_kw` in kW, `main_breaker_a` in amperes. Absent means not recorded |
 | `scope` | string | `reached`: on the walk down from the root. `parent`: not reached, but feeds a reached node (a second board, a PV plant, a generator). `context`: neither, but feeds a `parent` node; included only so its edge has both ends |
