@@ -7,6 +7,7 @@ Ontology (node/edge types, properties) and topology (`graph.node` / `graph.edge`
 ## Where things live
 
 - Graph migrations live in `migrations/`. `001–007`, `014`, `015` and `022` stayed in `../prs_diags/docs/database/migrations/`, and numbering is one sequence across both folders: a new migration takes the next number after the highest in either.
+- `../prs_diags` is an archive for ontology and topology: all such work happens here, and its copies (hardcoded class lists in `scripts/`, old docs) are left to drift, not synced.
 - Rewrite only comments in an applied migration, never its SQL: the file is the record of what ran, and `tools/migrate.sh status` flags hash changes.
 - Migration 030 is rendered by `tools/gen_030.py` from `design/draft_load_types.csv`. Edit the CSV and regenerate; never hand-edit the `.sql`. Same discipline for any future generated migration.
 - Never edit an already-applied migration to fix a value; write a new migration.
@@ -21,7 +22,8 @@ Ontology (node/edge types, properties) and topology (`graph.node` / `graph.edge`
 - Rebuild dev with `tools/dev_refresh.sh` before testing a migration (add `--telemetry FROM TO` when it touches the solver).
 - Run migrations only through `tools/migrate.sh` (one at a time, in order, recorded in `graph.schema_migration`). `.env` is the dev database; production is a per-session `.env.prod`. Never copy dev data to production: promotion means replaying the same files.
 - No credential fallbacks or defaults in code (`os.getenv(..., '<literal>')` fails open).
-- **Ask before** applying anything to any database, even dev, and before editing files in `../prs_diags`. No standing permissions: the user grants access as needed.
+- **Dev (`.env`) is open for read and write** without asking: queries, `tools/migrate.sh ... --confirm dev`, `tools/sld.py`. `.env` always targets dev; check the target line a tool prints, and stop if it names anything else.
+- **Ask before** anything that touches production (`.env.prod`, `.env.prod-ro`, the tunnel), before `tools/dev_refresh.sh` (it reads production), and before editing files in `../prs_diags`. The user grants production access per session.
 
 ## MCP server design (decided)
 
