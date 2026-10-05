@@ -1,6 +1,7 @@
 """Validate the external_ref values stored in graph.node_type against a Brick release."""
 import sys
-from rdflib import Graph, RDF, RDFS, OWL, URIRef, Namespace
+
+from rdflib import OWL, RDF, RDFS, Graph, Namespace, URIRef
 
 BRICK = Namespace("https://brickschema.org/schema/Brick#")
 SKOS  = Namespace("http://www.w3.org/2004/02/skos/core#")
