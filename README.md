@@ -20,7 +20,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–039`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–040`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -46,25 +46,43 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (2026-10-01)
+## Current state of the model (dev, 2026-10-05)
 
-Tenant 3, applied and verified on valkyrie:
+Tenant 3 on dev, after migration 040. Production is at **030**: migrations 031–040 are applied
+and verified on dev and wait to be replayed there (below), so production still has 24 node
+types, 10 edge types, 85 endpoint rules and no class tables.
 
-- **188 nodes, 222 edges.** Every node carries a `node_type`; `graph.v_edge_gaps` is empty.
-- **24 node types** across `SOURCE / BUS / CONVERSION / STORAGE / LOAD`, **10 edge types**
-  with 85 endpoint rules.
-- `graph.v_property_gaps` holds **31 MISSING** rows — the site-check list. Each names a
-  reader in `used_by`; a property is REQUIRED only if a real reader needs it.
+- **188 nodes and 212 edges in effect** (190 and 225 rows; 221 edges have `is_active`).
+  Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
+  devices); the solver resolves the rest.
+- **Ontology:** 7 node classes (`SOURCE / BUS / CONVERSION / TREATMENT / STORAGE / LOAD / SINK`),
+  27 node types (3 with subtypes), 3 edge classes, 11 edge types with 77 endpoint rules, and
+  27 properties on 90 type links (12 REQUIRED). Classes, types and properties are tables with a
+  description each; endpoint rules and attrs are checked by trigger.
+- **Vocabularies:** 34 Brick/SAREF alignment rows (`graph.vocabulary_alignment`), 97 quantity
+  terms (`graph.quantity_term`), 10 solver rules (`graph.quantity_rule`), 1 alias and 1 derived
+  quantity (`PF_TRUE`).
+- `graph.v_property_gaps` holds **31 MISSING** rows — the site-check list (`rated_kw` 17,
+  `main_breaker_a` 11, `nominal_v` 3). Each names a reader in `used_by`; a property is REQUIRED
+  only if a real reader needs it.
+- `site_status`: 4 nodes `inactive` (`LVMDB_TEXTURE`, `HEATER_8`, `AIR_DRYER`, `CB_MDP3`),
+  10 `normal`, all capacitor banks.
 - Known-wrong on purpose: `AIR_DRYER` is typed `AIR_COMPRESSOR`. See `design/edge-type.md` §9.
+- Open:
+  - 25 nodes have more than one live feeder. 7 are a transformer plus PV or a generator, as
+    drawn; the 18 Texture boards fed by two `SUPPLY_LV` edges are the open parentage question.
+  - 16 node types have one-line descriptions that restate the name.
+  - `WASTEWATER_TREATMENT`, `WATER_OUTFALL` and `RECYCLE_CUT` have no alignment row (added after 031).
 - `tx_impedance_pct` is empty on all 12 boards and OPTIONAL, which is why harmonics uses a
   blanket strict 5% TDD instead of per-board IEEE 519 limits.
 
-## Loose end from the move
+## Pending on production: migrations 031–040
 
 `graph.property.external_ref` for `tx_equipment_code` still holds
-`docs/database/design/trafo_tenant_3.csv`. Migration 031 (**applied on dev 2026-10-01, not yet on
-production**) moves Brick and SAREF references into `graph.vocabulary_alignment` and corrects
-that path to `design/trafo_tenant_3.csv`, relative to this repository.
+`docs/database/design/trafo_tenant_3.csv` on production. Migration 031 (**applied on dev
+2026-10-01, not yet on production**) moves Brick and SAREF references into
+`graph.vocabulary_alignment` and corrects that path to `design/trafo_tenant_3.csv`, relative to
+this repository.
 
 Migration 032 (**applied on dev 2026-10-01, not yet on production**) retires the unused
 `DISTRIBUTION` node class: a level below a bus is a node type (`SUB_BOARD`), never a class.
@@ -105,11 +123,16 @@ capacitor banks) and records `LVMDB_TEXTURE`, `HEATER_8` and `AIR_DRYER` as `ina
 2026-10-02: deliberately turned off on site, kept whole in the graph. The status is kept by
 hand, so the MCP server pairs it with each device's last reading (`design/mcp-tools.md`, gap 5).
 
+Migration 040 (**applied on dev 2026-10-05, not yet on production**) deletes `quantity_rule` 2097
+(THD current phase A) and its 99 measurement rows. The solver rolled it up as the RSS of the
+children's percentages, which ignores their currents, ran into sources, and used phase A only.
+Harmonic current is assessed per device and per phase by `harmonics_report.py` and Grafana.
+
 ## Two rules worth not rediscovering
 
 **Filter the effective window, not just `is_active`.** `graph.node` and `graph.edge` have two
-independent retirement mechanisms. `is_active` alone over-reports — 222 rows versus 209
-currently-effective ones — and it has already produced two wrong findings and one wrong
+independent retirement mechanisms. `is_active` alone over-reports (on dev, 2026-10-05: 221 edge
+rows are active, 212 are in effect) and it has already produced two wrong findings and one wrong
 view.
 
 ```sql
