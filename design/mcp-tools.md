@@ -142,7 +142,7 @@ every field). Sketch:
   (`SUPPLY_LV  MAIN_LV_BOARD -> LOAD`). The server says which, so the model never has to guess
   whether `LOAD` is a type.
 - `abstract`: `SWITCHBOARD` and `WATER_TREATMENT` hold shared properties and are never assigned
-  to a node. Derived as "has subtypes" until there is a column for it (gap 2 below).
+  to a node. Read from `graph.node_type.is_abstract` (migration 041), which a trigger enforces.
 - Abstract types are returned, because their properties are inherited and their names appear as
   `parent`.
 
@@ -172,7 +172,9 @@ Checked against the migrations on 2026-10-01:
    `graph.node_class` and `graph.edge_class` (code, description) with the check constraints
    becoming foreign keys, or the server reads the class text from `subgraph-v1.schema.json` so it
    at least has one source. The migration is the cleaner of the two.
-2. **No `is_abstract` column on `node_type`.** "Has subtypes" is right for the two abstract types
+2. **No `is_abstract` column on `node_type`.** *Closed by migration 041: the column, set on
+   `SWITCHBOARD` and `WATER_TREATMENT`, and triggers refusing an abstract type on a node and
+   refusing to make a type in use abstract.* "Has subtypes" is right for the two abstract types
    today, but a future abstract type with no subtypes yet, or a concrete type that gains one,
    would be misreported.
 3. **Thin load descriptions.** `PUMP`, `AHU`, `LIGHTING` and `PRODUCTION_MACHINE` restate their

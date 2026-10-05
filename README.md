@@ -20,7 +20,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–040`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–041`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -48,7 +48,7 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev, 2026-10-05)
 
-Tenant 3 on dev, after migration 040. Production is at **030**: migrations 031–040 are applied
+Tenant 3 on dev, after migration 041. Production is at **030**: migrations 031–041 are applied
 and verified on dev and wait to be replayed there (below), so production still has 24 node
 types, 10 edge types, 85 endpoint rules and no class tables.
 
@@ -56,9 +56,10 @@ types, 10 edge types, 85 endpoint rules and no class tables.
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
   devices); the solver resolves the rest.
 - **Ontology:** 7 node classes (`SOURCE / BUS / CONVERSION / TREATMENT / STORAGE / LOAD / SINK`),
-  27 node types (3 with subtypes), 3 edge classes, 11 edge types with 77 endpoint rules, and
-  27 properties on 90 type links (12 REQUIRED). Classes, types and properties are tables with a
-  description each; endpoint rules and attrs are checked by trigger.
+  27 node types (2 abstract, `SWITCHBOARD` and `WATER_TREATMENT`, parents of 8 subtypes),
+  3 edge classes, 11 edge types with 77 endpoint rules, and 27 properties on 90 type links
+  (12 REQUIRED). Classes, types and properties are tables with a description each; endpoint
+  rules, attrs and abstract types are checked by trigger.
 - **Vocabularies:** 34 Brick/SAREF alignment rows (`graph.vocabulary_alignment`), 97 quantity
   terms (`graph.quantity_term`), 10 solver rules (`graph.quantity_rule`), 1 alias and 1 derived
   quantity (`PF_TRUE`).
@@ -76,7 +77,7 @@ types, 10 edge types, 85 endpoint rules and no class tables.
 - `tx_impedance_pct` is empty on all 12 boards and OPTIONAL, which is why harmonics uses a
   blanket strict 5% TDD instead of per-board IEEE 519 limits.
 
-## Pending on production: migrations 031–040
+## Pending on production: migrations 031–041
 
 `graph.property.external_ref` for `tx_equipment_code` still holds
 `docs/database/design/trafo_tenant_3.csv` on production. Migration 031 (**applied on dev
@@ -127,6 +128,10 @@ Migration 040 (**applied on dev 2026-10-05, not yet on production**) deletes `qu
 (THD current phase A) and its 99 measurement rows. The solver rolled it up as the RSS of the
 children's percentages, which ignores their currents, ran into sources, and used phase A only.
 Harmonic current is assessed per device and per phase by `harmonics_report.py` and Grafana.
+
+Migration 041 (**applied on dev 2026-10-05, not yet on production**) adds
+`graph.node_type.is_abstract`, TRUE on `SWITCHBOARD` and `WATER_TREATMENT`. A trigger refuses an
+abstract type on a node, and another refuses making a type abstract while nodes use it.
 
 ## Two rules worth not rediscovering
 
