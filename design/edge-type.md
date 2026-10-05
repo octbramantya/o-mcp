@@ -371,6 +371,14 @@ Remaining:
    because the nodes themselves are inactive: decommissioned, edges retired, entirely
    consistent.
 
+   *Corrected 2026-10-02 by migration 038.* The site confirmed both panels were real and
+   retired on 2026-09-28. Their feeds from `TWIST_PANEL` had been set to `'-infinity'`
+   (never true) and the nodes to `is_active = false`, which hid real equipment from every
+   as-of query. 038 dates them instead: `effective_to = 2026-09-27`, the last day in service,
+   on the nodes, both feeds and all 18 measurement rows. The feeds from `LVMDB_TF630` stay
+   `'-infinity'`; that path was the SLD error. 038 also gives `v_property_gaps` the window
+   filter 029 gave `v_edge_gaps`.
+
    **The real finding, which caused the mistake:** `is_active` and the effective window are
    two independent mechanisms, and 9 edges are `is_active = true` with
    `effective_to = '-infinity'`. Any query filtering on `is_active` alone over-reports, and

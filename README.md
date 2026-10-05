@@ -14,15 +14,17 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/type-property.md` | node ontology — `node_type`, `graph.property`, `type_property`, `v_property_gaps`. Applied as migrations 025 and 026 |
 | `design/edge-type.md` | edge ontology — `edge_type`, `edge_type_endpoint`, `carries_flow`, `v_edge_gaps`. Applied as migrations 027–030 |
 | `design/draft_load_types.csv` | the reviewed node-typing worksheet, source of truth for migration 030 |
+| `design/quantity_terms.csv` | the quantity vocabulary worksheet: code, unit, reading and description for each quantity the meters report. Source of truth for migration 037 |
 | `design/graph-*.csv`, `graph-seed-v1.csv` | hand-authored topology seeds (electricity, water) |
 | `design/trafo_tenant_3.csv`, `capbank_tenant_3.csv`, `draft_current_ratings*.csv` | site surveys that feed node properties |
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–036`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–039`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
+| `tools/gen_037.py` | renders migration 037 from `design/quantity_terms.csv`. Same rule |
 | `tools/validate_brick.py` | checks Brick class names against a downloaded Brick TTL |
 | `tools/sld.py`, `tools/sld.sql` | draws a single-line diagram (SVG) of one node down to `--depth` levels at `--as-of`, from the effective window. Read-only; output goes to `logs/<label>/`. `--save-json` writes the data as an `o-mcp/subgraph` v1 document |
 | `design/subgraph-v1.schema.json` | the definition of the `o-mcp/subgraph` v1 format (JSON Schema, a description on every field). The MCP topology tools' `outputSchema` |
@@ -83,6 +85,25 @@ the two IPALs become `WASTEWATER_TREATMENT` with an outfall each, `WTP1_OVR` an 
 `WTP1_REUSE` a `RECYCLE_CUT` re-entering at `WTP1_RAN`, and `WTP1_WJL_REC` the tank it is,
 now feeding Tandon Bio. 035 also deletes the 11 dead `SUPPLY_LV` rules that let a `LOAD`
 feed something.
+
+Migration 037 (**applied on dev 2026-10-02, not yet on production**) adds `graph.quantity_term`,
+the vocabulary for metered quantities: a readable code, a unit, `COUNTER` or `SAMPLE`, and a
+description for the 96 quantities tenant 3's meters report plus air (5932). `public.quantities`
+(ported from Schneider PME) is untouched. Every `quantity_rule` must now have a term, and
+`derived_quantity` gains a unit and description. Units were checked against telemetry where
+possible (`unit_basis`): the harmonic magnitudes and "THD RMS Current" are percent of the
+fundamental, not amperes, and Schneider power factor is quadrant-encoded on -2..2.
+
+Migration 038 (**applied on dev 2026-10-02, not yet on production**) dates the retirement of
+`MC302_BARU` and `MC303_BARU` (retired 2026-09-28, so `effective_to = 2026-09-27`, the last
+day in service), replacing the `'-infinity'` that had marked real equipment as never true, and
+makes `v_property_gaps` filter the effective window.
+
+Migration 039 (**applied on dev 2026-10-05, not yet on production**) makes `site_status` and
+`site_status_as_of` OPTIONAL on every equipment type (all but `RECYCLE_CUT`; still REQUIRED on
+capacitor banks) and records `LVMDB_TEXTURE`, `HEATER_8` and `AIR_DRYER` as `inactive` as of
+2026-10-02: deliberately turned off on site, kept whole in the graph. The status is kept by
+hand, so the MCP server pairs it with each device's last reading (`design/mcp-tools.md`, gap 5).
 
 ## Two rules worth not rediscovering
 

@@ -161,6 +161,7 @@ Checked against the migrations on 2026-10-01:
 | type ↔ property | `graph.type_property` (`requirement`, `used_by`) | complete; no description needed |
 | endpoint rule | `graph.edge_type_endpoint` | 85 rules; no description needed |
 | utility | `graph.utility` (`name`, `base_unit`) | no description column; the names are self-explanatory |
+| quantity | `graph.quantity_term` (`code`, `unit`, `reading`, `description`), migration 037; `graph.derived_quantity.description` for `PF_TRUE` | 97 terms: every quantity tenant 3's meters report, plus air. A quantity a meter starts reporting later has no term until a new CSV row and migration |
 | node class | **nowhere in the database** | only the check constraint (five values since 032), `design/graph-network-design.md`, and the class description in `subgraph-v1.schema.json` |
 | edge class | **nowhere in the database** | only `ck_edge_type_class` (eight values) |
 
@@ -178,3 +179,24 @@ Checked against the migrations on 2026-10-01:
    names. Harmless for a model, but this is where a sentence on what the type covers (and what it
    does not, such as `AIR_DRYER` typed `AIR_COMPRESSOR`) would help most. A data migration, no
    schema change.
+4. **Meter power factor is encoded.** *Decided 2026-10-02.* Schneider meters report `PF_TOTAL`
+   (1072), `PF_A..C` and `DPF_*` on -2..2 by quadrant, and the PV loggers `PLTSC`/`PLTSD`
+   report a plain signed value (`graph.quantity_term.description` has the decoding). The server
+   never returns a statistic of the raw values: it decodes each reading first, or offers
+   `PF_TRUE` instead. `quantity_rule` for 1072 says `AVG`, which is only safe after decoding.
+5. **A node's status is declared by hand; whether its meter reports is observed.** *Decided
+   2026-10-05.* `site_status` (OPTIONAL on every equipment type since migration 039) records only
+   what the site has reported, so it cannot notice a meter switched off without notice, and
+   `public.devices.status` can't either: all 8 devices silent in the dev week read `ONLINE`. The
+   server computes each device's last reading from telemetry at question time and reports it
+   next to the declared status, never storing it by hand:
+
+   | declared | observed | the server says |
+   |---|---|---|
+   | none or `normal` | reporting | nothing to add |
+   | none or `normal` | silent since X | not reporting since X, with no explanation on record |
+   | `inactive` | silent | expected: turned off on site since `site_status_as_of` |
+   | `inactive` | reporting | the status is probably out of date; ask the site |
+
+   An absent status is "nothing reported", never "normal". `attrs` has no history, so for an
+   `as_of` before `site_status_as_of` the server states no status.
