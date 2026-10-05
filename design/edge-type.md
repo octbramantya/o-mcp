@@ -418,6 +418,27 @@ Remaining:
      `is_active` artefact above. The other 7 multi-parent nodes are boards with two real
      sources (grid + gas engine, grid + PV) and are correct.
 
+     *Update 2026-10-05, not yet confirmed by the site.* What is known so far: both boards are
+     wired to all 18 loads with **no changeover**. `LVMDB_TEXTURE` (TF 1600) is switched off
+     (`site_status = inactive` since migration 039; its meter answers every poll with a Modbus
+     error), so in effect the 18 loads are supplied by `LVMDB_TEXTURE_2` (TF 2000) and
+     `PLTS_TEXTURE`. The dev week (2026-09-06 to 09-13) agrees: with `LVMDB_TEXTURE` silent,
+     the metered loads drew about 52 MWh against about 84 MWh from `LVMDB_TEXTURE_2` and the
+     PV. A guess, unconfirmed: TF 1600's board was unsuited to PV injection, so the plant ran
+     the loads and the PV from TF 2000. Shared loads without a changeover would also put the two
+     transformers in parallel through the load cables, which needs matching vector group and
+     impedance (item 6) and may be another reason one was switched off.
+
+     **Kept as is** until the site confirms. Cost meanwhile: the solver does not read
+     `site_status` and sees two live in-edges on each of the 18, which it splits evenly
+     (graph-network-design.md, "Ambiguous merges"), so `LVMDB_TEXTURE` may be credited with
+     about half their load and `LVMDB_TEXTURE_2` understated by the same. Not verified against
+     the solver (dev has no `daily_energy_cost_summary`). Once confirmed, the fix is valid time:
+     `effective_to = <the day before the switch-off>` on the 18 `LVMDB_TEXTURE` edges.
+
+     Separately for the site: `MC 9`'s energy counter jumped 69,933 kWh in one 15-minute
+     bucket in the dev week.
+
 6. **Transformer impedance and vector group** -- on the nameplates or test certificates?
    This is §6.
 
