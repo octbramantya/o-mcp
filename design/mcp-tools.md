@@ -155,7 +155,7 @@ Checked against the migrations on 2026-10-01:
 
 | term | source | state |
 |---|---|---|
-| node type | `graph.node_type.description` (nullable) | filled for all 24 types (22 in 026, 2 in 030). Boards, sources and water stages are precise; some loads only restate the name (`PUMP`: "Pump load.") |
+| node type | `graph.node_type.description` (nullable) | filled for all 24 types (22 in 026, 2 in 030). Boards, sources and water stages are precise; some loads only restate the name (`PUMP`: "Pump load."). *Since 042, 15 rewritten; see gap 3* |
 | edge type | `graph.edge_type.description` (NOT NULL) | all 10, and the best in the ontology: `PV_INJECTION` says where the meter is tapped, `PF_COMPENSATION` why it carries no flow |
 | property | `graph.property.description` (NOT NULL), plus `datatype`, `unit`, range, `enum_values`, `kind` | all 26. The rating rules live here: `rated_kva` and `main_breaker_a` say which is the loading denominator on which board |
 | type ↔ property | `graph.type_property` (`requirement`, `used_by`) | complete; no description needed |
@@ -177,7 +177,8 @@ Checked against the migrations on 2026-10-01:
    refusing to make a type in use abstract.* "Has subtypes" is right for the two abstract types
    today, but a future abstract type with no subtypes yet, or a concrete type that gains one,
    would be misreported.
-3. **Thin load descriptions.** `PUMP`, `AHU`, `LIGHTING` and `PRODUCTION_MACHINE` restate their
+3. **Thin load descriptions.** *Closed by migration 042: 15 types rewritten from
+   `design/node_type_descriptions.csv`, each saying what may not be inferred from it.* `PUMP`, `AHU`, `LIGHTING` and `PRODUCTION_MACHINE` restate their
    names. Harmless for a model, but this is where a sentence on what the type covers (and what it
    does not, such as `AIR_DRYER` typed `AIR_COMPRESSOR`) would help most. A data migration, no
    schema change.

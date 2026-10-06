@@ -60,6 +60,42 @@ They look alike and answer different questions:
 
 An air handling unit is always type `AHU`. The category it reports under can be HVAC or a production line, depending on who it serves. A board of type `MAIN_LV_BOARD` has no business category of its own. It passes one down to its loads. Neither table is derived from the other.
 
+### When a new type is justified
+
+*Added 2026-10-05.*
+
+> **A new type is justified when it changes what the ontology governs: the properties a node
+> may carry, the edges it may have (endpoint rules), how the solver treats it, or what a reader
+> may safely infer from it. A different use is a category, not a type.**
+
+The test is whether the new type would change any row in `type_property` or
+`edge_type_endpoint`, or any sentence in its description that tells a reader what *not* to
+assume. If all it changes is the name, it is a category.
+
+| candidate | what changes | verdict |
+|---|---|---|
+| `MACHINE_SPINNING` vs `MACHINE_WEAVING` | nothing: both are electrical loads with `rated_kw`, fed by `SUPPLY_LV` | **category** (`SPINNING`, `WJL`) |
+| `MACHINE_DYEING` | endpoint rules: steam and water in, wastewater out, once `STEAM` is modelled | **type**, under `PRODUCTION_MACHINE` |
+| `MACHINE_PANEL` | what may be inferred: the node stands for several machines, so a node count is not a machine count | **type**, under `PRODUCTION_MACHINE`, while its machines are not modelled separately |
+| `WATER_INTAKE_WELL` vs `WATER_INTAKE_PDAM` | properties (well depth, pump vs a supply contract) and what may be inferred about cost and reliability | **types**, under `WATER_INTAKE` |
+| `CHILLER` vs `AHU` | properties (cooling capacity, COP) | **type** |
+
+Consequences:
+
+- **Types stay shared; processes stay per tenant.** Each tenant's processes are its
+  `graph.category` tree (§15, `category.tenant_id`). A type named after one tenant's process
+  would tie the shared ontology to that tenant's vocabulary.
+- **A subtype has its parent's class** (`fk_node_type_parent` is on `(parent_code, node_class)`).
+  A machine subtype is a `LOAD` under `PRODUCTION_MACHINE`; `PRODUCTION` is a category and can
+  never be a parent type. If a machine panel's machines are later modelled as nodes, the panel
+  feeds them and becomes a `SUB_BOARD` (`BUS`), not a `LOAD` subtype, since a `LOAD` feeds
+  nothing (035).
+- **Provisional types are not abstract.** `PRODUCTION_MACHINE`, `WATER_INTAKE` and
+  `GENERIC_LOAD` are real equipment whose finer kind is not yet known, so nodes keep them, and
+  the description says what is unknown and what not to infer. When subtypes are defined, retype
+  the nodes first; only then may the parent become abstract, and 041's trigger enforces that
+  order.
+
 ---
 
 ## 3. Schema

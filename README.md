@@ -14,17 +14,19 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/type-property.md` | node ontology — `node_type`, `graph.property`, `type_property`, `v_property_gaps`. Applied as migrations 025 and 026 |
 | `design/edge-type.md` | edge ontology — `edge_type`, `edge_type_endpoint`, `carries_flow`, `v_edge_gaps`. Applied as migrations 027–030 |
 | `design/draft_load_types.csv` | the reviewed node-typing worksheet, source of truth for migration 030 |
+| `design/node_type_descriptions.csv` | the reviewed rewrite of 15 one-line node type descriptions: current, proposed, the basis of each claim, and notes. Source of truth for migration 042 |
 | `design/quantity_terms.csv` | the quantity vocabulary worksheet: code, unit, reading and description for each quantity the meters report. Source of truth for migration 037 |
 | `design/graph-*.csv`, `graph-seed-v1.csv` | hand-authored topology seeds (electricity, water) |
 | `design/trafo_tenant_3.csv`, `capbank_tenant_3.csv`, `draft_current_ratings*.csv` | site surveys that feed node properties |
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–041`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–042`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
 | `tools/gen_037.py` | renders migration 037 from `design/quantity_terms.csv`. Same rule |
+| `tools/gen_042.py` | renders migration 042 from `design/node_type_descriptions.csv`. Same rule |
 | `tools/validate_brick.py` | checks Brick class names against a downloaded Brick TTL |
 | `tools/sld.py`, `tools/sld.sql` | draws a single-line diagram (SVG) of one node down to `--depth` levels at `--as-of`, from the effective window. Read-only; output goes to `logs/<label>/`. `--save-json` writes the data as an `o-mcp/subgraph` v1 document |
 | `design/subgraph-v1.schema.json` | the definition of the `o-mcp/subgraph` v1 format (JSON Schema, a description on every field). The MCP topology tools' `outputSchema` |
@@ -46,9 +48,9 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (dev, 2026-10-05)
+## Current state of the model (dev, 2026-10-06)
 
-Tenant 3 on dev, after migration 041. Production is at **030**: migrations 031–041 are applied
+Tenant 3 on dev, after migration 042. Production is at **030**: migrations 031–042 are applied
 and verified on dev and wait to be replayed there (below), so production still has 24 node
 types, 10 edge types, 85 endpoint rules and no class tables.
 
@@ -72,12 +74,11 @@ types, 10 edge types, 85 endpoint rules and no class tables.
 - Open:
   - 25 nodes have more than one live feeder. 7 are a transformer plus PV or a generator, as
     drawn; the 18 Texture boards fed by two `SUPPLY_LV` edges are the open parentage question.
-  - 16 node types have one-line descriptions that restate the name.
   - `WASTEWATER_TREATMENT`, `WATER_OUTFALL` and `RECYCLE_CUT` have no alignment row (added after 031).
 - `tx_impedance_pct` is empty on all 12 boards and OPTIONAL, which is why harmonics uses a
   blanket strict 5% TDD instead of per-board IEEE 519 limits.
 
-## Pending on production: migrations 031–041
+## Pending on production: migrations 031–042
 
 `graph.property.external_ref` for `tx_equipment_code` still holds
 `docs/database/design/trafo_tenant_3.csv` on production. Migration 031 (**applied on dev
@@ -132,6 +133,14 @@ Harmonic current is assessed per device and per phase by `harmonics_report.py` a
 Migration 041 (**applied on dev 2026-10-05, not yet on production**) adds
 `graph.node_type.is_abstract`, TRUE on `SWITCHBOARD` and `WATER_TREATMENT`. A trigger refuses an
 abstract type on a node, and another refuses making a type abstract while nodes use it.
+
+Migration 042 (**applied on dev 2026-10-06, not yet on production**) replaces the 15 node type
+descriptions that restated the name, rendered by `tools/gen_042.py` from
+`design/node_type_descriptions.csv`. Each says what the type covers, how its nodes sit in the
+graph, and what may not be inferred: a `PRODUCTION_MACHINE` node may be one machine or a
+panel, a `WATER_INTAKE` may be a well, the municipal supply, a river or rainwater. Both stay
+provisional, not abstract, until their subtypes exist (`design/type-property.md`, "When a new
+type is justified").
 
 ## Two rules worth not rediscovering
 
