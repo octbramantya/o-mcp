@@ -48,11 +48,11 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (dev, 2026-10-06)
+## Current state of the model (dev and production, 2026-10-07)
 
-Tenant 3 on dev, after migration 042. Production is at **030**: migrations 031–042 are applied
-and verified on dev and wait to be replayed there (below), so production still has 24 node
-types, 10 edge types, 85 endpoint rules and no class tables.
+Tenant 3, after migration 042, on dev and production alike. Migrations 031–042 were rehearsed
+on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
+starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 
 - **188 nodes and 212 edges in effect** (190 and 225 rows; 221 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
@@ -78,35 +78,35 @@ types, 10 edge types, 85 endpoint rules and no class tables.
 - `tx_impedance_pct` is empty on all 12 boards and OPTIONAL, which is why harmonics uses a
   blanket strict 5% TDD instead of per-board IEEE 519 limits.
 
-## Pending on production: migrations 031–042
+## Migrations 031–042 (on production since 2026-10-07)
 
-`graph.property.external_ref` for `tx_equipment_code` still holds
-`docs/database/design/trafo_tenant_3.csv` on production. Migration 031 (**applied on dev
-2026-10-01, not yet on production**) moves Brick and SAREF references into
+`graph.property.external_ref` for `tx_equipment_code` held
+`docs/database/design/trafo_tenant_3.csv`. Migration 031 (**applied on dev
+2026-10-01, on production 2026-10-07**) moves Brick and SAREF references into
 `graph.vocabulary_alignment` and corrects that path to `design/trafo_tenant_3.csv`, relative to
 this repository.
 
-Migration 032 (**applied on dev 2026-10-01, not yet on production**) retires the unused
+Migration 032 (**applied on dev 2026-10-01, on production 2026-10-07**) retires the unused
 `DISTRIBUTION` node class: a level below a bus is a node type (`SUB_BOARD`), never a class.
 `design/subgraph-v1.schema.json` already lists the five classes.
 
-Migration 033 (**applied on dev 2026-10-01, not yet on production**) gives classes a table each,
+Migration 033 (**applied on dev 2026-10-01, on production 2026-10-07**) gives classes a table each,
 `graph.node_class` (5) and `graph.edge_class` (3: `FEEDER`, `PIPE`, `COMPENSATION`), with a
 description per class, turns the four class checks into foreign keys, retires the five edge
 classes nothing ever used, and checks endpoint rules by trigger.
 
-Migration 034 (**applied on dev 2026-10-01, not yet on production**) adds the node class `TREATMENT`
+Migration 034 (**applied on dev 2026-10-01, on production 2026-10-07**) adds the node class `TREATMENT`
 and moves `WATER_TREATMENT` and its four subtypes, with their nodes, out of `CONVERSION`, which
 now means only a change of utility (compressor, boiler).
 
-Migrations 035 and 036 (**applied on dev 2026-10-01, not yet on production**) add the node class
+Migrations 035 and 036 (**applied on dev 2026-10-01, on production 2026-10-07**) add the node class
 `SINK` (where the utility leaves the graph unconsumed), narrow `LOAD`, and redraw the water exits:
 the two IPALs become `WASTEWATER_TREATMENT` with an outfall each, `WTP1_OVR` an outfall,
 `WTP1_REUSE` a `RECYCLE_CUT` re-entering at `WTP1_RAN`, and `WTP1_WJL_REC` the tank it is,
 now feeding Tandon Bio. 035 also deletes the 11 dead `SUPPLY_LV` rules that let a `LOAD`
 feed something.
 
-Migration 037 (**applied on dev 2026-10-02, not yet on production**) adds `graph.quantity_term`,
+Migration 037 (**applied on dev 2026-10-02, on production 2026-10-07**) adds `graph.quantity_term`,
 the vocabulary for metered quantities: a readable code, a unit, `COUNTER` or `SAMPLE`, and a
 description for the 96 quantities tenant 3's meters report plus air (5932). `public.quantities`
 (ported from Schneider PME) is untouched. Every `quantity_rule` must now have a term, and
@@ -114,27 +114,27 @@ description for the 96 quantities tenant 3's meters report plus air (5932). `pub
 possible (`unit_basis`): the harmonic magnitudes and "THD RMS Current" are percent of the
 fundamental, not amperes, and Schneider power factor is quadrant-encoded on -2..2.
 
-Migration 038 (**applied on dev 2026-10-02, not yet on production**) dates the retirement of
+Migration 038 (**applied on dev 2026-10-02, on production 2026-10-07**) dates the retirement of
 `MC302_BARU` and `MC303_BARU` (retired 2026-09-28, so `effective_to = 2026-09-27`, the last
 day in service), replacing the `'-infinity'` that had marked real equipment as never true, and
 makes `v_property_gaps` filter the effective window.
 
-Migration 039 (**applied on dev 2026-10-05, not yet on production**) makes `site_status` and
+Migration 039 (**applied on dev 2026-10-05, on production 2026-10-07**) makes `site_status` and
 `site_status_as_of` OPTIONAL on every equipment type (all but `RECYCLE_CUT`; still REQUIRED on
 capacitor banks) and records `LVMDB_TEXTURE`, `HEATER_8` and `AIR_DRYER` as `inactive` as of
 2026-10-02: deliberately turned off on site, kept whole in the graph. The status is kept by
 hand, so the MCP server pairs it with each device's last reading (`design/mcp-tools.md`, gap 5).
 
-Migration 040 (**applied on dev 2026-10-05, not yet on production**) deletes `quantity_rule` 2097
+Migration 040 (**applied on dev 2026-10-05, on production 2026-10-07**) deletes `quantity_rule` 2097
 (THD current phase A) and its 99 measurement rows. The solver rolled it up as the RSS of the
 children's percentages, which ignores their currents, ran into sources, and used phase A only.
 Harmonic current is assessed per device and per phase by `harmonics_report.py` and Grafana.
 
-Migration 041 (**applied on dev 2026-10-05, not yet on production**) adds
+Migration 041 (**applied on dev 2026-10-05, on production 2026-10-07**) adds
 `graph.node_type.is_abstract`, TRUE on `SWITCHBOARD` and `WATER_TREATMENT`. A trigger refuses an
 abstract type on a node, and another refuses making a type abstract while nodes use it.
 
-Migration 042 (**applied on dev 2026-10-06, not yet on production**) replaces the 15 node type
+Migration 042 (**applied on dev 2026-10-06, on production 2026-10-07**) replaces the 15 node type
 descriptions that restated the name, rendered by `tools/gen_042.py` from
 `design/node_type_descriptions.csv`. Each says what the type covers, how its nodes sit in the
 graph, and what may not be inferred: a `PRODUCTION_MACHINE` node may be one machine or a
