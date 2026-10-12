@@ -38,6 +38,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `server/` | the MCP server, phases 1 and 2: `plant_vocabulary`, `plant_find`, `plant_section`, `node_meters`, `meter_readings`, `node_value`, one module each in `server/tools/` (each holds the tool's description and input schema). Run against dev: `O_MCP_TOKEN=… O_MCP_BIND=127.0.0.1:8765 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run python -m server --env-file .env` (`--phase 1` for the topology tools only). Keys in `.env.example` |
 | `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
 | `server/tests/` | `uv run pytest`; with `O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=START:END` (and `O_MCP_TENANT`, `O_MCP_TZ`) also every tool against dev, each result checked strictly against its schema |
+| `tools/deploy_server.sh`, `deploy/o-mcp.service` | deploys a pushed commit of the server to a tenant's agent instance over SSH-over-SSM (`tools/deploy_server.sh hermes-prs --confirm hermes-prs`): a release per commit under `/opt/o-mcp`, the systemd unit, a `/healthz` check and rollback. Never writes `/etc/o-mcp/env` |
 | `tools/mcp_smoke.py` | calls a running server over HTTP as a client does, prints the size of `tools/list`, and checks every answer: `O_MCP_URL=… O_MCP_TOKEN=… uv run python tools/mcp_smoke.py --window START END` |
 
 ## What stayed in `../prs_diags`
@@ -242,10 +243,11 @@ Each run's output goes to `logs/<label>/` (gitignored).
 
 ## Next
 
-- The MCP server: phases 1 and 2 are built and pass against dev (2026-10-12;
-  `design/mcp-tools.md`, "Built"). Before Hermes uses it: `LOGIN` and a password for `prs_hermes_agent` (044, on
-  production) and its PgBouncer entry, the server installed on `hermes-prs`, a run against production's real telemetry for timings and the
-  window limits, and whether Hermes passes `outputSchema` to the model (70% of `tools/list`).
+- The MCP server: phases 1 and 2 are built (`design/mcp-tools.md`, "Built") and, since
+  2026-10-12, deployed on tenant 3's agent instance `hermes-prs` as `prs_hermes_agent`, passing
+  against production. Next: Hermes on the same instance, and whether it passes `outputSchema` to
+  the model (70% of `tools/list`). Watch cold-cache timings on long THD windows (one 7-day call
+  took 13 s cold, 0.6 s warm, against a 20 s limit).
   Phase 3 waits on where the Python analyses run (`design/mcp-catalogue.md` §4).
 - The 18 Texture nodes with two live board parents — the last genuine parentage ambiguity in
   the electricity graph.
