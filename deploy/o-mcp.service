@@ -1,0 +1,60 @@
+# The MCP server for one tenant, on that tenant's agent instance (design/mcp-server.md §1, §6).
+# Installed to /etc/systemd/system/o-mcp.service by tools/deploy_server.sh.
+# systemd allows comments only on their own lines, never after a value.
+
+[Unit]
+Description=o-mcp: plant tools for the tenant's agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+# System user, no shell, no home; it owns nothing, and the code is root's and read-only to it.
+User=o-mcp
+Group=o-mcp
+WorkingDirectory=/opt/o-mcp/current
+ExecStart=/opt/o-mcp/current/.venv/bin/python -m server
+# Mode 0600 root:root, read by systemd only; every key is required (server/config.py).
+EnvironmentFile=/etc/o-mcp/env
+Environment=PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+Restart=on-failure
+RestartSec=5
+# Throttled above MemoryHigh; killed above MemoryMax, and Restart brings it back.
+MemoryHigh=256M
+MemoryMax=384M
+# Under memory pressure the kernel prefers this to Hermes.
+OOMScoreAdjust=500
+
+# Network: listen on loopback, talk to PgBouncer, nothing else.
+IPAddressDeny=any
+IPAddressAllow=localhost 10.0.1.85
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Other users cannot see this process or its environment.
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
