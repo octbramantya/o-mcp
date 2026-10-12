@@ -4,6 +4,11 @@
 Regenerate from here; do not hand-edit the .sql. Same discipline as gen_028.py:
 the CSV the user reviewed is the source of truth and the migration is a
 mechanical rendering of it, so the two cannot drift.
+
+030 is applied on dev and production, so this no longer writes it: what ran is
+what 030 holds, and later changes are new migrations (045 rewrote
+PROCESS_HEATER's description). The script still checks the CSV, and writes the
+rendering only to a path given with --out, for comparison.
 """
 import csv
 import pathlib
@@ -421,8 +426,14 @@ COMMIT;
 -- COMMIT;
 """
 
-OUT.write_text(sql)
-print(f"wrote {OUT}  ({len(sql.splitlines())} lines)")
+import sys  # noqa: E402
+
+if "--out" not in sys.argv:
+    raise SystemExit(f"gen_030.py: {OUT.name} is applied; not overwriting it. The CSV checks passed. "
+                     f"Pass --out PATH to write the rendering elsewhere.")
+dest = pathlib.Path(sys.argv[sys.argv.index("--out") + 1])
+dest.write_text(sql)
+print(f"wrote {dest}  ({len(sql.splitlines())} lines)")
 print(f"  {len(plan)} nodes: {len(kept)} typed in place, {len(moved)} reclassified")
 for t, n in tally.most_common():
     print(f"  {n:>3}  {t}  -> node_class {CLASS_OF[t]}")

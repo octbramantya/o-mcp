@@ -2,8 +2,8 @@
 
 One JSON document describing part of the plant: a root node, everything below it down to a given
 depth, and the parents that feed into that part from outside it. Produced by `tools/sld.sql`
-(written by `tools/sld.py --save-json`), rendered by `tools/sld.py`, and intended as the response
-shape of the MCP server's topology tools (`design/mcp-tools.md`).
+(written by `tools/sld.py --save-json`), rendered by `tools/sld.py`, and returned by the MCP
+server's `plant_section` (`server/tools/section.py`), which runs the same file.
 
 **The definition is `design/subgraph-v1.schema.json`** (JSON Schema, a description on every
 field). This page explains it; where the two differ, the schema is right and this page is the
@@ -57,8 +57,9 @@ a change like that is a version 2.
 | `tenant` | integer | tenant id |
 | `root` | string | the `node_code` asked for. If no live node has it, `nodes` is empty |
 | `as_of` | date string | the day the plant is described as of |
-| `depth` | integer | how many levels below the root were walked (at least 1) |
+| `depth` | integer | how many levels from the root were walked (at least 1): below it, or above it for `up` |
 | `utility` | string or null | when set, only that utility's edges were followed and returned |
+| `direction` | `down` or `up` | added 2026-10-12, within version 1. `down` walks to what the root feeds. `up` walks back towards the sources along edges that carry flow (a capacitor bank's edge is not a way up), so `reached` nodes are the root's feeders and theirs, `depth` counts levels above the root, and `parent` nodes are feeders beyond `depth`. Absent from older documents, which are all `down`; `tools/sld.py` draws only `down` |
 
 ### `nodes[]`
 

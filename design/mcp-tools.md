@@ -1,7 +1,10 @@
 # MCP tools — drafts
 
-Drafts for the MCP server, written before the server exists so the response format and the
-words a model reads are settled first. Nothing here runs yet.
+Drafts for the MCP server, written before the server existed so the response format and the
+words a model reads were settled first. **Since 2026-10-12 the tools run** (`server/`): each tool's
+description and input schema now live in its module in `server/tools/`, which is the one copy;
+the drafts below are kept for their reasoning. What was decided while building is in the last
+section, "Built".
 
 ## How a model learns what the response means
 
@@ -203,3 +206,37 @@ Checked against the migrations on 2026-10-01:
 
    An absent status is "nothing reported", never "normal". `attrs` has no history, so for an
    `as_of` before `site_status_as_of` the server states no status.
+
+## Built (2026-10-12): phases 1 and 2
+
+Six tools, one module each in `server/tools/`; output formats in `design/*-v1.schema.json`,
+each with a description on every field and checked strictly in `server/tests/test_dev.py` and
+`tools/mcp_smoke.py`. Words the model reads are in the modules, not repeated here.
+
+| tool | output | decided while building |
+|---|---|---|
+| `plant_vocabulary` | `o-mcp/vocabulary` v1 | `kind` gains `node_class`, `edge_class`, `utility` and `quantity` (with `derived_quantities`). A type's properties come from `graph.v_type_property`, so a subtype carries what it inherits, with `defined_on`. Everything at once is about 65 kB (quantities 26 kB, node types 21 kB) |
+| `plant_find` | `o-mcp/nodelist` v1 | `metered`: a meter on the node or on an edge into it. `feeders`: live flow-carrying edges into it. `site_status: none` finds nodes with nothing declared. No department filter (catalogue §5, open 2) |
+| `plant_section` | `o-mcp/subgraph` v1 | `direction: up` added to `tools/sld.sql` itself (query field `direction`), following only edges that carry flow; downward output is byte-identical to before. `depth` up to 12, because water runs 12 levels deep. The server runs the psql file through `server/sqlfile.py`, so `tools/sld.py` and the tool share one query |
+| `node_meters` | `o-mcp/meters` v1 | Devices on the node or on an edge into it, from `graph.measurement` filtered to the effective window (not `v_device_attachment`). "Reports" means a value in the 7 days before `observed_at` (now for today, else the end of the `as_of` day); silent means no value for 2 hours; last reading looks back 90 days. The gap-5 table is the findings `METER_SILENT`, `SILENT_AS_DECLARED`, `STATUS_OUT_OF_DATE`; `UNKNOWN_QUANTITY` for an id with no term |
+| `meter_readings` | `o-mcp/readings` v1 | `telemetry_15min_agg` only; raw `telemetry_data` is not exposed. At most 31 days and 500 points, refused before querying. Counter steps below zero or above 999,999 count as zero, as in `graph.device_totals`, and are reported. PF decoding: one rule for every meter model (above 1, 2 minus it; below -1, it plus 2; -2 no load; otherwise its absolute value), which fits the quadrant, plain signed and unsigned models alike (`design/mcp-tenancy.md` §5) |
+| `node_value` | `o-mcp/values` v1 | Whole site-time days, at most 92 (unmeasured on production). `PF_TOTAL` is refused (gap 4); the quantities are the rule quantities plus `PF_TRUE`. A solver `NONE` comes back as null, never the solver's 0. All shifts, plus `UNKNOWN` |
+
+**Every window is half-open in site time**: `end` is excluded, so a week is 2026-09-28 to
+2026-10-05, and a bare date is midnight site time.
+
+**The solver cuts windows two ways** (found 2026-10-12). Conserved electricity (the four energy
+registers, and `PF_TRUE` from them) comes from `daily_energy_cost_summary`, whose `daily_bucket` is
+a site-time day (`refresh_daily_energy_costs` buckets in `Asia/Jakarta`), compared inclusively.
+Everything else comes from 15-minute buckets stored in UTC, also inclusive. `node_value` converts
+the window for each; a caller of the SQL functions must do the same.
+
+**Shifts are local**: `public.get_shift_period` converts each bucket to `Asia/Jakarta` before
+matching shift hours, which answers `mcp-server.md` open 4. That function and the daily refresh
+hardcode the zone, so `O_MCP_TZ` must name the same one.
+
+**`tools/list` measured**: 54.9 kB with all six tools (about 14k tokens at 4 bytes a token), 29.1 kB
+with phase 1. Descriptions are 4.7 kB and input schemas 12.8 kB; **output schemas are 38.5 kB, 70%
+of it**. Whether that costs context depends on whether Hermes passes `outputSchema` to the model;
+if it does, the choices are a schema without field descriptions in `tools/list` (the full one as
+a resource) or none at all. Not decided.

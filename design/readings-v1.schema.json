@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/readings/v1",
+  "title": "o-mcp/readings version 1",
+  "description": "What one node's meters read over a window, one series per device and quantity, one point per interval. Returned by meter_readings. Times are site time with their offset; the window is half-open (end excluded). A COUNTER point is consumption over the interval; a SAMPLE point the mean, min and max of its 15-minute values; power factor is decoded to 0..1 first. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "series", "findings"],
+  "properties": {
+    "schema": {"const": "o-mcp/readings", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "query": {
+      "type": "object",
+      "description": "What was asked for.",
+      "required": ["tenant", "node", "as_of", "interval", "window", "quantities", "device"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "node": {"type": "string", "description": "Code of the node the server resolved the request to."},
+        "as_of": {"type": "string", "format": "date", "description": "Which devices were on the node: as on this day."},
+        "interval": {"enum": ["15min", "hour", "day", "window"], "description": "Point size; window is one point for the whole window. hour and day follow site time."},
+        "window": {
+          "type": "object", "description": "The window, start included, end excluded.",
+          "required": ["start", "end"],
+          "properties": {
+            "start": {"type": "string", "description": "Start, site time with offset."},
+            "end": {"type": "string", "description": "End, excluded."}
+          }
+        },
+        "quantities": {"type": "array", "items": {"type": "string"}, "description": "Quantity codes asked for."},
+        "device": {"type": ["string", "null"], "description": "The one device asked for, or null for all on the node."}
+      }
+    },
+    "series": {
+      "type": "array",
+      "description": "One per device and quantity, by device code.",
+      "items": {
+        "type": "object",
+        "required": ["device", "device_name", "quantity", "unit", "reading", "decoded", "points"],
+        "properties": {
+          "device": {"type": "string", "description": "Device code."},
+          "device_name": {"type": ["string", "null"], "description": "Device name."},
+          "quantity": {"type": "string", "description": "Quantity code."},
+          "unit": {"type": ["string", "null"], "description": "Unit of consumption, or of mean, min and max."},
+          "reading": {"enum": ["COUNTER", "SAMPLE"], "description": "COUNTER: points carry consumption. SAMPLE: points carry mean, min and max."},
+          "decoded": {"type": "boolean", "description": "True for power factor: the meter's quadrant encoding (-2..2) was decoded to 0..1 before any statistic, so leading and lagging are no longer told apart."},
+          "points": {
+            "type": "array",
+            "description": "One per interval that has data, in time order. A missing interval had no readings.",
+            "items": {
+              "type": "object",
+              "required": ["start", "consumption", "mean", "min", "max", "samples", "rejected"],
+              "properties": {
+                "start": {"type": "string", "description": "Start of the interval, site time with offset."},
+                "consumption": {"type": ["number", "null"], "description": "COUNTER only: the register's increase over the interval. Consumption across a gap in readings lands in the first interval after it."},
+                "mean": {"type": ["number", "null"], "description": "SAMPLE only: mean of the 15-minute values."},
+                "min": {"type": ["number", "null"], "description": "SAMPLE only: smallest 15-minute value (a 15-minute mean, not an instantaneous minimum)."},
+                "max": {"type": ["number", "null"], "description": "SAMPLE only: largest 15-minute value."},
+                "samples": {"type": "integer", "description": "15-minute values in the interval; 4 per full hour."},
+                "rejected": {"type": "integer", "description": "COUNTER only: steps where the register went backwards or jumped implausibly, counted as zero."}
+              }
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "What the server noticed. Show message as is.",
+      "items": {
+        "type": "object",
+        "required": ["code", "device", "quantity", "message"],
+        "properties": {
+          "code": {"enum": ["NO_READINGS", "COUNTER_RESET"], "description": "NO_READINGS: a device has no values of a quantity in the window. COUNTER_RESET: some steps were rejected, so consumption is a lower bound."},
+          "device": {"type": "string", "description": "Device code."},
+          "quantity": {"type": "string", "description": "Quantity code."},
+          "message": {"type": "string", "description": "One sentence for a person."}
+        }
+      }
+    }
+  }
+}

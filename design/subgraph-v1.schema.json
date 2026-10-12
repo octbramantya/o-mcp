@@ -22,8 +22,9 @@
         "tenant": {"type": "integer", "description": "Tenant (site) id."},
         "root": {"type": "string", "description": "The node code asked for. If no node with this code is in effect on as_of, nodes is empty."},
         "as_of": {"type": "string", "format": "date", "description": "The day the plant is described as of, YYYY-MM-DD."},
-        "depth": {"type": "integer", "minimum": 1, "description": "How many levels below the root were followed."},
-        "utility": {"type": ["string", "null"], "description": "When set, only edges of this utility (ELECTRICITY, WATER, AIR, GAS, STEAM) were followed and returned. Null means all utilities."}
+        "depth": {"type": "integer", "minimum": 1, "description": "How many levels from the root were followed: below it, or above it when direction is up."},
+        "utility": {"type": ["string", "null"], "description": "When set, only edges of this utility (ELECTRICITY, WATER, AIR, GAS, STEAM) were followed and returned. Null means all utilities."},
+        "direction": {"enum": ["down", "up"], "description": "Which way the walk went. down: from the root to what it feeds. up: from the root back towards its sources, along edges that carry flow, so reached nodes are its feeders and theirs, and depth counts levels above the root. Absent in documents written before 2026-10-12, which are all down."}
       }
     },
     "nodes": {
@@ -46,9 +47,9 @@
           },
           "scope": {
             "enum": ["reached", "parent", "context"],
-            "description": "Why the node is here. reached: part of the asked-for section, found walking down from the root. parent: not part of it, but feeds a reached node from outside (a second board, a PV plant, a generator). context: feeds a parent node; present only so that edge has both ends."
+            "description": "Why the node is here. reached: part of the asked-for section, found walking from the root (down, or up when query.direction is up). parent: not part of it, but feeds a reached node from outside (a second board, a PV plant, a generator). context: feeds a parent node; present only so that edge has both ends."
           },
-          "depth": {"type": ["integer", "null"], "minimum": 0, "description": "For reached nodes, the fewest edges from the root (the root is 0; a node reachable two ways gets the shorter). Not a voltage level or a rank. Null for parent and context nodes."},
+          "depth": {"type": ["integer", "null"], "minimum": 0, "description": "For reached nodes, the fewest edges from the root in the walk's direction (the root is 0; a node reachable two ways gets the shorter). Not a voltage level or a rank. Null for parent and context nodes."},
           "children_total": {"type": "integer", "minimum": 0, "description": "How many nodes this node feeds, in or out of the document."},
           "children_not_included": {"type": "integer", "minimum": 0, "description": "Of those, how many are not in the document. Above zero means the section stops here; it does not mean the node feeds nothing."}
         }

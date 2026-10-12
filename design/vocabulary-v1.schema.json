@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/vocabulary/v1",
+  "title": "o-mcp/vocabulary version 1",
+  "description": "The terms the plant tools use: node and edge classes and types, properties, utilities and quantities, each with its definition from the database. Returned by plant_vocabulary; a section left empty was not asked for. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "node_classes", "node_types", "edge_classes", "edge_types", "properties", "utilities", "quantities", "derived_quantities"],
+  "properties": {
+    "schema": {"const": "o-mcp/vocabulary", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "node_classes": {
+      "type": "array",
+      "description": "The broad roles a node can have (graph.node_class).",
+      "items": {
+        "type": "object",
+        "required": ["code", "description"],
+        "properties": {
+          "code": {"type": "string", "description": "Class code, such as BUS or LOAD."},
+          "description": {"type": "string", "description": "What the class means."}
+        }
+      }
+    },
+    "node_types": {
+      "type": "array",
+      "description": "Specific node types (graph.node_type), each in one class.",
+      "items": {
+        "type": "object",
+        "required": ["code", "class", "parent", "abstract", "name", "description", "properties"],
+        "properties": {
+          "code": {"type": "string", "description": "Type code, such as SUB_BOARD."},
+          "class": {"type": "string", "description": "The node class every node of this type has."},
+          "parent": {"type": ["string", "null"], "description": "The type this one specialises, or null. A filter on the parent includes this type."},
+          "abstract": {"type": "boolean", "description": "True for a type that only groups its subtypes and is never assigned to a node (SWITCHBOARD, WATER_TREATMENT)."},
+          "name": {"type": "string", "description": "Human-readable name."},
+          "description": {"type": ["string", "null"], "description": "What the type covers, how its nodes sit in the graph, and what may not be inferred from it."},
+          "properties": {
+            "type": "array",
+            "description": "The properties a node of this type may carry, including those inherited from its parent types.",
+            "items": {
+              "type": "object",
+              "required": ["key", "requirement", "used_by", "defined_on"],
+              "properties": {
+                "key": {"type": "string", "description": "Property key, as it appears in a node's attrs."},
+                "requirement": {"type": "string", "description": "REQUIRED (a named reader needs it; its absence is a PROPERTY_GAP finding) or OPTIONAL."},
+                "used_by": {"type": ["string", "null"], "description": "The report or program that needs it."},
+                "defined_on": {"type": "string", "description": "The type the rule is set on: this type, or a parent it inherits from."}
+              }
+            }
+          }
+        }
+      }
+    },
+    "edge_classes": {
+      "type": "array",
+      "description": "The broad kinds of connection (graph.edge_class).",
+      "items": {
+        "type": "object",
+        "required": ["code", "description"],
+        "properties": {
+          "code": {"type": "string", "description": "Class code: FEEDER, PIPE or COMPENSATION."},
+          "description": {"type": "string", "description": "What the class means."}
+        }
+      }
+    },
+    "edge_types": {
+      "type": "array",
+      "description": "Specific edge types (graph.edge_type) and which nodes each may join.",
+      "items": {
+        "type": "object",
+        "required": ["code", "class", "utility", "carries_flow", "is_transform", "description", "endpoints"],
+        "properties": {
+          "code": {"type": "string", "description": "Edge type code, such as SUPPLY_LV or PV_INJECTION."},
+          "class": {"type": "string", "description": "The edge class."},
+          "utility": {"type": ["string", "null"], "description": "The utility it carries."},
+          "carries_flow": {"type": "boolean", "description": "False for a connection that moves no energy (a capacitor bank on its board). Such edges stay out of flow totals."},
+          "is_transform": {"type": "boolean", "description": "True when the edge changes voltage level (a transformer)."},
+          "description": {"type": "string", "description": "What the edge type means and where its meter, if any, is tapped."},
+          "endpoints": {
+            "type": "array",
+            "description": "The allowed (from, to) pairs. Each end names a node type or a whole node class.",
+            "items": {
+              "type": "object",
+              "required": ["from", "from_is", "to", "to_is"],
+              "properties": {
+                "from": {"type": "string", "description": "Node type or class the edge may start at."},
+                "from_is": {"enum": ["type", "class", "unknown"], "description": "Whether from names a node type or a node class."},
+                "to": {"type": "string", "description": "Node type or class the edge may end at."},
+                "to_is": {"enum": ["type", "class", "unknown"], "description": "Whether to names a node type or a node class."}
+              }
+            }
+          }
+        }
+      }
+    },
+    "properties": {
+      "type": "array",
+      "description": "Node properties (graph.property): what each attrs key holds and its allowed values.",
+      "items": {
+        "type": "object",
+        "required": ["key", "datatype", "unit", "min", "max", "enum_values", "kind", "description"],
+        "properties": {
+          "key": {"type": "string", "description": "The attrs key, such as main_breaker_a."},
+          "datatype": {"type": "string", "description": "number, integer, text, date, enum or number[]."},
+          "unit": {"type": ["string", "null"], "description": "Unit of the value, also in the key's suffix."},
+          "min": {"type": ["number", "null"], "description": "Smallest allowed value."},
+          "max": {"type": ["number", "null"], "description": "Largest allowed value."},
+          "enum_values": {"type": ["array", "null"], "items": {"type": "string"}, "description": "The allowed values of an enum property."},
+          "kind": {"type": "string", "description": "Where the value comes from: NAMEPLATE (read off the equipment), DESIGN, RECORD or SITE_STATUS."},
+          "description": {"type": "string", "description": "What the property means, and which value is the rating where several could be."}
+        }
+      }
+    },
+    "utilities": {
+      "type": "array",
+      "description": "What flows through the networks (graph.utility).",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "base_unit"],
+        "properties": {
+          "code": {"type": "string", "description": "Utility code, such as ELECTRICITY."},
+          "name": {"type": "string", "description": "Human-readable name."},
+          "base_unit": {"type": "string", "description": "The unit its flows are totalled in."}
+        }
+      }
+    },
+    "quantities": {
+      "type": "array",
+      "description": "The quantities meters report (graph.quantity_term), with the network model's rule where it resolves the quantity for every node.",
+      "items": {
+        "type": "object",
+        "required": ["code", "quantity_id", "unit", "reading", "description", "rule", "node_value"],
+        "properties": {
+          "code": {"type": "string", "description": "Quantity code, as the readings and values tools take it."},
+          "quantity_id": {"type": "integer", "description": "The id telemetry stores it under."},
+          "unit": {"type": ["string", "null"], "description": "Unit; null for a dimensionless value such as power factor."},
+          "reading": {"enum": ["COUNTER", "SAMPLE"], "description": "COUNTER: a register that only grows; what matters is its difference over an interval. SAMPLE: a value at an instant."},
+          "description": {"type": "string", "description": "What it measures, and how it is encoded where that matters."},
+          "rule": {
+            "type": ["object", "null"],
+            "description": "How the network model resolves it at every node, or null when it does not.",
+            "required": ["utility", "time_agg", "network_agg", "conserved"],
+            "properties": {
+              "utility": {"type": "string", "description": "The utility network it is solved over."},
+              "time_agg": {"type": "string", "description": "How a meter's readings over a window become one number: DELTA (counter difference), AVG, P95 or SUM."},
+              "network_agg": {"type": "string", "description": "How it reaches unmetered nodes: SUM (flow balance), INHERIT (from the feeder) or NONE (metered nodes only)."},
+              "conserved": {"type": "boolean", "description": "True for a flow that balances at every bus (energy, water, air)."}
+            }
+          },
+          "node_value": {"type": "boolean", "description": "True when node_value serves it."}
+        }
+      }
+    },
+    "derived_quantities": {
+      "type": "array",
+      "description": "Quantities computed from two others at every node (graph.derived_quantity), such as PF_TRUE.",
+      "items": {
+        "type": "object",
+        "required": ["code", "utility", "unit", "description", "from", "node_value"],
+        "properties": {
+          "code": {"type": "string", "description": "Derived quantity code."},
+          "utility": {"type": "string", "description": "The utility network it is computed over."},
+          "unit": {"type": ["string", "null"], "description": "Unit; null when dimensionless."},
+          "description": {"type": "string", "description": "What it is, how it is computed, and when to prefer it."},
+          "from": {"type": "array", "items": {"type": "string"}, "description": "The two quantity codes it is computed from."},
+          "node_value": {"type": "boolean", "description": "True when node_value serves it."}
+        }
+      }
+    }
+  }
+}

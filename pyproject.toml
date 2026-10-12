@@ -2,9 +2,24 @@
 name = "o-mcp"
 version = "0.0.0"
 requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.20",
+    "psycopg-pool>=3.3.3",
+    "psycopg[binary]>=3.3.6",
+]
 
 [tool.ruff]
 line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.26.0",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["server/tests"]

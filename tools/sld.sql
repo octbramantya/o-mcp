@@ -1,10 +1,14 @@
--- The neighbourhood of one node down to :depth levels, as one o-mcp/subgraph v1 document.
--- The format is defined in design/subgraph-format.md; tools/sld.py renders it.
+-- The neighbourhood of one node down (or up) :depth levels, as one o-mcp/subgraph v1 document.
+-- The format is defined in design/subgraph-format.md; tools/sld.py renders it, and the MCP server's
+-- plant_section returns it (server/sqlfile.py runs this file unchanged).
 --
---   psql -v tenant=3 -v root=INCOMING_PLN -v as_of=2026-10-01 -v depth=2 -v utility= -f tools/sld.sql
+--   psql -v tenant=3 -v root=INCOMING_PLN -v as_of=2026-10-01 -v depth=2 -v utility= -v direction=down \
+--        -f tools/sld.sql
 --
 -- Nodes and edges are filtered to the effective window at :as_of. :utility, when not empty, keeps
--- only that utility's edges. The walk goes down from the root; every live edge INTO a reached node
+-- only that utility's edges. :direction is down or up. Down, the walk follows edges from the root
+-- to what it feeds; up, it follows edges that carry flow back towards the sources, so "reached"
+-- is the root and its feeders, theirs, and so on. Either way, every live edge INTO a reached node
 -- is returned, from anywhere, so second parents and injecting sources (PV, generators: heads a
 -- downward walk never reaches) come back too. Those unreached parents are included with
 -- scope = 'parent', together with their own incoming edges, one hop further up; the far end of
@@ -30,9 +34,11 @@ live_n AS (
 ), walk(node_id, depth) AS (
   SELECT id, 0 FROM root
   UNION
-  SELECT e.to_node_id, w.depth + 1
-  FROM walk w JOIN live_e e ON e.from_node_id = w.node_id
+  SELECT CASE WHEN :'direction' = 'up' THEN e.from_node_id ELSE e.to_node_id END, w.depth + 1
+  FROM walk w
+  JOIN live_e e ON w.node_id = CASE WHEN :'direction' = 'up' THEN e.to_node_id ELSE e.from_node_id END
   WHERE w.depth < :depth
+    AND (:'direction' <> 'up' OR e.carries_flow)   -- a capacitor bank is not a way back to a source
 ), reached AS (
   SELECT node_id, min(depth) AS depth FROM walk GROUP BY node_id
 ), parent AS (       -- unreached parents of reached nodes
@@ -102,7 +108,7 @@ SELECT json_build_object(
   'schema', 'o-mcp/subgraph',
   'version', 1,
   'query', json_build_object('tenant', :tenant, 'root', :'root', 'as_of', :'as_of',
-                             'depth', :depth, 'utility', nullif(:'utility', '')),
+                             'depth', :depth, 'utility', nullif(:'utility', ''), 'direction', :'direction'),
   'nodes', coalesce((
     SELECT json_agg(json_build_object(
              'code', n.node_code, 'name', n.node_name, 'class', n.node_class, 'type', n.node_type,

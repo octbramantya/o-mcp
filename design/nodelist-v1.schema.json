@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/nodelist/v1",
+  "title": "o-mcp/nodelist version 1",
+  "description": "Nodes in effect on query.as_of that match every filter in query, ordered by code. Returned by plant_find. A list, not a subgraph: for how the nodes connect, ask plant_section. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "total", "returned", "nodes"],
+  "properties": {
+    "schema": {"const": "o-mcp/nodelist", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "query": {
+      "type": "object",
+      "description": "What was asked for. Filters that were not given are absent.",
+      "required": ["tenant", "as_of", "limit"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "as_of": {"type": "string", "format": "date", "description": "The day the plant is described as of, YYYY-MM-DD, site time."},
+        "limit": {"type": "integer", "description": "Most rows returned."},
+        "text": {"type": "string", "description": "Part of a code or name, matched ignoring case."},
+        "type": {"type": "string", "description": "Node type; its subtypes matched too."},
+        "class": {"type": "string", "description": "Node class."},
+        "utility": {"type": "string", "description": "Only nodes with an edge of this utility."},
+        "metered": {"type": "boolean", "description": "Whether a meter is on the node or its feeder."},
+        "site_status": {"type": "string", "description": "Declared status; none means nothing declared."}
+      }
+    },
+    "total": {"type": "integer", "minimum": 0, "description": "How many nodes match. Above returned means the list was cut at limit."},
+    "returned": {"type": "integer", "minimum": 0, "description": "How many nodes are in nodes."},
+    "nodes": {
+      "type": "array",
+      "description": "The matching nodes, by code.",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "class", "type", "utilities", "metered", "feeders", "site_status", "site_status_as_of"],
+        "properties": {
+          "code": {"type": "string", "description": "The node's code; other tools take it."},
+          "name": {"type": "string", "description": "Human-readable name, as the site calls it."},
+          "class": {"type": "string", "description": "Node class, the broad role."},
+          "type": {"type": ["string", "null"], "description": "Node type; null if not yet typed."},
+          "utilities": {"type": "array", "items": {"type": "string"}, "description": "Utilities of the live edges at this node."},
+          "metered": {"type": "boolean", "description": "True when a meter is on the node itself or on an edge into it. False: its values are inferred by the solver from its neighbours."},
+          "feeders": {"type": "integer", "minimum": 0, "description": "Live edges into the node that carry flow. More than one on a board or load is an open question for the site, unless one is a PV plant or generator."},
+          "site_status": {"type": ["string", "null"], "description": "Status the site declared (normal or inactive); null when nothing is declared, which is not the same as normal."},
+          "site_status_as_of": {"type": ["string", "null"], "description": "The day the status was declared, YYYY-MM-DD."}
+        }
+      }
+    }
+  }
+}

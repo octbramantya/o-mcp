@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/meters/v1",
+  "title": "o-mcp/meters version 1",
+  "description": "The instruments at one node as of a date: each device on the node or its feeder, what it reports and when it last did, and which quantities node_value can give for the node and how. Returned by node_meters. Times are site time with their offset. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "node", "devices", "resolvable", "findings"],
+  "properties": {
+    "schema": {"const": "o-mcp/meters", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "query": {
+      "type": "object",
+      "description": "What was asked for.",
+      "required": ["tenant", "node", "as_of", "observed_at", "lookback_days"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "node": {"type": "string", "description": "Code of the node the server resolved the request to."},
+        "as_of": {"type": "string", "format": "date", "description": "Attachments as of this day, YYYY-MM-DD, site time."},
+        "observed_at": {"type": "string", "description": "The instant reporting is judged at: now for today, else the end of the as_of day."},
+        "lookback_days": {"type": "integer", "description": "Days before observed_at that the reported quantities cover."}
+      }
+    },
+    "node": {
+      "type": "object",
+      "description": "The node.",
+      "required": ["code", "name", "class", "type", "utilities", "site_status", "site_status_as_of"],
+      "properties": {
+        "code": {"type": "string", "description": "The node's code."},
+        "name": {"type": "string", "description": "Human-readable name."},
+        "class": {"type": "string", "description": "Node class."},
+        "type": {"type": ["string", "null"], "description": "Node type."},
+        "utilities": {"type": "array", "items": {"type": "string"}, "description": "Utilities of the live edges at the node."},
+        "site_status": {"type": ["string", "null"], "description": "Status the site declared (normal or inactive); null when nothing is declared, or when as_of is before the declaration."},
+        "site_status_as_of": {"type": ["string", "null"], "description": "The day the status was declared."}
+      }
+    },
+    "devices": {
+      "type": "array",
+      "description": "Every device on the node or on an edge into it, by code.",
+      "items": {
+        "type": "object",
+        "required": ["device_id", "code", "name", "type", "declared_status", "attached_to", "edge", "feeder_from", "graph_quantities", "last_reading", "observed", "reported"],
+        "properties": {
+          "device_id": {"type": "integer", "description": "The device's database id."},
+          "code": {"type": "string", "description": "Device code; meter_readings takes it as device."},
+          "name": {"type": ["string", "null"], "description": "Device name."},
+          "type": {"type": ["string", "null"], "description": "Device type, such as Power Meter or Flow Meter."},
+          "declared_status": {"type": ["string", "null"], "description": "The device register's status. It is not maintained: a silent device can still read ONLINE. Judge by observed."},
+          "attached_to": {"enum": ["NODE", "FEEDER"], "description": "NODE: the meter reads the node. FEEDER: it sits on the edge into the node, from feeder_from."},
+          "edge": {"type": ["integer", "null"], "description": "Id of the edge it sits on, for FEEDER."},
+          "feeder_from": {"type": ["string", "null"], "description": "Code of the node at the other end of that edge, for FEEDER."},
+          "graph_quantities": {
+            "type": "array",
+            "description": "The quantities the network model reads from this device for this node.",
+            "items": {
+              "type": "object",
+              "required": ["code", "quantity_id", "role", "multiplier"],
+              "properties": {
+                "code": {"type": ["string", "null"], "description": "Quantity code."},
+                "quantity_id": {"type": "integer", "description": "Quantity id."},
+                "role": {"type": "string", "description": "TOTAL, SUBMETER or CHECK."},
+                "multiplier": {"type": "number", "description": "Factor applied to the reading (a CT ratio, a sign)."}
+              }
+            }
+          },
+          "last_reading": {"type": ["string", "null"], "description": "Its latest reading at or before observed_at, within 90 days; null if none."},
+          "observed": {"enum": ["REPORTING", "SILENT", "NO_DATA"], "description": "REPORTING: read within 2 hours of observed_at. SILENT: last read earlier. NO_DATA: nothing in 90 days."},
+          "reported": {
+            "type": "array",
+            "description": "Every quantity it reported in the lookback, by id.",
+            "items": {
+              "type": "object",
+              "required": ["code", "quantity_id", "unit", "reading", "last_reading", "readings"],
+              "properties": {
+                "code": {"type": ["string", "null"], "description": "Quantity code; null when the quantity is not in the vocabulary (an UNKNOWN_QUANTITY finding says so)."},
+                "quantity_id": {"type": "integer", "description": "Quantity id."},
+                "unit": {"type": ["string", "null"], "description": "Unit."},
+                "reading": {"type": ["string", "null"], "description": "COUNTER or SAMPLE."},
+                "last_reading": {"type": "string", "description": "Its latest 15-minute value in the lookback."},
+                "readings": {"type": "integer", "description": "How many 15-minute values it has in the lookback."}
+              }
+            }
+          }
+        }
+      }
+    },
+    "resolvable": {
+      "type": "array",
+      "description": "What node_value can give for this node, per quantity of the node's utilities.",
+      "items": {
+        "type": "object",
+        "required": ["quantity", "unit", "utility", "availability", "note"],
+        "properties": {
+          "quantity": {"type": "string", "description": "Quantity code node_value takes."},
+          "unit": {"type": ["string", "null"], "description": "Unit."},
+          "utility": {"type": "string", "description": "Utility network."},
+          "availability": {"enum": ["MEASURED", "INFERRED", "INHERITED", "DERIVED", "NOT_AVAILABLE"], "description": "MEASURED: a meter on the node or its feeder reports it. INFERRED: worked out from neighbouring meters by flow balance. INHERITED: taken from the feeder. DERIVED: computed from two other quantities. NOT_AVAILABLE: only a meter here could give it."},
+          "note": {"type": "string", "description": "The same in a sentence."}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "What the server noticed. Show message as is.",
+      "items": {
+        "type": "object",
+        "required": ["code", "node", "message"],
+        "properties": {
+          "code": {"enum": ["NO_METER", "METER_SILENT", "SILENT_AS_DECLARED", "STATUS_OUT_OF_DATE", "UNKNOWN_QUANTITY"], "description": "NO_METER: no device on the node or its feeder. METER_SILENT: silent with nothing on record to explain it. SILENT_AS_DECLARED: silent, as the site's inactive status explains. STATUS_OUT_OF_DATE: declared inactive but reporting. UNKNOWN_QUANTITY: a reported quantity id with no vocabulary entry."},
+          "node": {"type": "string", "description": "Code of the node."},
+          "device": {"type": "string", "description": "Code of the device, when the finding is about one."},
+          "quantity_id": {"type": "integer", "description": "The unknown quantity id, for UNKNOWN_QUANTITY."},
+          "message": {"type": "string", "description": "One sentence for a person."}
+        }
+      }
+    }
+  }
+}

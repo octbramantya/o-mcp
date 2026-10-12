@@ -75,7 +75,7 @@ def query(conn, tenant, root, as_of, depth, utility):
     cmd = ["psql", "-X", "-At", "-v", "ON_ERROR_STOP=1",
            "-h", conn["HOST"], "-p", conn["PORT"], "-U", conn["USER"], "-d", conn["NAME"],
            "-v", f"tenant={tenant}", "-v", f"root={root}", "-v", f"as_of={as_of}",
-           "-v", f"depth={depth}", "-v", f"utility={utility or ''}", "-f", str(SQL)]
+           "-v", f"depth={depth}", "-v", f"utility={utility or ''}", "-v", "direction=down", "-f", str(SQL)]
     run = subprocess.run(cmd, env=env, capture_output=True, text=True)
     if run.returncode:
         sys.exit(f"sld.py: query failed on {conn['LABEL']}:\n{run.stderr.strip()}")
@@ -90,6 +90,8 @@ def from_v1(doc):
         sys.exit(f"sld.py: expected {SCHEMA} version {VERSION}, got {doc.get('schema')!r} version "
                  f"{doc.get('version')!r}. Re-run the query to get the current format.")
     q = doc["query"]
+    if q.get("direction", "down") != "down":
+        sys.exit(f"sld.py: this document walks {q['direction']} from {q['root']}; only downward sections are drawn.")
     nodes = {n["code"]: dict(n, n_children=n["children_total"]) for n in doc["nodes"]}
     reached = {c for c, n in nodes.items() if n["scope"] == "reached"}
 

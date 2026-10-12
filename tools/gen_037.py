@@ -4,6 +4,11 @@
 Regenerate from here; do not hand-edit the .sql. Same discipline as gen_030.py:
 the CSV the user reviewed is the source of truth and the migration is a
 mechanical rendering of it, so the two cannot drift.
+
+037 is applied on dev and production, so this no longer writes it: the CSV now
+records the current vocabulary, and a change to it is a new migration (043
+rewrote PF_TOTAL's description). The script still checks the CSV, and writes the
+rendering only to a path given with --out, for comparison.
 """
 import csv
 import pathlib
@@ -349,5 +354,10 @@ $chk$;
 -- COMMIT;
 """
 
-OUT.write_text(sql, encoding="utf-8")
-print(f"wrote {OUT.relative_to(HERE)}: {n} terms")
+import sys  # noqa: E402
+
+if "--out" not in sys.argv:
+    raise SystemExit(f"gen_037.py: {OUT.name} is applied; not overwriting it. The CSV checks passed. "
+                     f"Pass --out PATH to write the rendering elsewhere.")
+pathlib.Path(sys.argv[sys.argv.index("--out") + 1]).write_text(sql, encoding="utf-8")
+print(f"wrote {sys.argv[sys.argv.index('--out') + 1]}: {n} terms")

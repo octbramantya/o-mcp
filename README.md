@@ -21,7 +21,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–042`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–045`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -32,7 +32,13 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/subgraph-v1.schema.json` | the definition of the `o-mcp/subgraph` v1 format (JSON Schema, a description on every field). The MCP topology tools' `outputSchema` |
 | `design/subgraph-format.md` | the same format explained: guarantees, findings, and the versioning rule |
 | `design/mcp-tools.md` | drafts for the MCP server: the `plant_section` and `plant_vocabulary` tools' descriptions and input schemas, how a model learns what a response means, and where each ontology description comes from |
+| `design/mcp-tenancy.md` | one Hermes agent per tenant: the authorization layers that keep each agent to its tenant, a database role per tenant enforced by Postgres, and what that changes in migration 043 (proposed, decisions open) |
+| `design/mcp-catalogue.md` | every tool the MCP server is expected to need, by layer (vocabulary, topology, instruments, values, analysis), and how their discovery is staggered: by release, not at run time |
 | `tools/check_subgraph.py` | checks v1 documents against the schema, strictly: `uv run --no-project --with jsonschema tools/check_subgraph.py doc.json` |
+| `server/` | the MCP server, phases 1 and 2: `plant_vocabulary`, `plant_find`, `plant_section`, `node_meters`, `meter_readings`, `node_value`, one module each in `server/tools/` (each holds the tool's description and input schema). Run against dev: `O_MCP_TOKEN=… O_MCP_BIND=127.0.0.1:8765 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run python -m server --env-file .env` (`--phase 1` for the topology tools only). Keys in `.env.example` |
+| `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
+| `server/tests/` | `uv run pytest`; with `O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=START:END` (and `O_MCP_TENANT`, `O_MCP_TZ`) also every tool against dev, each result checked strictly against its schema |
+| `tools/mcp_smoke.py` | calls a running server over HTTP as a client does, prints the size of `tools/list`, and checks every answer: `O_MCP_URL=… O_MCP_TOKEN=… uv run python tools/mcp_smoke.py --window START END` |
 
 ## What stayed in `../prs_diags`
 
@@ -142,6 +148,30 @@ panel, a `WATER_INTAKE` may be a well, the municipal supply, a river or rainwate
 provisional, not abstract, until their subtypes exist (`design/type-property.md`, "When a new
 type is justified").
 
+## Migrations 043–045 (on production since 2026-10-12)
+
+Migration 043 (**applied on dev and production 2026-10-12**) rewrites `PF_TOTAL`'s
+description, which named two of tenant 3's device codes in a vocabulary every tenant reads: Schneider
+meters code power factor by quadrant on -2..2, generic power meters and PLCs report it on -1..1.
+`design/quantity_terms.csv` now holds the current text, so `tools/gen_037.py` no longer overwrites
+the applied 037 (it checks the CSV and writes only with `--out`). See `design/mcp-tenancy.md` §5.
+
+Migration 044 (**applied on dev and production 2026-10-12**) creates `prs_hermes_agent`,
+tenant 3's agent role, kept to tenant 3 by Postgres: row-level security on the five `graph` tables
+that hold tenant rows (a permissive policy keeps every other role as it was), `security_invoker` on
+the `graph` views, and `security_barrier` views of the shared `public` tables in `prs`, which the
+role's `search_path` puts first. It drops `pfn_mcp_reader`. `LOGIN` and the password are set by hand.
+See `design/mcp-tenancy.md` §4. On production `pfn_mcp_reader` still held a grant on schema `public` in
+the `postgres` database, so 044 left it `NOLOGIN` with nothing in `valkyrie` (as it is written to).
+
+Rehearsed on a fresh copy of production (2026-10-12, telemetry 2026-09-28 to 2026-10-13), then
+applied there. Backup first: `logs/prod/graph_prs_backup_pre043.20261012-143422.dump`, and
+`pfn_mcp_reader`'s grants in `logs/prod/pfn_mcp_reader_grants_pre044.20261012-143422.sql`.
+
+Migration 045 (**applied on dev and production 2026-10-12**) rewrites `PROCESS_HEATER`'s
+description without tenant 3's heaters. `tools/gen_030.py`, which holds the 030 text, no longer
+overwrites 030.
+
 ## Two rules worth not rediscovering
 
 **Filter the effective window, not just `is_active`.** `graph.node` and `graph.edge` have two
@@ -212,11 +242,11 @@ Each run's output goes to `logs/<label>/` (gitignored).
 
 ## Next
 
-- Build the MCP server. The ontology enters at three distinct times: tool-registration
-  (vocabulary becomes JSON Schema enums), invocation (server-side resolution and endpoint
-  validation, never the model's responsibility), and discovery (a browsable resource, as a
-  fallback and not a prerequisite). Make `as_of` a required argument on every topology tool,
-  defaulting to `CURRENT_DATE`, with the window filter inside the server.
+- The MCP server: phases 1 and 2 are built and pass against dev (2026-10-12;
+  `design/mcp-tools.md`, "Built"). Before Hermes uses it: `LOGIN` and a password for `prs_hermes_agent` (044, on
+  production) and its PgBouncer entry, the server installed on `hermes-prs`, a run against production's real telemetry for timings and the
+  window limits, and whether Hermes passes `outputSchema` to the model (70% of `tools/list`).
+  Phase 3 waits on where the Python analyses run (`design/mcp-catalogue.md` §4).
 - The 18 Texture nodes with two live board parents — the last genuine parentage ambiguity in
   the electricity graph.
 - `STEAM` utility and steam distribution, once the site team finishes documenting it.

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/values/v1",
+  "title": "o-mcp/values version 1",
+  "description": "One quantity for one or more nodes over whole site-time days, from the network model, which resolves every node whether metered or not. Returned by node_value. Each value carries its origin. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "quantity", "values", "findings"],
+  "properties": {
+    "schema": {"const": "o-mcp/values", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "query": {
+      "type": "object",
+      "description": "What was asked for.",
+      "required": ["tenant", "nodes", "quantity", "as_of", "window"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "nodes": {"type": "array", "items": {"type": "string"}, "description": "Codes of the nodes the server resolved the request to."},
+        "quantity": {"type": "string", "description": "Quantity code."},
+        "as_of": {"type": "string", "format": "date", "description": "The network as it was on this day."},
+        "window": {
+          "type": "object", "description": "Whole site-time days, start included, end excluded.",
+          "required": ["start", "end"],
+          "properties": {
+            "start": {"type": "string", "description": "Start, site time with offset."},
+            "end": {"type": "string", "description": "End, excluded."}
+          }
+        }
+      }
+    },
+    "quantity": {
+      "type": "object",
+      "description": "The quantity and where the network model read it from.",
+      "required": ["code", "utility", "unit", "kind", "source", "read_as", "data_until", "shifts"],
+      "properties": {
+        "code": {"type": "string", "description": "Quantity code."},
+        "utility": {"type": "string", "description": "The utility network it was solved over."},
+        "unit": {"type": ["string", "null"], "description": "Unit of every value; null when dimensionless."},
+        "kind": {"enum": ["RULE", "DERIVED"], "description": "RULE: solved by its own rule. DERIVED: computed from two solved quantities (in parts)."},
+        "source": {"type": "string", "description": "The table or view the meters' totals came from."},
+        "read_as": {"type": "string", "description": "The buckets the window was cut on: site-time days or 15-minute buckets."},
+        "data_until": {"type": ["string", "null"], "description": "Where the source's data ends, site time; null if it has none. Earlier than the window's end means the values are short."},
+        "shifts": {"const": "all", "description": "Every shift is included."}
+      }
+    },
+    "values": {
+      "type": "array",
+      "description": "One per node asked for, in the order asked.",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "value", "origin", "parts"],
+        "properties": {
+          "code": {"type": "string", "description": "Node code."},
+          "name": {"type": "string", "description": "Node name."},
+          "value": {"type": ["number", "null"], "description": "The value over the window: a total for energy and volume, the period's power factor for PF_TRUE, the 95th percentile for THD_VOLTAGE_LN. Null means no value, never zero."},
+          "origin": {"enum": ["MEASURED", "ROLLUP", "INHERITED", "DERIVED", "NONE"], "description": "MEASURED: a meter on the node. ROLLUP: worked out from neighbouring meters by flow balance. INHERITED: taken from the feeder. DERIVED: computed from parts. NONE: no value."},
+          "parts": {"type": ["object", "null"], "additionalProperties": {"type": ["number", "null"]}, "description": "For a DERIVED quantity, the two solved inputs by quantity code (for PF_TRUE, kWh and kVArh); null otherwise."}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "What the server noticed. Show message as is.",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"enum": ["NO_VALUE", "NOT_IN_NETWORK", "DATA_INCOMPLETE"], "description": "NO_VALUE: nothing measured or inferable for a node. NOT_IN_NETWORK: the node has no edge of this quantity's utility. DATA_INCOMPLETE: the source's data ends before the window does."},
+          "node": {"type": "string", "description": "Code of the node, when the finding is about one."},
+          "message": {"type": "string", "description": "One sentence for a person."}
+        }
+      }
+    }
+  }
+}
