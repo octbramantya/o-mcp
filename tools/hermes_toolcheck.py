@@ -22,6 +22,7 @@ EXPECTED_MCP = {"plant_vocabulary", "plant_find", "plant_section", "node_meters"
 EXPECTED_OTHER = {"memory"}
 MODEL = "global.anthropic.claude-sonnet-5-5"
 NUMERIC_IDS = re.compile(r"^\d+(,\d+)*$")
+BOT_TOKEN = re.compile(r"^\d+:[A-Za-z0-9_-]{30,}$")
 
 
 def main() -> int:
@@ -49,6 +50,9 @@ def main() -> int:
     print(f"telegram allowed users: {len(allowed.split(',')) if allowed else 0}")
     for var in ("TELEGRAM_BOT_TOKEN", "O_MCP_TOKEN"):
         print(f"{var}: {'set' if os.environ.get(var) else 'NOT SET'}")
+    bot = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if bot and not BOT_TOKEN.match(bot):
+        problems.append("TELEGRAM_BOT_TOKEN is not shaped like a bot token (<bot id>:<secret>, from @BotFather)")
     if not os.environ.get("O_MCP_TOKEN"):
         problems.append("O_MCP_TOKEN is not set")
 

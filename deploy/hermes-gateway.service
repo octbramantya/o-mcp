@@ -27,9 +27,12 @@ Environment=HERMES_SUPERVISED_CHILD=1 PYTHONDONTWRITEBYTECODE=1
 
 Restart=always
 RestartSec=5
+# 78 is Hermes refusing its configuration (a rejected bot token, say): restarting cannot help.
+RestartPreventExitStatus=78
 KillMode=mixed
 KillSignal=SIGTERM
-TimeoutStopSec=60
+# Hermes drains running turns and cron for up to 70 s and warns below that.
+TimeoutStopSec=90
 ExecReload=/bin/kill -USR1 $MAINPID
 
 MemoryHigh=768M
@@ -63,6 +66,9 @@ LockPersonality=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
+# Back from @privileged: Hermes's atomic writes keep each file's owner (os.chown to itself);
+# with no capabilities a chown to anyone else fails anyway.
+SystemCallFilter=@chown
 UMask=0077
 
 [Install]
