@@ -35,7 +35,8 @@ die() { echo "${0##*/}: $*" >&2; exit 1; }
 
 HERMES_TAG=v2026.9.24
 HERMES_COMMIT=f97608f178d1ffeca59860195ab7da295f7c8e5f
-HERMES_EXTRAS="mcp bedrock anthropic messaging"
+# Comma-separated: ssh joins its arguments into one command line, so a space would split it.
+HERMES_EXTRAS=mcp,bedrock,anthropic,messaging
 
 HOST= REV=HEAD CONFIRM=
 while [ $# -gt 0 ]; do
@@ -94,7 +95,7 @@ else
         https://github.com/NousResearch/hermes-agent.git "$REL" </dev/null
     [ "$(git -C "$REL" rev-parse HEAD)" = "$COMMIT" ] || fail "tag $TAG is not commit $COMMIT"
     rm -rf "$REL/.git"
-    args=(); for e in $EXTRAS; do args+=(--extra "$e"); done
+    args=(); for e in ${EXTRAS//,/ }; do args+=(--extra "$e"); done
     (cd "$REL" && UV_PYTHON=/usr/bin/python3 UV_PYTHON_DOWNLOADS=never UV_CACHE_DIR=/var/cache/hermes-uv \
         uv sync --frozen --no-dev --compile-bytecode --quiet "${args[@]}" </dev/null) || fail "uv sync"
     chown -R root:root "$REL"; chmod -R go-w,o+rX "$REL"
