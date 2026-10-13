@@ -12,6 +12,11 @@ model:
   provider: bedrock
   default: global.anthropic.claude-sonnet-5-5
 
+# At most 12 model calls per message (a plant question takes 2 to 4): a loop stops there
+# instead of running up Bedrock.
+agent:
+  max_turns: 12
+
 bedrock:
   region: ap-southeast-1
   discovery:
@@ -64,6 +69,16 @@ gateway:
         allow_admin_from: ["${O_HERMES_ADMIN_ID}"]
         # Non-admins: /help, /whoami (always) and starting a fresh conversation.
         user_allowed_commands: [new]
+
+# The Telegram menu lists only what a non-admin may run (Hermes reads the menu from the top-level
+# block, deep-merged with gateway.platforms above). Admins can still type any command.
+platforms:
+  telegram:
+    extra:
+      command_menu:
+        priority_mode: replace
+        priority: [new, help, whoami]
+        max_commands: 3
 
 telemetry:
   shared_metrics:

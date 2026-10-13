@@ -21,6 +21,8 @@ import sys
 EXPECTED_MCP = {"plant_vocabulary", "plant_find", "plant_section", "node_meters", "meter_readings", "node_value"}
 EXPECTED_OTHER = {"memory"}
 MODEL = "global.anthropic.claude-sonnet-5-5"
+MAX_TURNS = 12
+MENU = ["new", "help", "whoami"]
 NUMERIC_IDS = re.compile(r"^\d+(,\d+)*$")
 BOT_TOKEN = re.compile(r"^\d+:[A-Za-z0-9_-]{30,}$")
 
@@ -40,6 +42,10 @@ def main() -> int:
     print(f"model: {model.get('provider')} {model.get('default')}")
     if model.get("provider") != "bedrock" or model.get("default") != MODEL:
         problems.append("the model is not the pinned Bedrock one: the managed config did not apply")
+    max_turns = (cfg.get("agent") or {}).get("max_turns")
+    print(f"max model calls per message: {max_turns}")
+    if max_turns != MAX_TURNS:
+        problems.append(f"agent.max_turns is not {MAX_TURNS}")
 
     for var in ("GATEWAY_ALLOW_ALL_USERS", "TELEGRAM_ALLOW_ALL_USERS"):
         if os.environ.get(var):
@@ -67,6 +73,12 @@ def main() -> int:
         problems.append("allow_admin_from is empty or not numeric (is O_HERMES_ADMIN_ID set?)")
     if extra.get("unauthorized_dm_behavior") != "ignore":
         problems.append("unauthorized_dm_behavior is not 'ignore'")
+
+    from hermes_cli.commands_platforms import telegram_menu_commands, telegram_menu_max_commands
+    menu = [name for name, _desc in telegram_menu_commands(max_commands=telegram_menu_max_commands())[0]]
+    print(f"telegram menu: {menu}")
+    if menu != MENU:
+        problems.append(f"the Telegram menu is not {MENU}")
 
     from tools.mcp_tool_discovery import discover_mcp_tools
     discover_mcp_tools()
