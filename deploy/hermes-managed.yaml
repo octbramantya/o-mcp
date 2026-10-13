@@ -1,0 +1,77 @@
+# Hermes Agent: the settings the agent and its users must not change (design/mcp-server.md §9).
+# Installed to /etc/hermes/config.yaml (root, 0644) by tools/deploy_hermes.sh. Hermes's managed
+# scope makes these keys win over the user config in $HERMES_HOME and over the environment. The
+# same file is also the user config ($HERMES_HOME/config.yaml, root's, 0644): some Hermes paths
+# read only the user file (`hermes -z`), and the gateway falls back to an EMPTY config, i.e. the
+# full default toolset, if loading fails; a file the agent cannot write keeps both in our hands.
+# No tenant values here: ${VAR}s come from /etc/hermes/.env (written by hand on the host).
+# A malformed managed file is logged and IGNORED by Hermes, so the deploy script parses this one
+# and checks the resulting tool list before it starts the gateway.
+
+model:
+  provider: bedrock
+  default: global.anthropic.claude-sonnet-5-5
+
+bedrock:
+  region: ap-southeast-1
+  discovery:
+    provider_filter: ["anthropic"]
+
+# Side tasks on the same model: the role allows nothing else. This Hermes release predates
+# Sonnet 5.5 and, when it turns thinking off, sends thinking "disabled", which the model refuses
+# (HTTP 400). Compression: reasoning_effort low sends adaptive thinking instead. Titles always turn
+# thinking off, so sessions keep the instant title from the first message and make no model call.
+auxiliary:
+  compression:
+    provider: bedrock
+    model: global.anthropic.claude-sonnet-5-5
+    reasoning_effort: low
+  title_generation:
+    model_upgrade_enabled: false
+
+# tirith scans terminal commands; the terminal is off, and Hermes would otherwise download the
+# binary into $HERMES_HOME at run time.
+security:
+  tirith_enabled: false
+
+# Only the plant tools and memory: no terminal, files, browser, web, code execution, delegation,
+# cron or skills. `cli` matches, for `hermes chat` on the host when testing.
+platform_toolsets:
+  telegram: [o-mcp, memory]
+  cli: [o-mcp, memory]
+
+# Six tools, so no progressive disclosure: by default Hermes hides MCP tools behind
+# tool_search / tool_describe / tool_call, and the model would never see their enums up front.
+tools:
+  tool_search:
+    enabled: off
+
+mcp_servers:
+  o-mcp:
+    url: http://127.0.0.1:8080/mcp
+    headers:
+      Authorization: "Bearer ${O_MCP_TOKEN}"
+    timeout: 60
+    sampling:
+      enabled: false
+
+gateway:
+  platforms:
+    telegram:
+      # Strangers get no reply and no pairing code.
+      unauthorized_dm_behavior: ignore
+      extra:
+        allow_admin_from: ["${O_HERMES_ADMIN_ID}"]
+        # Non-admins: /help, /whoami (always) and starting a fresh conversation.
+        user_allowed_commands: [new]
+
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+
+auth:
+  adopt_external_logins: false
+
+updates:
+  check: false

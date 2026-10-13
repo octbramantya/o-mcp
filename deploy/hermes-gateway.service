@@ -1,0 +1,69 @@
+# Hermes Agent's messaging gateway for one tenant, on that tenant's agent instance
+# (design/mcp-server.md §9). Installed to /etc/systemd/system/hermes-gateway.service by
+# tools/deploy_hermes.sh. Modelled on the unit `hermes gateway install --system` writes, without
+# the per-user systemd manager (cron and kanban workers are not used).
+# systemd allows comments only on their own lines, never after a value.
+
+[Unit]
+Description=Hermes Agent gateway (Telegram) for the tenant
+After=network-online.target o-mcp.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+WorkingDirectory=/var/lib/hermes
+ExecStart=/opt/hermes/current/.venv/bin/python -m hermes_cli.main gateway run
+ExecStop=-/opt/hermes/current/.venv/bin/python -m gateway.systemd_stop_mark
+Environment=HOME=/var/lib/hermes USER=hermes LOGNAME=hermes
+Environment=HERMES_HOME=/var/lib/hermes/.hermes
+# Fixed here so nothing the agent writes can repoint the managed scope.
+Environment=HERMES_MANAGED_DIR=/etc/hermes
+Environment=VIRTUAL_ENV=/opt/hermes/current/.venv
+Environment=PATH=/opt/hermes/current/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HERMES_SUPERVISED_CHILD=1 PYTHONDONTWRITEBYTECODE=1
+
+Restart=always
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=60
+ExecReload=/bin/kill -USR1 $MAINPID
+
+MemoryHigh=768M
+MemoryMax=1G
+
+# Network: the internet (Telegram, Bedrock), loopback (o-mcp) and the metadata service (the
+# instance role). Never the private network: the database is o-mcp's business, not Hermes's.
+IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadWritePaths=/var/lib/hermes
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

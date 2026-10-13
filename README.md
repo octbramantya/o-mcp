@@ -39,6 +39,8 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
 | `server/tests/` | `uv run pytest`; with `O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=START:END` (and `O_MCP_TENANT`, `O_MCP_TZ`) also every tool against dev, each result checked strictly against its schema |
 | `tools/deploy_server.sh`, `deploy/o-mcp.service` | deploys a pushed commit of the server to a tenant's agent instance over SSH-over-SSM (`tools/deploy_server.sh hermes-prs --confirm hermes-prs`): a release per commit under `/opt/o-mcp`, the systemd unit, a `/healthz` check and rollback. Never writes `/etc/o-mcp/env` |
+| `tools/deploy_hermes.sh`, `deploy/hermes-gateway.service`, `deploy/hermes-managed.yaml`, `deploy/hermes-SOUL.md` | installs Hermes Agent's Telegram gateway on the same instance (`tools/deploy_hermes.sh hermes-prs --confirm hermes-prs`): a pinned Hermes release built without its installer, the settings the agent may not change (model, toolsets, allowlist) in Hermes's managed scope, the agent's standing instructions, and a sandboxed unit. Never writes the bot token or `/etc/hermes/.env` (the Telegram user IDs) |
+| `tools/hermes_toolcheck.py` | run by `deploy_hermes.sh` on the host before the gateway starts: the tools the model gets on Telegram must be exactly the six plant tools and memory, through the gateway's own config loader |
 | `tools/mcp_smoke.py` | calls a running server over HTTP as a client does, prints the size of `tools/list`, and checks every answer: `O_MCP_URL=… O_MCP_TOKEN=… uv run python tools/mcp_smoke.py --window START END` |
 
 ## What stayed in `../prs_diags`
@@ -245,9 +247,10 @@ Each run's output goes to `logs/<label>/` (gitignored).
 
 - The MCP server: phases 1 and 2 are built (`design/mcp-tools.md`, "Built") and, since
   2026-10-12, deployed on tenant 3's agent instance `hermes-prs` as `prs_hermes_agent`, passing
-  against production. Next: Hermes on the same instance, and whether it passes `outputSchema` to
-  the model (70% of `tools/list`). Watch cold-cache timings on long THD windows (one 7-day call
-  took 13 s cold, 0.6 s warm, against a 20 s limit).
+  against production. Hermes Agent (v2026.9.24, Sonnet 5.5 on Bedrock) is installed there since
+  2026-10-13 with only the plant tools and memory; the Telegram gateway starts once the bot token
+  is in place. Hermes sends the model `inputSchema` only, never `outputSchema`. Watch cold-cache
+  timings on long THD windows (one 7-day call took 13 s cold, 0.6 s warm, against a 20 s limit).
   Phase 3 waits on where the Python analyses run (`design/mcp-catalogue.md` §4).
 - The 18 Texture nodes with two live board parents — the last genuine parentage ambiguity in
   the electricity graph.
