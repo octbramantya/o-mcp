@@ -22,3 +22,6 @@ __pycache__/
 
 # MCP server spec with production infrastructure details; a general README replaces it later
 design/mcp-server.md
+
+# Hermes agent design notes (per-user features, extras still being weighed); local only
+design/agent-design.md
