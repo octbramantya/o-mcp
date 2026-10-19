@@ -10,6 +10,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 
 | path | what it is |
 |---|---|
+| `design/graph-sankey.md` | `graph.sankey`: a sankey that names no device or node, solved on the graph and rolled up the category tree; the September 2026 reconcile that led to 046–052 (§9) and the build (§10) |
 | `design/graph-network-design.md` | the base topology: `graph.node` / `graph.edge`, the solver (`solve_flow`, `get_node_quantity`, `get_sankey_flow`), node and edge classes, the migration phasing |
 | `design/type-property.md` | node ontology — `node_type`, `graph.property`, `type_property`, `v_property_gaps`. Applied as migrations 025 and 026 |
 | `design/edge-type.md` | edge ontology — `edge_type`, `edge_type_endpoint`, `carries_flow`, `v_edge_gaps`. Applied as migrations 027–030 |
@@ -21,7 +22,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–052`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–055`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -59,12 +60,12 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-19)
 
-Tenant 3, after migration 052, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 055, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
-Migrations 046–052 were applied to production on 2026-10-19 (below).
+Migrations 046–052 and 053–055 were applied to production on 2026-10-19 (below).
 
-- **188 nodes and 192 edges in effect** (190 and 226 rows; 222 edges have `is_active`).
+- **188 nodes and 192 edges in effect** (190 and 227 rows; 223 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
   devices); the solver resolves the rest.
 - **Ontology:** 7 node classes (`SOURCE / BUS / CONVERSION / TREATMENT / STORAGE / LOAD / SINK`),
@@ -213,6 +214,31 @@ All seven were applied on dev, then on production on 2026-10-19 without a fresh-
 production's graph matched dev's starting point (row counts, solver md5, no edits since
 2026-10-07). Each migration's checks ran again there, and 051 and 052 gave the same before/after
 values as on dev. Backup taken first: `logs/prod/graph_backup_pre046.20261019-121543.dump`.
+
+## Migrations 053–055 (on production since 2026-10-19)
+
+Migration 053 adds `graph.node_type_category`, a category default per node type (tenant 3:
+`AIR_COMPRESSOR` → Compressor, `BOILER` → Boiler, `AHU` → HVAC, `LIGHTING` → Lighting), renames
+the `FUNCTIONAL` root from Purchased Energy to `SUPPLY` / Supply, gives every category a
+`display_color`, and puts `WORKSHOP` under Production.
+
+Migration 054 adds `graph.sankey`, `graph.sankey_diagnostics` and `graph.sankey_nodes`. They name
+no device and no node: each node's own value comes from the solver (value minus what it passes
+on), and its category from, in order, its `node_category` rows, its type's default, its unmetered
+children, its nearest categorised ancestor, or Unassigned. A node inserted into the graph is on
+the diagram the same day. The migration checks the balances on September 2026 and aborts if one
+fails. `prs.get_sankey_energy_flow` is not touched. See `design/graph-sankey.md` §10 for the
+September figures and the diagnostics (three negative residuals, seven silent meters).
+
+Migration 055 moves `SIPPA` from `FINISHING_22` to `WWTP`, as the user's SLD has it, and retypes
+`WWTP` from `PUMP` to `SUB_BOARD` (with `nominal_v` 400) so it can feed. It is a documentation
+correction (the old edge `'-infinity'`). Meter 139 was already reading SIPPA's load, so
+`FINISHING_22`'s −9,641 kWh negative residual disappears, and only the two boards' own values change.
+
+All three were applied on dev, then on production on 2026-10-19. 054's self-test and 055's
+before/after check passed there with the same September figures as on dev, and `grafReader` can
+call the functions. Backup taken first: `logs/prod/graph_backup_pre053.20261019-150404.dump`
+(taken with `pg_dump` 16; production runs PostgreSQL 16).
 
 ## Two rules worth not rediscovering
 

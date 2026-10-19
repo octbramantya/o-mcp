@@ -1,6 +1,6 @@
 # `graph.sankey` — a sankey that follows the graph
 
-**Status: proposal, 2026-10-15.** Nothing here is built or migrated. It follows from the audit in
+**Status: built, on dev and production since 2026-10-19** (migrations 053 and 054; §10; 055 corrects the graph). Proposed 2026-10-15. It follows from the audit in
 `design/graph-reconcile.md` (§1.9; local, gitignored) and extends the functional view in
 `design/graph-network-design.md` §15: solve once on the physical graph, then roll the solved
 values up the `FUNCTIONAL` category tree.
@@ -39,7 +39,8 @@ A node's **own** value is the energy it consumes itself, net of whatever it pass
 
 | node | own value |
 |---|---|
-| `SOURCE`, `STORAGE`, `SINK` | none (sources appear on the supply side, §5) |
+| `SOURCE` valued `MEASURED` or `IN_EDGES` | value − Σ out-edge values: what its meter reads that no feed accounts for (§9.7), drawn under Unassigned as "*name* (unaccounted)" |
+| other `SOURCE`, `STORAGE`, `SINK` | none (sources appear on the supply side, §5) |
 | leaf (no flow-carrying out-edge) | its solved value |
 | node with out-edges, valued `MEASURED` or `IN_EDGES` | value − Σ out-edge values, i.e. the `__UNACCOUNTED` residual `get_sankey_flow` already computes |
 | node with out-edges, valued `OUT_EDGES` or `CHILDREN` | 0 (its value *is* its children; there is no residual to claim, §5.4 of the network design) |
@@ -129,7 +130,7 @@ on a board covers everything below it.
 | 2 | Supply → each top-level category (Utilities, Production, Unassigned) | Σ own values under it |
 | 3… | category → child category, down the `FUNCTIONAL` tree | Σ own values under it |
 | leaf | leaf category → node (optional detail level) | the node's own value (weighted by `node_category.weight` when split) |
-| — | board → **Export** | negative solved grid feeders (§3) |
+| — | board → **Export** | negative solved grid feeders (§3). **Not built in v1** (§9.6): reported as diagnostics |
 
 "Purchased Energy" is renamed Supply: PV is not purchased. The grid alone is the
 `GRID_INCOMER` link. The `PURCHASED_ENERGY` category row is renamed in the same migration as
@@ -142,26 +143,39 @@ then can't recur.
 
 ## 6. Interface
 
+As built (054):
+
 ```sql
-graph.sankey(p_tenant_id int, p_start date, p_end date,
-             p_as_of date DEFAULT CURRENT_DATE,
+graph.sankey(p_tenant_id int, p_start date, p_end date,      -- p_end inclusive
+             p_as_of date DEFAULT NULL,                      -- NULL = p_end
              p_quantity_id int DEFAULT 124, p_is_cost boolean DEFAULT false,
              p_taxonomy varchar DEFAULT 'FUNCTIONAL', p_node_detail boolean DEFAULT true)
 RETURNS TABLE(source text, target text, value numeric, color text,
-              link_kind text,         -- SUPPLY | CATEGORY | NODE | EXPORT
+              link_kind text,         -- SUPPLY | CATEGORY | NODE
               is_ambiguous boolean)   -- from the solver or the category resolution
 
-graph.sankey_diagnostics(<same arguments>)
+graph.sankey_diagnostics(<same arguments but p_node_detail>)
 RETURNS TABLE(node_code text, kind text, value numeric, detail text)
-  -- NEGATIVE_RESIDUAL, AMBIGUOUS_FLOW, AMBIGUOUS_CATEGORY, UNASSIGNED, NO_DATA
+  -- NEGATIVE_RESIDUAL, NEGATIVE_FLOW, NO_DATA, REVERSE_ENERGY,
+  -- UNASSIGNED, AMBIGUOUS_CATEGORY, AMBIGUOUS_FLOW
+
+graph.sankey_nodes(<same arguments but p_node_detail>)
+RETURNS TABLE(node_id, node_code, node_class, label, val_src, value, own,
+              category_id, category_how, weight,   -- EXPLICIT | TYPE | CHILDREN | INHERITED | UNASSIGNED
+              category_ambiguous, flow_ambiguous, has_data)
 ```
+
+`sankey_nodes` is the per-node table the other two read; a table panel can read it too. The
+utility comes from the quantity (`graph.quantity_rule`). With `p_node_detail = false`, nodes on a
+category that has child categories (`WORKSHOP` on Production) are still drawn, since nothing else
+carries their energy.
 
 - **Dates, not timestamps.** `daily_energy_cost_summary` is daily, so a 6-hour Grafana range
   can't be resolved. The panel passes `$__from` / `$__to` as dates in `Asia/Jakarta`, and the
   function never truncates to the month (today's function silently shows month-to-date).
 - **One set of rows per call.** A multi-month range is one diagram. Today's per-bucket rows
   produce duplicate links.
-- `p_as_of` defaults to `p_end`, not `CURRENT_DATE`, so a past window is drawn with the graph
+- `p_as_of` defaults to `p_end` (passed as NULL), not `CURRENT_DATE`, so a past window is drawn with the graph
   that was in effect then. That matters for 158/159 and anything retired later.
 
 ## 7. Before it can be trusted
@@ -175,10 +189,11 @@ From the audit's corrections list:
 | G7 | the chiller formula | **settled 2026-10-19**: 26 + 167/3 − 98 − 135, a stopgap until the site fixes A4's point of common coupling |
 | G8 | meter 26 reads the A4 board on two phases and the grid feeder on one (a PCC mistake) | **migration 048, applied on dev 2026-10-19**: 167 × ⅓ added to the `LVMDB_A4` node (§9.2) |
 | G9 | `LVMDB_TEXTURE` out of service since 2026-05-11 | **migrations 049 and 050, applied on dev 2026-10-19**: its 20 live edges end 2026-05-11, the day of meter 107's last reading (§9.3) |
-| G10 | meter 74 (Spinning 3) reads about 1/3 of its children | **new**: site question (§9.4) |
+| G10 | meter 74 (Spinning 3) reads about 1/3 of its children | **phase-B CT reversed** (per-phase check, §9.4); site to fix; no correction in the graph (user, 2026-10-19) |
 | G11 | the gas engine's share of A1–A3 | **migration 051, applied on dev 2026-10-19** (§9.5): gas engine 234,879 kWh in September; `FACTORY_AB` residual 0 |
 | G12 | `COMP_WINDER` fed from `LVSDP_COMP_23`, not `LVMDP_SPINNING_3` (user, 2026-10-19) | **migration 052, applied on dev 2026-10-19**: only `LVSDP_COMP_23` changes (42,696 → 154,372 kWh) |
-| G3 | the Unassigned nodes; `WORKSHOP` → PRODUCTION (decided 2026-10-19); `WWTP`, `LAB_DEVICE` homes | partly superseded by §4; rows for the rest |
+| G13 | `SIPPA` fed from `WWTP`, not `FINISHING_22` (user's SLD, 2026-10-19) | **migration 055, applied on dev and production 2026-10-19**: `WWTP` retyped `SUB_BOARD`; `FINISHING_22`'s negative residual gone (§10) |
+| G3 | the Unassigned nodes; `WORKSHOP` → PRODUCTION (decided 2026-10-19, **row added by 053**); `WWTP`, `LAB_DEVICE` homes | partly superseded by §4; rows for the rest (§10) |
 | G1 | A3 unmetered loads | `LVMDB_A3` stays HVAC for now (2026-10-19); waiting on the SLD load list |
 | G4 | Finishing 2.1 unmetered loads | open; nothing from site yet |
 
@@ -195,11 +210,12 @@ which reads production and so needs your go-ahead. Checks for one month:
 
 ## 8. Build order
 
-1. G6 (and G2), each its own migration.
+1. G6 (and G2), each its own migration. **Done: 046, 047.**
 2. `graph.node_type_category` and its seed, the `PURCHASED_ENERGY` → Supply rename, and
-   `display_color`.
+   `display_color`. **Done: 053.**
 3. `graph.sankey` and `graph.sankey_diagnostics`, with the checks in §7 as the migration's
-   self-test on synthetic data, in the style of the network design's §9.
+   self-test. **Done: 054.** The self-test checks the balances on September 2026 rather
+   than on synthetic data: they hold on any data, so they run again unchanged on production.
 4. G3 rows for whatever is still Unassigned after a real-telemetry run.
 5. The Grafana panel: query `graph.sankey`, and drop the colour map and the month subtitle.
    `prs.get_sankey_energy_flow` stays until the new panel has run alongside it for a month.
@@ -299,11 +315,25 @@ The user rechecked the Spinning 3 tree on 2026-10-19. `LVSDP_COMP_23` feeds both
 
 The ratio of (72 + 73 + 105) to 74 holds at 3.0–3.15 every day of September, while the children's
 load ranges from about 1,000 to 11,000 kWh a day. A constant ratio across varying load is a scale
-error (CT ratio or meter multiplier), not topology. The incomer agrees. Its six feeds are all
-metered and sum to 1,760,911 against 94's 1,961,384. A true 74 of about 3.5 × its reading closes
-most of the 200,473 gap; transformer losses make up the rest. For the site: check meter 74's CT
-ratio. Until then, `LVMDP_SPINNING_3` is a NEGATIVE_RESIDUAL of −156,202 and the compressors under
-it are drawn at their own meters.
+error, not topology.
+
+**Per-phase check (dev, 2026-10-19): phase B reads reversed.** September means for 74: P_A 106.9,
+P_B **−112.7**, P_C 111.9 kW, with balanced currents (488 / 510 / 512 A). Phase B is negative in
+every 15-minute interval, A and C never. So the meter computes A − B + C, about ⅓ of the load: a
+reversed CT on phase B (polarity, or S1/S2 swapped at the meter). With B's sign flipped, the
+children read 0.97–1.00 of 74 on all 30 days; the rest is `AHU_LINE3` (140, silent in September)
+and unmetered load. The Spinning 3 tree is right. This is not meter 26's fault: 26's phase B is
+positive at night and dips only with PV.
+
+The incomer: 94's six feeds (84, 85, 90, 163 − 168, 74, 106) sum to 1,760,911 against 94's
+1,961,384. With 74 corrected (75,384 → about 235,700), the gap falls from 200,473 to about 40,000,
+2.0% of 94, a plausible size for transformer losses between the MV meter and the LV feed meters.
+
+**Decision (user, 2026-10-19): no correction in the graph.** 74 stays as read, so
+`LVMDP_SPINNING_3` stays a NEGATIVE_RESIDUAL of −156,202 and 94 keeps its 200,473 unaccounted: a
+fault to act on, not to hide in the dashboard. For the site: check the polarity of meter 74's
+phase-B CT. After the fix, the counter's past readings stay wrong; only the per-phase power could
+rebuild them.
 
 ### 9.5 G11: the gas engine
 
@@ -401,3 +431,67 @@ or the window drops below a day.
 - **Unassigned with value after 048/049** (plus `FACTORY_AB`'s +44,979, which G11 removes): the residuals of Spinning 2 (80,865), Spinning 1
   (60,764), TF630 (32,173), B2 (24,597), Texture 2 (23,561) and A1 (3,259); `MC_MOTOR_5` (25,246,
   metered with no category); `HEATER_TOTAL` (239). This is the G3 worklist.
+
+## 10. As built (migrations 053 and 054, dev, 2026-10-19)
+
+**053** adds `graph.node_type_category` (per tenant and taxonomy; a composite foreign key keeps
+the category in both; abstract types refused, and a type with a default can't be made abstract),
+seeds the four defaults of §4, renames the root to `SUPPLY` / Supply, gives all 28 categories a
+colour (Utilities warm, Fabric blue and teal, Yarn violet; Unassigned is grey in the function, not
+a row), and adds `WORKSHOP` → PRODUCTION.
+
+**054** adds `graph.sankey_nodes`, `graph.sankey` and `graph.sankey_diagnostics` (§6). Two
+departures from §4:
+- **Inheritance walks the solver's edges and stops at a type default too.** `resolve_category`
+  stops only at explicit rows, so a pump under `AHU_LINE3` would have inherited Compressor from
+  Spinning 3. Several ancestors at the same distance share the node evenly, flagged ambiguous.
+- **The CHILDREN rule reads only unmetered children, so a single unmetered child decides a
+  board's residual.** `TRICOT`'s residual is now HVAC (its only unmetered child is `AHU_14`), and
+  a new unmetered compressor on `LVMDB_A1` would turn A1's residual into Compressor. That is the
+  rule as designed; an explicit row on the board overrides it.
+
+The self-test (054 §4) checks September 2026 and aborts the migration if any of these fail: weights
+sum to 1 per node; supply = Σ own values; the root and the NODE links each carry exactly the
+positive own values; every category passes on what it receives, with and without node detail;
+positive + negative = supply; no self-link, non-positive link, missing colour, or source label
+used as a target. A call takes about 130 ms on dev; `grafReader` can run all three.
+
+September 2026 on dev, kWh:
+
+| | |
+|---|---|
+| Supply (6 sources) | 2,555,340: grid 1,961,384, gas 234,879, PV 113,123 + 110,470 + 85,722 + 49,764 |
+| Utilities | 1,018,424 (Compressor 579,467, HVAC 317,634, Boiler 73,623, WTP 45,694, Lighting 2,006) |
+| Production | 1,252,538 (Fabric 953,665, Yarn 298,006, Workshop 867) |
+| Unassigned | 451,177, of which 200,472 is meter 94 beyond its six feeds |
+| negative residuals (not drawn) | −166,799 |
+
+Category by: EXPLICIT 73 nodes (1,969,943), TYPE 25 (2,669), CHILDREN 2 (64,372: `LVMDB_A5`,
+`TRICOT`), INHERITED 8 (68,136), UNASSIGNED 31 (450,221).
+
+Diagnostics:
+- **NEGATIVE_RESIDUAL**, 3 rows. `LVMDP_SPINNING_3` −156,202 (G10). `FINISHING_22` −9,641: its meter (5)
+  reads 76,848, and `SIPPA` (138) + `WWTP` (139) below it read 86,489. `LVMDB_A2` −956: 24 is 0.5%
+  under its six metered children, a site question.
+  - `FINISHING_22` was the SLD (G13). SIPPA's load shows inside 139: over 31 steps of more than
+    10 kW, 139 moved by 0.95 × SIPPA's step in the same 15 minutes (r = 0.85), with the same per-phase
+    currents, and the residual was negative only on days SIPPA ran. The user's SLD has WWTP feeding
+    SIPPA. **Migration 055 (dev)** retypes `WWTP` to `SUB_BOARD` and moves SIPPA under it
+    (`'-infinity'` correction). Own values: `FINISHING_22` +4,102, `WWTP` 59,002; Garuk 76,848 = meter 5
+    (86,489 before); nothing else moves.
+- **NO_DATA**, 7 meters in effect with no September reading: 88 (`AHU_LINE1`), 140 (`AHU_LINE3`),
+  64, 59, 62, 63 (`HEATER_10/11/7/8`; 8 is inactive), 81 (`MC_SP_I`).
+- **REVERSE_ENERGY**, 2 meters at 0.1% or more of delivered: 84 (1,472) and 26 (312).
+- **UNASSIGNED**, 9 rows with value: the G3 worklist of §9.7, plus 94's unaccounted 200,472.
+- **AMBIGUOUS_FLOW**: the gas engine's six edges.
+
+**Deferred: a tolerance for small residuals** (user, 2026-10-19). `LVMDB_A2`'s −956 (−0.54%) is
+meter tolerance, not a fault: no reversed phase, 24 tracks its children at r = 0.989, and the gap
+(−10.9 to +7.5 kW, 90% of intervals) does not depend on load (r² = 0.01). Yet
+`sankey_diagnostics` reports it as NEGATIVE_RESIDUAL beside Spinning 3's −156,202. A later
+version could report residuals within about ±1% of the node's value as their own kind
+(METER_TOLERANCE), still shown, so real faults stand out. One consequence to keep in mind: a
+board's small unmetered loads (`COOLING1`, `OFFICE` on A2) sit inside that tolerance and are
+invisible either way.
+
+On production since 2026-10-19 (053–055; same September figures as dev). Still to do: the G3 rows, then the Grafana panel (§8 items 4 and 5).
