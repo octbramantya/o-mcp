@@ -21,7 +21,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–045`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–052`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -57,13 +57,14 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (dev and production, 2026-10-07)
+## Current state of the model (dev and production, 2026-10-19)
 
-Tenant 3, after migration 042, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 052, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
+Migrations 046–052 were applied to production on 2026-10-19 (below).
 
-- **188 nodes and 212 edges in effect** (190 and 225 rows; 221 edges have `is_active`).
+- **188 nodes and 192 edges in effect** (190 and 226 rows; 222 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
   devices); the solver resolves the rest.
 - **Ontology:** 7 node classes (`SOURCE / BUS / CONVERSION / TREATMENT / STORAGE / LOAD / SINK`),
@@ -81,8 +82,9 @@ starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.2
   10 `normal`, all capacitor banks.
 - Known-wrong on purpose: `AIR_DRYER` is typed `AIR_COMPRESSOR`. See `design/edge-type.md` §9.
 - Open:
-  - 25 nodes have more than one live feeder. 7 are a transformer plus PV or a generator, as
-    drawn; the 18 Texture boards fed by two `SUPPLY_LV` edges are the open parentage question.
+  - 7 electrical nodes have more than one live feeder, each a transformer plus PV or the gas
+    engine, as drawn. The 18 Texture loads fed from both Texture boards were settled by 049/050
+    (`LVMDB_TEXTURE` out of service since 2026-05-11).
   - `WASTEWATER_TREATMENT`, `WATER_OUTFALL` and `RECYCLE_CUT` have no alignment row (added after 031).
 - `tx_impedance_pct` is empty on all 12 boards and OPTIONAL, which is why harmonics uses a
   blanket strict 5% TDD instead of per-board IEEE 519 limits.
@@ -175,6 +177,43 @@ Migration 045 (**applied on dev and production 2026-10-12**) rewrites `PROCESS_H
 description without tenant 3's heaters. `tools/gen_030.py`, which holds the 030 text, no longer
 overwrites 030.
 
+## Migrations 046–052 (on production since 2026-10-19)
+
+Migration 046 moves device 28 (LVMDB A5) from the node `LVMDB_A5` to its feeder edge
+`FACTORY_AB → LVMDB_A5`, as a documentation correction (node rows `effective_to = '-infinity'`,
+edge rows from `'-infinity'`). PLTS A5 joins after the meter, so 28 reads the net grid draw: the
+solver now gives A5 = 28 + 27 (61,188 kWh in September, against 11,424 before). `THD_VOLTAGE_LN`
+(1119) stays on the node. Migration 047 swaps the codes and names of `WTP_1` and `WTP_2`, so
+device 92 is "WTP 1" and 91 "WTP 2", as `public.devices` has them. Both come from the Sankey
+reconcile (`design/graph-reconcile.md`, local). The September
+run that checked them, and the open corrections it found, are in `design/graph-sankey.md` §9.
+
+Migration 048 adds a second active-energy row to `LVMDB_A4`: device 167 (PLTS A4) × ⅓. A
+point-of-common-coupling mistake makes meter 26 read the board on two phases and the grid on
+the third, so 26 = A4 load − ⅓ of PV (September per-phase data; `design/graph-sankey.md` §9.2).
+Migration 049 ends `LVMDB_TEXTURE`'s 20 live edges on 2026-08-17. It was out of service by
+2026-08-18, and with both Texture boards live the solver lost 115,972 kWh a month into it. The
+18 Texture loads now have one live board parent.
+Migration 050 moves that end back to 2026-05-11, the day of the board's meter (107)'s last
+reading in production.
+
+Migration 051 changes `graph.solve_flow`, so the gas engine's share of A1–A3 is solved from
+FACTORY_AB's meter instead of split 50/50 (`design/graph-sankey.md` §9.5). It adds a rule for
+passthrough nodes: the unknown out-edges share what the node's meter leaves after its known
+out-edges, in proportion to the targets' values, capped at what the targets take. The even split
+of several unknown in-edges now runs only as a last resort, and `FACTORY_AB` is flagged
+passthrough. The migration solves September before and after and aborts if anything but the
+engine and its six edges moves. On dev the engine is 234,879 kWh for September (279,858 before).
+
+Migration 052 moves `COMP_WINDER`'s feed from `LVMDP_SPINNING_3` to `LVSDP_COMP_23`, beside
+`COMP_INTERLACE`, as a documentation correction (the old edge `'-infinity'`). Only
+`LVSDP_COMP_23`'s solved value changes.
+
+All seven were applied on dev, then on production on 2026-10-19 without a fresh-copy rehearsal:
+production's graph matched dev's starting point (row counts, solver md5, no edits since
+2026-10-07). Each migration's checks ran again there, and 051 and 052 gave the same before/after
+values as on dev. Backup taken first: `logs/prod/graph_backup_pre046.20261019-121543.dump`.
+
 ## Two rules worth not rediscovering
 
 **Filter the effective window, not just `is_active`.** `graph.node` and `graph.edge` have two
@@ -252,7 +291,5 @@ Each run's output goes to `logs/<label>/` (gitignored).
   is in place. Hermes sends the model `inputSchema` only, never `outputSchema`. Watch cold-cache
   timings on long THD windows (one 7-day call took 13 s cold, 0.6 s warm, against a 20 s limit).
   Phase 3 waits on where the Python analyses run (`design/mcp-catalogue.md` §4).
-- The 18 Texture nodes with two live board parents — the last genuine parentage ambiguity in
-  the electricity graph.
 - `STEAM` utility and steam distribution, once the site team finishes documenting it.
 - Collect `tx_impedance_pct`, which needs `harmonics_report.py` to read it first.

@@ -25,3 +25,6 @@ design/mcp-server.md
 
 # Hermes agent design notes (per-user features, extras still being weighed); local only
 design/agent-design.md
+
+# Graph vs sankey / internal-report reconciliation findings (plant and client detail); local only
+design/graph-reconcile.md
