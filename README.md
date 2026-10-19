@@ -60,10 +60,10 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-19)
 
-Tenant 3, after migration 055, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 056, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
-Migrations 046–052 and 053–055 were applied to production on 2026-10-19 (below).
+Migrations 046–056 were applied to production on 2026-10-19 (below).
 
 - **188 nodes and 192 edges in effect** (190 and 227 rows; 223 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
@@ -240,12 +240,13 @@ before/after check passed there with the same September figures as on dev, and `
 call the functions. Backup taken first: `logs/prod/graph_backup_pre053.20261019-150404.dump`
 (taken with `pg_dump` 16; production runs PostgreSQL 16).
 
-## Migration 056 (dev only, 2026-10-19)
+## Migration 056 (on production since 2026-10-19)
 
 Migration 056 puts `FLR_124` (Work Panel Fl. 1, 2, 4) under Production, the client's two broad
 classes being Production and Utilities. It is the only unmetered panel on `LVMDP_SPINNING_1`, so
-the board's residual (60,764 kWh in September) moves from Unassigned to Production. Not yet on
-production.
+the board's residual (60,764 kWh in September) moves from Unassigned to Production. Applied on
+dev, then on production on 2026-10-19 with the same result. Backup first:
+`logs/prod/graph_backup_pre056.20261019-152347.dump`.
 
 ## Two rules worth not rediscovering
 

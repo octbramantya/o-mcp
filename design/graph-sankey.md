@@ -489,7 +489,7 @@ Diagnostics:
 there is no Office or General & Admin category until the client asks for one or says offices
 should come out of Production; then the boards are classified panel by panel from the SLD, not
 guessed. The SLD already has two unmetered office feeds, `OFFICE` (Office RND, on A2) and
-`OFFICE_2` (Office TF630kv), left without a row. **Migration 056 (dev)** puts `FLR_124` (Work Panel
+`OFFICE_2` (Office TF630kv), left without a row. **Migration 056 (dev and production, 2026-10-19)** puts `FLR_124` (Work Panel
 Fl. 1, 2, 4, the only unmetered panel on Spinning 1) under Production, so Spinning 1's residual
 (60,764) moves from Unassigned to Production through the CHILDREN rule.
 
