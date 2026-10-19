@@ -485,6 +485,14 @@ Diagnostics:
 - **UNASSIGNED**, 9 rows with value: the G3 worklist of §9.7, plus 94's unaccounted 200,472.
 - **AMBIGUOUS_FLOW**: the gas engine's six edges.
 
+**Two broad classes only** (user, 2026-10-19). The client asks for Production and Utilities, so
+there is no Office or General & Admin category until the client asks for one or says offices
+should come out of Production; then the boards are classified panel by panel from the SLD, not
+guessed. The SLD already has two unmetered office feeds, `OFFICE` (Office RND, on A2) and
+`OFFICE_2` (Office TF630kv), left without a row. **Migration 056 (dev)** puts `FLR_124` (Work Panel
+Fl. 1, 2, 4, the only unmetered panel on Spinning 1) under Production, so Spinning 1's residual
+(60,764) moves from Unassigned to Production through the CHILDREN rule.
+
 **Deferred: a tolerance for small residuals** (user, 2026-10-19). `LVMDB_A2`'s −956 (−0.54%) is
 meter tolerance, not a fault: no reversed phase, 24 tracks its children at r = 0.989, and the gap
 (−10.9 to +7.5 kW, 90% of intervals) does not depend on load (r² = 0.01). Yet

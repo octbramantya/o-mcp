@@ -22,7 +22,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–055`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–056`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -239,6 +239,13 @@ All three were applied on dev, then on production on 2026-10-19. 054's self-test
 before/after check passed there with the same September figures as on dev, and `grafReader` can
 call the functions. Backup taken first: `logs/prod/graph_backup_pre053.20261019-150404.dump`
 (taken with `pg_dump` 16; production runs PostgreSQL 16).
+
+## Migration 056 (dev only, 2026-10-19)
+
+Migration 056 puts `FLR_124` (Work Panel Fl. 1, 2, 4) under Production, the client's two broad
+classes being Production and Utilities. It is the only unmetered panel on `LVMDP_SPINNING_1`, so
+the board's residual (60,764 kWh in September) moves from Unassigned to Production. Not yet on
+production.
 
 ## Two rules worth not rediscovering
 
