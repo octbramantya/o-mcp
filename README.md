@@ -22,7 +22,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–056`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–057`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -60,7 +60,7 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-19)
 
-Tenant 3, after migration 056, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 057, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19 (below).
@@ -247,6 +247,17 @@ classes being Production and Utilities. It is the only unmetered panel on `LVMDP
 the board's residual (60,764 kWh in September) moves from Unassigned to Production. Applied on
 dev, then on production on 2026-10-19 with the same result. Backup first:
 `logs/prod/graph_backup_pre056.20261019-152347.dump`.
+
+## Migration 057 (on production since 2026-10-19)
+
+Migration 057 adds `graph.sld_devices(tenant, device, depth, as_of)`, the devices of one SLD
+section for a Grafana variable, in place of static `IN (...)` lists: the root device, every
+device metering a node `depth` levels below it (on the node or its feeder edge), and the PV
+plants and gas engine injecting into those nodes, at the depth of the board they feed
+(`PLTS_TEXTURE` beside `LVMDB_TEXTURE_2`). The INCOMING_PLN list it replaces had missed
+`LVMDB_TEXTURE_2` (163) and `LVMDB_TF630` (106). Granted to `grafReader` and `prs_hermes_agent`.
+Applied on dev, then on production on 2026-10-19; its self-test passed there, and `grafReader`
+can call it. Backup first: `logs/prod/graph_backup_pre057.20261019-155452.dump`.
 
 ## Two rules worth not rediscovering
 
