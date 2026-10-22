@@ -8,6 +8,12 @@
 -- Design: design/frontend.md §3 ("The solver on minute data"), §1 decisions 9 and 18
 -- Requires: 059_change_dates.sql; superuser (it creates a view in prs and verifies as the role)
 --
+-- Edited after it was applied on dev (2026-10-22), in the 3.1 check only: the 15-minute check
+-- took the summary's last day, which on production is today, still filling, so its window had no
+-- buckets and the check failed (production's first attempt rolled back). It now takes the last
+-- finished site day. Nothing the migration creates changed. Dev's ledger keeps the hash of the
+-- version that ran there, so `tools/migrate.sh status` on dev flags this file as changed.
+--
 -- WHY
 -- ---
 -- The frontend reads ranges of 6 hours or less at minute resolution (decision 9), and its value
@@ -561,9 +567,12 @@ DECLARE
     d TIMESTAMP;
     e TIMESTAMP;
 BEGIN
-    SELECT max(daily_bucket)::date::timestamp INTO d FROM daily_energy_cost_summary WHERE tenant_id = 3;
+    -- the last finished site day: production's summary already holds today, whose last 6 hours
+    -- have no buckets yet
+    SELECT max(daily_bucket)::date::timestamp INTO d FROM daily_energy_cost_summary
+    WHERE tenant_id = 3 AND daily_bucket < (now() AT TIME ZONE 'Asia/Jakarta')::date;
     IF d IS NULL THEN
-        RAISE EXCEPTION '060 check: daily_energy_cost_summary has no tenant 3 rows';
+        RAISE EXCEPTION '060 check: daily_energy_cost_summary has no finished day for tenant 3';
     END IF;
     PERFORM set_config('graph.resolution', '', true);
     SELECT md5(string_agg(t::text, ',' ORDER BY t.device_id)) INTO a

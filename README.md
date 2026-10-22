@@ -62,10 +62,11 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-22)
 
-Tenant 3, after migration 058 on production and 059–062 on dev. Migrations 031–042 were rehearsed
+Tenant 3, after migration 062, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
-Migrations 046–056 were applied to production on 2026-10-19 (below).
+Migrations 046–056 were applied to production on 2026-10-19, 057 the same day, and 058–062 on
+2026-10-22 (below).
 
 - **188 nodes and 192 edges in effect** (190 and 227 rows; 223 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
@@ -273,9 +274,9 @@ unaccounted remainder alone, and Production rises by the same amount; Utilities 
 The migration checks all three. Applied on dev, then on production on 2026-10-22 with the same
 September figures. Backup first: `logs/prod/graph_backup_pre058.20261022-110149.dump`.
 
-## Migrations 059–061 (on dev since 2026-10-22)
+## Migrations 059–061 (on production since 2026-10-22)
 
-The database side of the custom frontend (`design/frontend.md`). Not yet on production.
+The database side of the custom frontend (`design/frontend.md`).
 
 Migration 059 adds `graph.change_dates(tenant, start, end)`, the days inside a range on which the
 graph in effect changes (a live node, edge, measurement or category row starts that day or ended the
@@ -297,8 +298,16 @@ Migration 061 adds the `frontend` schema (tenants, users, sessions, dashboards, 
 `NOLOGIN` roles: `frontend_api`, which writes `frontend` only, and `prs_frontend`, tenant 3's plant
 reads for the frontend, under the same `tenant_3` policies as `prs_hermes_agent`.
 
+Applied on dev, then on production on 2026-10-22. Production's first attempt at 060 stopped at its
+own check and rolled back: the 15-minute comparison took the daily summary's last day, which on
+production is today, still filling, so its window had no buckets yet. The check now takes the last
+finished site day; nothing 060 creates changed, and dev's ledger, which holds the earlier version's
+hash, flags the file. On production 060 compared 2026-10-21 at minute and 15-minute resolution
+with no register more than 1% off. Backup first: `logs/prod/graph_prs_backup_pre059.20261022-145339.dump`
+(`graph` and `prs`), with the roles in `logs/prod/roles_pre059.20261022-145339.sql` (no passwords).
 
-## Migration 062 (on dev since 2026-10-22)
+
+## Migration 062 (on production since 2026-10-22)
 
 Migration 062 takes `p_is_cost` out of `graph.sankey`, `graph.sankey_nodes` and
 `graph.sankey_diagnostics`: the sankey shows energy flow only. Its cost mode solved per-meter costs
@@ -307,7 +316,8 @@ of categories on 2026-10-20 to 21); a cost flow needs an average price per kWh a
 gas engine first, which is out of scope. The functions are dropped and created with their grants
 and comments carried over, and the energy output for 2026-10-20 to 21 is checked row for row
 before and after. `graph.solve_flow` and `graph.device_totals` keep `p_is_cost`. The Grafana panels
-in `grafana/graph-sankey/` use it. Not yet on production.
+in `grafana/graph-sankey/` use it. Applied on dev, then on production on 2026-10-22 with the same
+row-for-row result; `grafReader` runs the panel's queries there.
 
 ## Two rules worth not rediscovering
 
