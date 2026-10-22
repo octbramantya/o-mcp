@@ -565,4 +565,4 @@ Utilities does not move. The migration checks that Utilities is unchanged, that 
 what Unassigned loses, and that no node but a source remainder is left Unassigned with a value.
 `LVMDB_A2`'s −956 is a negative residual, not drawn, and stays a diagnostic.
 
-On production since 2026-10-19 (053–055; same September figures as dev). G3 rows: 058 on dev, not yet on production. Then the Grafana panel (§8 item 5).
+On production since 2026-10-19 (053–056) and 2026-10-22 (058), with the same September figures as dev. Next: the Grafana panel (§8 item 5).
