@@ -144,12 +144,12 @@ then can't recur.
 
 ## 6. Interface
 
-As built (054):
+As built (054; `p_is_cost` removed by 062, energy only):
 
 ```sql
 graph.sankey(p_tenant_id int, p_start date, p_end date,      -- p_end inclusive
              p_as_of date DEFAULT NULL,                      -- NULL = p_end
-             p_quantity_id int DEFAULT 124, p_is_cost boolean DEFAULT false,
+             p_quantity_id int DEFAULT 124,
              p_taxonomy varchar DEFAULT 'FUNCTIONAL', p_node_detail boolean DEFAULT true)
 RETURNS TABLE(source text, target text, value numeric, color text,
               link_kind text,         -- SUPPLY | CATEGORY | NODE
@@ -221,6 +221,8 @@ which reads production and so needs your go-ahead. Checks for one month:
    (`WORKSHOP`), 056 (`FLR_124`), 058 (the G3 worklist, §10).
 5. The Grafana panel: query `graph.sankey`, and drop the colour map and the month subtitle.
    `prs.get_sankey_energy_flow` stays until the new panel has run alongside it for a month.
+   **Written (2026-10-22): `grafana/graph-sankey/`**, energy only (§10, "Cost mode doesn't
+   balance"; 062); not yet installed in Grafana.
 
 ## 9. First real-data run (September 2026, dev, 2026-10-19)
 
@@ -565,4 +567,20 @@ Utilities does not move. The migration checks that Utilities is unchanged, that 
 what Unassigned loses, and that no node but a source remainder is left Unassigned with a value.
 `LVMDB_A2`'s −956 is a negative residual, not drawn, and stays a diagnostic.
 
-On production since 2026-10-19 (053–056) and 2026-10-22 (058), with the same September figures as dev. Next: the Grafana panel (§8 item 5).
+**Cost mode doesn't balance** (dev, 2026-10-22, with production's `daily_energy_cost_summary`
+for 2026-10-20 to 21). `p_is_cost` gives Supply 140 M IDR and the categories 174.6 M IDR;
+Unassigned comes out at about 13,560 IDR/kWh against about 1,060 for Production and Utilities.
+Each meter's cost is its own kWh at its own tariff, and the solver subtracts costs as it subtracts
+energy, so residuals carry the tariff differences, and a PV-fed meter is priced at the grid
+tariff while PV costs nothing at Supply. The Grafana panel is energy only. A cost diagram needs
+its own rule, for instance Supply's cost per kWh (or per time-of-use interval) applied to each
+node's own kWh. **Decided 2026-10-22: the sankey is for energy flow only.** A cost flow needs an
+average price per kWh across grid, PV and gas engine first, which is out of scope; migration 062
+removes `p_is_cost` from the three functions (`graph.solve_flow` and `graph.device_totals` keep
+it).
+
+**REVERSE_ENERGY on a silent meter.** The threshold is received > 0.1% of delivered, so a meter
+with no delivered energy reports any received energy, rounded to 0 (`MC_MOTOR_2`, 2026-10-20 to
+21, beside its NO_DATA row). Harmless; worth a floor when the function is next changed.
+
+On production since 2026-10-19 (053–056) and 2026-10-22 (058), with the same September figures as dev. Next: install the Grafana panel (`grafana/graph-sankey/README.md`) and run it beside the old one for a month.

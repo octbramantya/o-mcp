@@ -11,6 +11,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | path | what it is |
 |---|---|
 | `design/graph-sankey.md` | `graph.sankey`: a sankey that names no device or node, solved on the graph and rolled up the category tree; the September 2026 reconcile that led to 046–052 (§9) and the build (§10) |
+| `grafana/graph-sankey/` | the Grafana panels over `graph.sankey` (Business Charts) and `graph.sankey_diagnostics` (table): the queries, the panel code, and how to install them beside the old panel. Energy only: the functions have no cost mode since 062 |
 | `design/graph-network-design.md` | the base topology: `graph.node` / `graph.edge`, the solver (`solve_flow`, `get_node_quantity`, `get_sankey_flow`), node and edge classes, the migration phasing |
 | `design/type-property.md` | node ontology — `node_type`, `graph.property`, `type_property`, `v_property_gaps`. Applied as migrations 025 and 026 |
 | `design/edge-type.md` | edge ontology — `edge_type`, `edge_type_endpoint`, `carries_flow`, `v_edge_gaps`. Applied as migrations 027–030 |
@@ -22,7 +23,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–061`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–062`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -61,7 +62,7 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-22)
 
-Tenant 3, after migration 058 on production and 059–061 on dev. Migrations 031–042 were rehearsed
+Tenant 3, after migration 058 on production and 059–062 on dev. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19 (below).
@@ -295,6 +296,18 @@ device out (decided 2026-10-22, `design/frontend.md` §3).
 Migration 061 adds the `frontend` schema (tenants, users, sessions, dashboards, audit) and two
 `NOLOGIN` roles: `frontend_api`, which writes `frontend` only, and `prs_frontend`, tenant 3's plant
 reads for the frontend, under the same `tenant_3` policies as `prs_hermes_agent`.
+
+
+## Migration 062 (on dev since 2026-10-22)
+
+Migration 062 takes `p_is_cost` out of `graph.sankey`, `graph.sankey_nodes` and
+`graph.sankey_diagnostics`: the sankey shows energy flow only. Its cost mode solved per-meter costs
+through the graph as if they were energy, and didn't balance (Supply 140 M IDR against 174.6 M IDR
+of categories on 2026-10-20 to 21); a cost flow needs an average price per kWh across grid, PV and
+gas engine first, which is out of scope. The functions are dropped and created with their grants
+and comments carried over, and the energy output for 2026-10-20 to 21 is checked row for row
+before and after. `graph.solve_flow` and `graph.device_totals` keep `p_is_cost`. The Grafana panels
+in `grafana/graph-sankey/` use it. Not yet on production.
 
 ## Two rules worth not rediscovering
 
