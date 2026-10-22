@@ -28,3 +28,6 @@ design/agent-design.md
 
 # Graph vs sankey / internal-report reconciliation findings (plant and client detail); local only
 design/graph-reconcile.md
+
+# Dashboard frontend reference (notes from a third-party trading terminal); local only
+design/sb-dashboard/

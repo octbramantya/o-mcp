@@ -23,7 +23,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
 | `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–058`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
-| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
+| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one window of telemetry and `daily_energy_cost_summary` |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
 | `tools/gen_037.py` | renders migration 037 from `design/quantity_terms.csv`. Same rule |
@@ -35,6 +35,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/mcp-tools.md` | drafts for the MCP server: the `plant_section` and `plant_vocabulary` tools' descriptions and input schemas, how a model learns what a response means, and where each ontology description comes from |
 | `design/mcp-tenancy.md` | one Hermes agent per tenant: the authorization layers that keep each agent to its tenant, a database role per tenant enforced by Postgres, and what that changes in migration 043 (proposed, decisions open) |
 | `design/mcp-catalogue.md` | every tool the MCP server is expected to need, by layer (vocabulary, topology, instruments, values, analysis), and how their discovery is staggered: by release, not at run time |
+| `design/frontend.md` | the custom frontend that replaces Grafana in the long run: dashboard time range and refresh, snapping tiles, one tenant per user plus an admin group, each user's own dashboards in a `frontend` schema, database pooling through one shared API, and the monorepo layout (decided 2026-10-22, the rest proposed) |
 | `tools/check_subgraph.py` | checks v1 documents against the schema, strictly: `uv run --no-project --with jsonschema tools/check_subgraph.py doc.json` |
 | `server/` | the MCP server, phases 1 and 2: `plant_vocabulary`, `plant_find`, `plant_section`, `node_meters`, `meter_readings`, `node_value`, one module each in `server/tools/` (each holds the tool's description and input schema). Run against dev: `O_MCP_TOKEN=… O_MCP_BIND=127.0.0.1:8765 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run python -m server --env-file .env` (`--phase 1` for the topology tools only). Keys in `.env.example` |
 | `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
@@ -307,6 +308,8 @@ tunnel must be up. The script drops and recreates the dev database. It copies th
 structure, plus the data of `graph`, `public.devices` and `public.quantities` (graph's foreign
 keys point at those two), and creates the roles as `NOLOGIN` without passwords. Telemetry is
 copied only when asked for: without it, solver before/after checks compare empty to empty.
+`--telemetry` also copies `public.daily_energy_cost_summary` for the same days, with its shifts
+and costs, since `graph.device_totals` reads electricity energy from it, not from telemetry.
 
 Dev doesn't need TimescaleDB. Hypertables and continuous aggregates become plain tables with
 the same columns, so views over them keep working. Objects that can't exist without

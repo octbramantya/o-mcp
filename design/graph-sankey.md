@@ -190,7 +190,7 @@ From the audit's corrections list:
 | G7 | the chiller formula | **settled 2026-10-19**: 26 + 167/3 − 98 − 135, a stopgap until the site fixes A4's point of common coupling |
 | G8 | meter 26 reads the A4 board on two phases and the grid feeder on one (a PCC mistake) | **migration 048, applied on dev 2026-10-19**: 167 × ⅓ added to the `LVMDB_A4` node (§9.2) |
 | G9 | `LVMDB_TEXTURE` out of service since 2026-05-11 | **migrations 049 and 050, applied on dev 2026-10-19**: its 20 live edges end 2026-05-11, the day of meter 107's last reading (§9.3) |
-| G10 | meter 74 (Spinning 3) reads about 1/3 of its children | **phase-B CT reversed** (per-phase check, §9.4); site to fix; no correction in the graph (user, 2026-10-19) |
+| G10 | meter 74 (Spinning 3) reads about 1/3 of its children | **phase-B CT reversed** (per-phase check, §9.4); no correction in the graph (user, 2026-10-19). **Fixed on site 2026-10-20**; the board balances from then on (§9.4) |
 | G11 | the gas engine's share of A1–A3 | **migration 051, applied on dev 2026-10-19** (§9.5): gas engine 234,879 kWh in September; `FACTORY_AB` residual 0 |
 | G12 | `COMP_WINDER` fed from `LVSDP_COMP_23`, not `LVMDP_SPINNING_3` (user, 2026-10-19) | **migration 052, applied on dev 2026-10-19**: only `LVSDP_COMP_23` changes (42,696 → 154,372 kWh) |
 | G13 | `SIPPA` fed from `WWTP`, not `FINISHING_22` (user's SLD, 2026-10-19) | **migration 055, applied on dev and production 2026-10-19**: `WWTP` retyped `SUB_BOARD`; `FINISHING_22`'s negative residual gone (§10) |
@@ -336,6 +336,27 @@ The incomer: 94's six feeds (84, 85, 90, 163 − 168, 74, 106) sum to 1,760,911 
 fault to act on, not to hide in the dashboard. For the site: check the polarity of meter 74's
 phase-B CT. After the fix, the counter's past readings stay wrong; only the per-phase power could
 rebuild them.
+
+**After the site fix (dev, refreshed 2026-10-22 with telemetry to that day).** Phase B reads
+negative until 13:30 on 2026-10-19, zero while the work was done, and positive from 09:15 on
+2026-10-20 (site time). Solved day by day on quantity 124:
+
+| day | 74 | children | Spinning 3 residual | 94's gap | of 94 |
+|---|---|---|---|---|---|
+| 10-12 | 2,728 | 8,448 | −5,720 | 7,393 | 9.8% |
+| 10-16 | 1,632 | 4,807 | −3,175 | 4,861 | 6.6% |
+| 10-19 | 144 | 696 | −552 | 1,643 | 2.8% |
+| 10-20 (work day) | 1,030 | 733 | +297 | 806 | 1.3% |
+| 10-21 | 1,007 | 996 | +11 | 1,025 | 1.8% |
+
+Before the fix the children read 3.1 × 74 every day; on 10-21, the first full day after it, they
+read 0.99 × 74. 94's gap less Spinning 3's error was 1,000–1,700 kWh a day before the fix
+(1.8–2.3% of 94), and on 10-21 the whole gap is 1,025 (1.8%): what remains is the 2% predicted
+above, plausibly transformer losses. Two cautions. Spinning 3 was at about a tenth of its usual
+load that week (6–15 kW a phase against 115 on 10-12), so the absolute residuals are small and
+the ratio is the evidence; a week at normal load should confirm it. And the counter's readings
+before 2026-10-20 stay as read: a month that includes them still shows `LVMDP_SPINNING_3` as a
+NEGATIVE_RESIDUAL for those days.
 
 ### 9.5 G11: the gas engine
 

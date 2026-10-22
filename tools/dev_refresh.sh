@@ -10,8 +10,11 @@
 # -t           the dev database, default .env. It is DROPPED and recreated.
 # --telemetry  copy public.telemetry_15min_agg rows for tenant 3 (--tenant to
 #              change) with FROM - 1 day <= bucket < TO. The day before FROM feeds
-#              the first interval. Needed only to test migrations that touch the
-#              solver; without it, before/after solver checks compare empty to empty.
+#              the first interval. Also copies public.daily_energy_cost_summary with
+#              FROM <= daily_bucket < TO: graph.device_totals reads electricity
+#              energy from it, with its shifts and costs. Needed only to test
+#              migrations that touch the solver; without it, before/after solver
+#              checks compare empty to empty.
 # --confirm    must repeat the target's DB_LABEL. A target labelled prod is refused.
 #
 # Dev does not need TimescaleDB. Hypertables and continuous aggregates become
@@ -137,7 +140,7 @@ missing=$(src -tAq -c "
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE (   (n.nspname = 'graph' AND c.relkind IN ('r','p'))
            OR (n.nspname = 'public' AND c.relname IN ('devices','quantities'))
-           OR ($NEED_TEL AND n.nspname = 'public' AND c.relname = 'telemetry_15min_agg'))
+           OR ($NEED_TEL AND n.nspname = 'public' AND c.relname IN ('telemetry_15min_agg', 'daily_energy_cost_summary')))
       AND NOT has_table_privilege(c.oid, 'SELECT')")
 [ -z "$missing" ] || die "$SRC_USER cannot read what must be copied: $missing"
 
@@ -282,6 +285,19 @@ if [ -n "$TEL_FROM" ]; then
     src -q -c "\copy (SELECT $cols FROM public.telemetry_15min_agg WHERE tenant_id = $TENANT AND bucket >= DATE '$TEL_FROM' - 1 AND bucket < DATE '$TEL_TO') TO STDOUT" \
         | tgt -q -c "\copy public.telemetry_15min_agg ($cols) FROM STDIN"
     echo "  $(tgt -tAq -c "SELECT count(*) FROM public.telemetry_15min_agg") rows"
+
+    # graph.device_totals reads conserved electricity from here, not from telemetry
+    cols=$(tgt -tAq -c "SELECT string_agg(quote_ident(attname), ', ' ORDER BY attnum) FROM pg_attribute
+                        WHERE attrelid = 'public.daily_energy_cost_summary'::regclass AND attnum > 0 AND NOT attisdropped")
+    sum_where="tenant_id = $TENANT AND daily_bucket >= DATE '$TEL_FROM' AND daily_bucket < DATE '$TEL_TO'"
+    echo "copying daily_energy_cost_summary, tenant $TENANT, $TEL_FROM to $TEL_TO..."
+    n_src=$(src -tAq -c "SELECT count(*) FROM public.daily_energy_cost_summary WHERE $sum_where")
+    src -q -c "\copy (SELECT $cols FROM public.daily_energy_cost_summary WHERE $sum_where) TO STDOUT" \
+        | tgt -q -c "\copy public.daily_energy_cost_summary ($cols) FROM STDIN"
+    n_tgt=$(tgt -tAq -c "SELECT count(*) FROM public.daily_energy_cost_summary")
+    echo "  $n_tgt rows"
+    # production refreshes recent days in place, so a count taken apart from the copy can drift
+    [ "$n_src" = "$n_tgt" ] || echo "  warning: $SRC_LABEL had $n_src rows when counted; it may have refreshed during the copy"
 fi
 
 tgt -q -c "ANALYZE"
