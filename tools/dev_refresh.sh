@@ -3,7 +3,7 @@
 # data of the graph schema, public.devices and public.quantities, and optionally
 # one window of 15-minute telemetry.
 #
-#   tools/dev_refresh.sh -s SOURCE_ENV [-t TARGET_ENV] [--telemetry FROM TO] --confirm LABEL
+#   tools/dev_refresh.sh -s SOURCE_ENV [-t TARGET_ENV] [--telemetry FROM TO] [--raw FROM TO] --confirm LABEL
 #
 # -s           production. Read-only credentials (grafReader) are enough, and every
 #              source session is forced read-only regardless.
@@ -15,6 +15,11 @@
 #              energy from it, with its shifts and costs. Needed only to test
 #              migrations that touch the solver; without it, before/after solver
 #              checks compare empty to empty.
+# --raw        copy public.telemetry_data rows for the same tenant with FROM - 15 min
+#              <= timestamp < TO (UTC), at most 2 days, for the quantities the solver
+#              has a rule or an alias for. Minute data is the largest table, so only
+#              what graph.device_totals_minute (060) reads. Use with --telemetry over
+#              the same days, so its comparison has both resolutions.
 # --confirm    must repeat the target's DB_LABEL. A target labelled prod is refused.
 #
 # Dev does not need TimescaleDB. Hypertables and continuous aggregates become
@@ -30,15 +35,16 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 . "$ROOT/tools/_env.sh"
 
-SRC_ENV= TGT_ENV="$ROOT/.env" CONFIRM= TEL_FROM= TEL_TO= TENANT=3
+SRC_ENV= TGT_ENV="$ROOT/.env" CONFIRM= TEL_FROM= TEL_TO= RAW_FROM= RAW_TO= TENANT=3
 while [ $# -gt 0 ]; do
     case "$1" in
         -s) SRC_ENV=$2; shift 2 ;;
         -t) TGT_ENV=$2; shift 2 ;;
         --confirm) CONFIRM=$2; shift 2 ;;
         --telemetry) TEL_FROM=$2; TEL_TO=$3; shift 3 ;;
+        --raw) RAW_FROM=$2; RAW_TO=$3; shift 3 ;;
         --tenant) TENANT=$2; shift 2 ;;
-        -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown argument: $1 (see --help)" ;;
     esac
 done
@@ -48,6 +54,15 @@ if [ -n "$TEL_FROM" ]; then
         [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--telemetry dates must be YYYY-MM-DD, got '$d'"
     done
     [[ "$TEL_FROM" < "$TEL_TO" ]] || die "--telemetry FROM must be before TO"
+fi
+if [ -n "$RAW_FROM" ]; then
+    for d in "$RAW_FROM" "$RAW_TO"; do
+        [[ "$d" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "--raw dates must be YYYY-MM-DD, got '$d'"
+    done
+    [[ "$RAW_FROM" < "$RAW_TO" ]] || die "--raw FROM must be before TO"
+    days=$(( ($(date -j -f %F "$RAW_TO" +%s 2>/dev/null || date -d "$RAW_TO" +%s) \
+            - $(date -j -f %F "$RAW_FROM" +%s 2>/dev/null || date -d "$RAW_FROM" +%s)) / 86400 ))
+    [ "$days" -le 2 ] || die "--raw copies at most 2 days of minute data; got $days"
 fi
 [[ "$TENANT" =~ ^[0-9]+$ ]] || die "--tenant must be a number"
 
@@ -135,12 +150,14 @@ done
 #    pg_dump locks every table it dumps, and LOCK needs SELECT.
 # ---------------------------------------------------------------------------
 NEED_TEL=false; [ -n "$TEL_FROM" ] && NEED_TEL=true
+NEED_RAW=false; [ -n "$RAW_FROM" ] && NEED_RAW=true
 missing=$(src -tAq -c "
     SELECT string_agg(format('%I.%I', n.nspname, c.relname), ', ' ORDER BY 1)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE (   (n.nspname = 'graph' AND c.relkind IN ('r','p'))
            OR (n.nspname = 'public' AND c.relname IN ('devices','quantities'))
-           OR ($NEED_TEL AND n.nspname = 'public' AND c.relname IN ('telemetry_15min_agg', 'daily_energy_cost_summary')))
+           OR ($NEED_TEL AND n.nspname = 'public' AND c.relname IN ('telemetry_15min_agg', 'daily_energy_cost_summary'))
+           OR ($NEED_RAW AND n.nspname = 'public' AND c.relname = 'telemetry_data'))
       AND NOT has_table_privilege(c.oid, 'SELECT')")
 [ -z "$missing" ] || die "$SRC_USER cannot read what must be copied: $missing"
 
@@ -298,6 +315,19 @@ if [ -n "$TEL_FROM" ]; then
     echo "  $n_tgt rows"
     # production refreshes recent days in place, so a count taken apart from the copy can drift
     [ "$n_src" = "$n_tgt" ] || echo "  warning: $SRC_LABEL had $n_src rows when counted; it may have refreshed during the copy"
+fi
+
+if [ -n "$RAW_FROM" ]; then
+    cols=$(tgt -tAq -c "SELECT string_agg(quote_ident(attname), ', ' ORDER BY attnum) FROM pg_attribute
+                        WHERE attrelid = 'public.telemetry_data'::regclass AND attnum > 0 AND NOT attisdropped")
+    raw_where="tenant_id = $TENANT AND timestamp >= DATE '$RAW_FROM' - INTERVAL '15 minutes'
+               AND timestamp < DATE '$RAW_TO'
+               AND quantity_id IN (SELECT quantity_id FROM graph.quantity_rule
+                                   UNION SELECT quantity_id FROM graph.quantity_alias)"
+    echo "copying telemetry_data, tenant $TENANT, $RAW_FROM (minus 15 minutes) to $RAW_TO, rule quantities..."
+    src -q -c "\copy (SELECT $cols FROM public.telemetry_data WHERE $raw_where) TO STDOUT" \
+        | tgt -q -c "\copy public.telemetry_data ($cols) FROM STDIN"
+    echo "  $(tgt -tAq -c "SELECT count(*) FROM public.telemetry_data") rows"
 fi
 
 tgt -q -c "ANALYZE"

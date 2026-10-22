@@ -98,3 +98,25 @@ def test_config_tls_passes_to_libpq(monkeypatch, tmp_path):
     assert info["sslmode"] == "verify-ca" and info["sslrootcert"] == str(tmp_path / "ca.pem")
     _env(monkeypatch, DB_LABEL="dev", DB_SSLMODE="require")
     assert "sslrootcert" not in config.load().conninfo()
+
+
+def test_pieces_cut_at_changes():
+    from server.tools import value
+    d = dt.date.fromisoformat
+    assert value.pieces(d("2026-09-01"), d("2026-10-01"), []) == [(d("2026-09-01"), d("2026-10-01"), d("2026-09-30"))]
+    assert value.pieces(d("2026-09-01"), d("2026-10-01"), [d("2026-09-28")]) == [
+        (d("2026-09-01"), d("2026-09-28"), d("2026-09-27")), (d("2026-09-28"), d("2026-10-01"), d("2026-09-30"))]
+
+
+def test_combine_pieces():
+    from decimal import Decimal as D
+
+    from server.tools import value
+    m = {"val": D(10), "origin": "MEASURED"}
+    r = {"val": D(5), "origin": "ROLLUP"}
+    assert value.combine([m, None], False) == (D(10), "MEASURED", None)        # retired after the first piece
+    assert value.combine([m, r], False) == (D(15), "ROLLUP", None)
+    assert value.combine([m, {"val": D(0), "origin": "NONE"}], False) == (None, "NONE", None)   # no partial totals
+    assert value.combine([None, None], False) is None
+    pf = value.combine([{"p_val": D(3), "q_val": D(1)}, {"p_val": D(1), "q_val": D(2)}], True)
+    assert pf == (D("0.8"), "DERIVED", (D(4), D(3)))                           # from the summed energies

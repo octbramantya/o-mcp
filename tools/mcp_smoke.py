@@ -87,13 +87,11 @@ def main():
         ("meter_readings", {"node": "LVMDB_A5", "quantities": ["THD_VOLTAGE_LN"], "start": start, "end": end,
                             "interval": "hour", "as_of": last_day}),
         ("node_value", {"nodes": ["INCOMING_PLN", "LVMDB_A5", "LVSDP_SP2_1"], "quantity": "ACTIVE_ENERGY_DELIVERED",
-                        "start": start, "end": end, "as_of": last_day}),
-        ("node_value", {"nodes": ["INCOMING_PLN", "LVSDP_SP2_1"], "quantity": "PF_TRUE", "start": start, "end": end,
-                        "as_of": last_day}),
+                        "start": start, "end": end}),
+        ("node_value", {"nodes": ["INCOMING_PLN", "LVSDP_SP2_1"], "quantity": "PF_TRUE", "start": start, "end": end}),
         ("node_value", {"nodes": ["INCOMING_PLN", "LVSDP_SP2_1"], "quantity": "THD_VOLTAGE_LN", "start": start,
-                        "end": end, "as_of": last_day}),
-        ("node_value", {"nodes": ["WTP1_CLR", "WTP1_RAN"], "quantity": "WATER_VOLUME", "start": start, "end": end,
-                        "as_of": last_day}),
+                        "end": end}),
+        ("node_value", {"nodes": ["WTP1_CLR", "WTP1_RAN"], "quantity": "WATER_VOLUME", "start": start, "end": end}),
     ]
     must_fail = [
         ("plant_section", {"root": "LVMBD_A5"}),

@@ -16,13 +16,26 @@
         "tenant": {"type": "integer", "description": "Tenant (site) id."},
         "nodes": {"type": "array", "items": {"type": "string"}, "description": "Codes of the nodes the server resolved the request to."},
         "quantity": {"type": "string", "description": "Quantity code."},
-        "as_of": {"type": "string", "format": "date", "description": "The network as it was on this day."},
+        "as_of": {"type": "string", "format": "date", "description": "The window's last day. Nodes were looked up on the network of the window's days, latest first. Since 2026-10-22 the server picks it; values are solved on it unless pieces says otherwise."},
         "window": {
           "type": "object", "description": "Whole site-time days, start included, end excluded.",
           "required": ["start", "end"],
           "properties": {
             "start": {"type": "string", "description": "Start, site time with offset."},
             "end": {"type": "string", "description": "End, excluded."}
+          }
+        },
+        "pieces": {
+          "type": "array", "minItems": 1,
+          "description": "Added 2026-10-22, within version 1. The parts the window was solved in, each on the network of its own last day. One piece, the whole window, unless the plant changed inside it (finding PLANT_CHANGED); the values combine the pieces.",
+          "items": {
+            "type": "object",
+            "required": ["start", "end", "as_of"],
+            "properties": {
+              "start": {"type": "string", "format": "date", "description": "First day, site time."},
+              "end": {"type": "string", "format": "date", "description": "Day after the last, excluded."},
+              "as_of": {"type": "string", "format": "date", "description": "The network this piece was solved on: its last day."}
+            }
           }
         }
       }
@@ -64,7 +77,7 @@
         "type": "object",
         "required": ["code", "message"],
         "properties": {
-          "code": {"enum": ["NO_VALUE", "NOT_IN_NETWORK", "DATA_INCOMPLETE"], "description": "NO_VALUE: nothing measured or inferable for a node. NOT_IN_NETWORK: the node has no edge of this quantity's utility. DATA_INCOMPLETE: the source's data ends before the window does."},
+          "code": {"enum": ["NO_VALUE", "NOT_IN_NETWORK", "DATA_INCOMPLETE", "PLANT_CHANGED"], "description": "NO_VALUE: nothing measured or inferable for a node. NOT_IN_NETWORK: the node has no edge of this quantity's utility. DATA_INCOMPLETE: the source's data ends before the window does. PLANT_CHANGED (added 2026-10-22): the plant changed inside the window; the message says whether the window was solved in pieces or, for a quantity whose pieces can't be combined, on the network of its last day."},
           "node": {"type": "string", "description": "Code of the node, when the finding is about one."},
           "message": {"type": "string", "description": "One sentence for a person."}
         }

@@ -22,8 +22,8 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–058`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
-| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one window of telemetry and `daily_energy_cost_summary` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–061`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
 | `tools/gen_037.py` | renders migration 037 from `design/quantity_terms.csv`. Same rule |
@@ -35,7 +35,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/mcp-tools.md` | drafts for the MCP server: the `plant_section` and `plant_vocabulary` tools' descriptions and input schemas, how a model learns what a response means, and where each ontology description comes from |
 | `design/mcp-tenancy.md` | one Hermes agent per tenant: the authorization layers that keep each agent to its tenant, a database role per tenant enforced by Postgres, and what that changes in migration 043 (proposed, decisions open) |
 | `design/mcp-catalogue.md` | every tool the MCP server is expected to need, by layer (vocabulary, topology, instruments, values, analysis), and how their discovery is staggered: by release, not at run time |
-| `design/frontend.md` | the custom frontend that replaces Grafana in the long run: dashboard time range and refresh, snapping tiles, one tenant per user plus an admin group, each user's own dashboards in a `frontend` schema, database pooling through one shared API, and the monorepo layout (decided 2026-10-22, the rest proposed) |
+| `design/frontend.md` | the custom frontend that replaces Grafana in the long run: dashboard time range and refresh, snapping tiles, one tenant per user plus an admin group, each user's own dashboards in a `frontend` schema, database pooling through one shared API, and the monorepo layout (decided 2026-10-22; its database side built as 059–061) |
 | `tools/check_subgraph.py` | checks v1 documents against the schema, strictly: `uv run --no-project --with jsonschema tools/check_subgraph.py doc.json` |
 | `server/` | the MCP server, phases 1 and 2: `plant_vocabulary`, `plant_find`, `plant_section`, `node_meters`, `meter_readings`, `node_value`, one module each in `server/tools/` (each holds the tool's description and input schema). Run against dev: `O_MCP_TOKEN=… O_MCP_BIND=127.0.0.1:8765 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run python -m server --env-file .env` (`--phase 1` for the topology tools only). Keys in `.env.example` |
 | `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
@@ -59,9 +59,9 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (dev and production, 2026-10-19)
+## Current state of the model (dev and production, 2026-10-22)
 
-Tenant 3, after migration 057 on production and 058 on dev. Migrations 031–042 were rehearsed
+Tenant 3, after migration 058 on production and 059–061 on dev. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19 (below).
@@ -260,7 +260,7 @@ plants and gas engine injecting into those nodes, at the depth of the board they
 Applied on dev, then on production on 2026-10-19; its self-test passed there, and `grafReader`
 can call it. Backup first: `logs/prod/graph_backup_pre057.20261019-155452.dump`.
 
-## Migration 058 (on dev since 2026-10-22)
+## Migration 058 (on production since 2026-10-22)
 
 Migration 058 adds the 15 category rows of the G3 worklist (`design/graph-sankey.md` §10), as the
 user decided them on 2026-10-19 and 2026-10-22: `LVMDB_A1`, `LVMDB_B2` and `LABKNIT` under
@@ -269,7 +269,32 @@ Production, `LVMDB_TEXTURE_2` under Yarn, `MC_MOTOR_5/6` under MC Motor, `HEATER
 Heater. Board rows are there only where the one-level CHILDREN rule can't reach the board from
 its loads. In September 2026 Unassigned falls from 390,413 to 200,472 kWh, meter 94's
 unaccounted remainder alone, and Production rises by the same amount; Utilities doesn't move.
-The migration checks all three. Not yet on production.
+The migration checks all three. Applied on dev, then on production on 2026-10-22 with the same
+September figures. Backup first: `logs/prod/graph_backup_pre058.20261022-110149.dump`.
+
+## Migrations 059–061 (on dev since 2026-10-22)
+
+The database side of the custom frontend (`design/frontend.md`). Not yet on production.
+
+Migration 059 adds `graph.change_dates(tenant, start, end)`, the days inside a range on which the
+graph in effect changes (a live node, edge, measurement or category row starts that day or ended the
+day before; `'-infinity'` is not a change). Tenant 3 has two in 2026: 2026-05-12 and 2026-09-28.
+`node_value` now cuts its window there and solves each piece on its own network, adding energy and
+volume; THD is solved on the last day's network. It no longer takes `as_of`; `o-mcp/values` gains
+`query.pieces` and the finding `PLANT_CHANGED`, within version 1.
+
+Migration 060 adds `prs.telemetry_data` and the solver's short-window paths: a transaction that
+sets `graph.resolution = 'minute'` gets minute totals from every `device_totals` call
+(`graph.device_totals_minute`, at most 6 hours, refused before the oldest minute reading;
+production keeps 14 days), and `'15min'` gets electricity energy from 15-minute buckets instead of
+the daily summary (`graph.device_totals_15min`). Both clean steps with `graph.register_step`, the
+15-minute views' rules. Compared on production's 2026-10-21 (copied with `tools/dev_refresh.sh --raw`), no device
+differs on a non-zero amount. A flat register is 0 on minutes, where the daily summary leaves the
+device out (decided 2026-10-22, `design/frontend.md` §3).
+
+Migration 061 adds the `frontend` schema (tenants, users, sessions, dashboards, audit) and two
+`NOLOGIN` roles: `frontend_api`, which writes `frontend` only, and `prs_frontend`, tenant 3's plant
+reads for the frontend, under the same `tenant_3` policies as `prs_hermes_agent`.
 
 ## Two rules worth not rediscovering
 

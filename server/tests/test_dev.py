@@ -113,8 +113,34 @@ def test_readings_decode_pf(loop, ctx):
 def test_value_origins(loop, ctx):
     start, end = window()
     doc, _ = call(loop, ctx, "node_value", {"nodes": ["INCOMING_PLN"], "quantity": "THD_VOLTAGE_LN",
-                                            "start": start, "end": end, "as_of": end})
+                                            "start": start, "end": end})
     assert doc["values"][0]["origin"] in ("MEASURED", "INHERITED", "NONE")
+
+
+def test_value_splits_at_plant_change(loop, ctx):
+    """September 2026 spans MC302_BARU and MC303_BARU's retirement (2026-09-28): energy is solved in two
+    pieces and adds up to the pieces solved alone; THD is solved once, on the last day's network."""
+    if ctx.config.tenant != 3:
+        pytest.skip("the change dates are tenant 3's")
+    nodes = ["INCOMING_PLN", "MC302_BARU"]
+    doc, _ = call(loop, ctx, "node_value", {"nodes": nodes, "quantity": "ACTIVE_ENERGY_DELIVERED",
+                                            "start": "2026-09-01", "end": "2026-10-01"})
+    assert doc["query"]["pieces"] == [{"start": "2026-09-01", "end": "2026-09-28", "as_of": "2026-09-27"},
+                                      {"start": "2026-09-28", "end": "2026-10-01", "as_of": "2026-09-30"}]
+    assert "PLANT_CHANGED" in {f["code"] for f in doc["findings"]}
+    a, _ = call(loop, ctx, "node_value", {"nodes": nodes, "quantity": "ACTIVE_ENERGY_DELIVERED",
+                                          "start": "2026-09-01", "end": "2026-09-28"})
+    b, _ = call(loop, ctx, "node_value", {"nodes": ["INCOMING_PLN"], "quantity": "ACTIVE_ENERGY_DELIVERED",
+                                          "start": "2026-09-28", "end": "2026-10-01"})
+    assert len(a["query"]["pieces"]) == 1 and len(b["query"]["pieces"]) == 1
+    whole = {r["code"]: r["value"] for r in doc["values"]}
+    if a["values"][0]["value"] is not None and b["values"][0]["value"] is not None:
+        assert whole["INCOMING_PLN"] == pytest.approx(a["values"][0]["value"] + b["values"][0]["value"], abs=1e-3)
+    assert whole["MC302_BARU"] == a["values"][1]["value"]   # retired: nothing after 09-27
+    thd, _ = call(loop, ctx, "node_value", {"nodes": ["INCOMING_PLN"], "quantity": "THD_VOLTAGE_LN",
+                                            "start": "2026-09-01", "end": "2026-10-01"})
+    assert thd["query"]["pieces"] == [{"start": "2026-09-01", "end": "2026-10-01", "as_of": "2026-09-30"}]
+    assert "PLANT_CHANGED" in {f["code"] for f in thd["findings"]}
 
 
 def test_tenant_boundary(loop, ctx):
