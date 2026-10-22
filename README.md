@@ -22,7 +22,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–057`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–058`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, and optionally one telemetry window |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -60,7 +60,7 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-19)
 
-Tenant 3, after migration 057, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 057 on production and 058 on dev. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19 (below).
@@ -258,6 +258,17 @@ plants and gas engine injecting into those nodes, at the depth of the board they
 `LVMDB_TEXTURE_2` (163) and `LVMDB_TF630` (106). Granted to `grafReader` and `prs_hermes_agent`.
 Applied on dev, then on production on 2026-10-19; its self-test passed there, and `grafReader`
 can call it. Backup first: `logs/prod/graph_backup_pre057.20261019-155452.dump`.
+
+## Migration 058 (on dev since 2026-10-22)
+
+Migration 058 adds the 15 category rows of the G3 worklist (`design/graph-sankey.md` §10), as the
+user decided them on 2026-10-19 and 2026-10-22: `LVMDB_A1`, `LVMDB_B2` and `LABKNIT` under
+Fabric, `LVMDP_SPINNING_2` and `MC_SP_A/B/C` under Spinning, `LVMDB_TF630` and `OFFICE_2` under
+Production, `LVMDB_TEXTURE_2` under Yarn, `MC_MOTOR_5/6` under MC Motor, `HEATER_5/6/11` under
+Heater. Board rows are there only where the one-level CHILDREN rule can't reach the board from
+its loads. In September 2026 Unassigned falls from 390,413 to 200,472 kWh, meter 94's
+unaccounted remainder alone, and Production rises by the same amount; Utilities doesn't move.
+The migration checks all three. Not yet on production.
 
 ## Two rules worth not rediscovering
 

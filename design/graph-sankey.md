@@ -119,8 +119,9 @@ Unassigned**:
 - `MC_MOTOR_5/6`, `TRICOT`, `TWIST_PANEL`;
 - `COOLING1`, `OFFICE`, `OFFICE_2`, `LABKNIT` and `FLR_124`.
 
-The residual rule above takes `LVMDB_A5` out of that list. The rest is the G3 worklist: one row
-on a board covers everything below it.
+The residual rule above takes `LVMDB_A5` out of that list. The rest was the G3 worklist: one row
+on a board covers everything below it. **Superseded** by the G3 worklist in §10, which works from
+September values.
 
 ## 5. Links
 
@@ -193,7 +194,7 @@ From the audit's corrections list:
 | G11 | the gas engine's share of A1–A3 | **migration 051, applied on dev 2026-10-19** (§9.5): gas engine 234,879 kWh in September; `FACTORY_AB` residual 0 |
 | G12 | `COMP_WINDER` fed from `LVSDP_COMP_23`, not `LVMDP_SPINNING_3` (user, 2026-10-19) | **migration 052, applied on dev 2026-10-19**: only `LVSDP_COMP_23` changes (42,696 → 154,372 kWh) |
 | G13 | `SIPPA` fed from `WWTP`, not `FINISHING_22` (user's SLD, 2026-10-19) | **migration 055, applied on dev and production 2026-10-19**: `WWTP` retyped `SUB_BOARD`; `FINISHING_22`'s negative residual gone (§10) |
-| G3 | the Unassigned nodes; `WORKSHOP` → PRODUCTION (decided 2026-10-19, **row added by 053**); `WWTP`, `LAB_DEVICE` homes | partly superseded by §4; rows for the rest (§10) |
+| G3 | the Unassigned nodes; `WORKSHOP` → PRODUCTION (decided 2026-10-19, **row added by 053**); `WWTP`, `LAB_DEVICE` homes | `WORKSHOP` (053), `FLR_124` (056) done; the rest in the G3 worklist (§10): all decided (2026-10-22); **migration 058, applied on dev 2026-10-22** |
 | G1 | A3 unmetered loads | `LVMDB_A3` stays HVAC for now (2026-10-19); waiting on the SLD load list |
 | G4 | Finishing 2.1 unmetered loads | open; nothing from site yet |
 
@@ -216,7 +217,8 @@ which reads production and so needs your go-ahead. Checks for one month:
 3. `graph.sankey` and `graph.sankey_diagnostics`, with the checks in §7 as the migration's
    self-test. **Done: 054.** The self-test checks the balances on September 2026 rather
    than on synthetic data: they hold on any data, so they run again unchanged on production.
-4. G3 rows for whatever is still Unassigned after a real-telemetry run.
+4. G3 rows for whatever is still Unassigned after a real-telemetry run. **Done on dev:** 053
+   (`WORKSHOP`), 056 (`FLR_124`), 058 (the G3 worklist, §10).
 5. The Grafana panel: query `graph.sankey`, and drop the colour map and the month subtitle.
    `prs.get_sankey_energy_flow` stays until the new panel has run alongside it for a month.
 
@@ -430,7 +432,8 @@ or the window drops below a day.
   are unmetered and get no value of their own. Explicit rows still carry 85% of the energy.
 - **Unassigned with value after 048/049** (plus `FACTORY_AB`'s +44,979, which G11 removes): the residuals of Spinning 2 (80,865), Spinning 1
   (60,764), TF630 (32,173), B2 (24,597), Texture 2 (23,561) and A1 (3,259); `MC_MOTOR_5` (25,246,
-  metered with no category); `HEATER_TOTAL` (239). This is the G3 worklist.
+  metered with no category); `HEATER_TOTAL` (239). This was the G3 worklist; see §10 for the
+  current one (Spinning 1 left it with 056).
 
 ## 10. As built (migrations 053 and 054, dev, 2026-10-19)
 
@@ -502,4 +505,43 @@ version could report residuals within about ±1% of the node's value as their ow
 board's small unmetered loads (`COOLING1`, `OFFICE` on A2) sit inside that tolerance and are
 invisible either way.
 
-On production since 2026-10-19 (053–055; same September figures as dev). Still to do: the G3 rows, then the Grafana panel (§8 items 4 and 5).
+### G3 worklist (2026-10-19, after 056; decisions 2026-10-22)
+
+What is still Unassigned in September 2026 (dev, after 056): 390,413 kWh in 8 rows. How a row
+works, so the worklist asks the right question:
+
+- A `node_category` row on a panel does not recolour its children. A child's own row or type
+  default wins over inheritance, so the panel's row classifies only its **residual** (meter minus
+  metered children: losses and loads the SLD doesn't show) and anything below it with no category
+  of its own.
+- So the question per panel is what its residual is, decided from the SLD in this order:
+  1. unmetered loads drawn below it: categorise **those loads**, and the residual follows through
+     the CHILDREN rule (as `FLR_124` did, 056);
+  2. no unmetered load drawn (losses and unknowns): a row on the **panel**, with the category of
+     what it serves;
+  3. unclear: leave it Unassigned, visible as a question.
+- The CHILDREN rule looks one level down: a panel's direct unmetered children, each with a
+  category of its own (explicit or type default), all the same. An unmetered sub-panel without a
+  row blocks it, even when the loads below the sub-panel are all categorised.
+
+Capacitor banks carry no energy and are left out.
+
+| node | Sept kWh (residual of value) | unmetered below it | metered below it | route | status |
+|---|---|---|---|---|---|
+| `INCOMING_PLN` (unaccounted) | 200,472 | none | its six feeds | not a category question | **stays Unassigned.** Meter 94 beyond its feeds; mostly meter 74's reversed phase B (G10), about 40,000 (2%) once fixed |
+| `LVMDB_A1` | 3,259 of 272,803 (1.2%) | none | WJL1–4 (WJL), `PKN_DEVICE` (PKN) | 2: panel row | **Settled:** user's SLD, every load on A1 is production (2026-10-19). Row → FABRIC, where WJL and PKN meet; PRODUCTION is the alternative |
+| `HEATER_TOTAL` | 239 of 9,000 | `HEATER_5`, `HEATER_6` (no category) | `HEATER_1–4`, `_7`, `_8`, `_10` (HEATER); `HEATER_11` (meter 59, silent, no category) | 1: loads | **Settled:** every heater beside them is HEATER. Rows `HEATER_5`, `HEATER_6`, `HEATER_11` → HEATER; the panel needs none |
+| `MC_MOTOR_5` | 25,246 (metered machine, not a panel) | — | — | missing row | **Settled:** on `LVMDB_TEXTURE_2` beside `MC_MOTOR_1–4`, `7–12`, all MC_MOTOR. Row → MC_MOTOR |
+| `LVMDP_SPINNING_2` | 80,865 of 223,163 (36%) | `MC_SP_A/B/C` (MC SP Line A/B/C, no category), one level down under the unmetered `LVSDP_SP2_1/2` | `MC_SP_D–J` (SPINNING), `AHU_LINE1/2` (HVAC) | 1, but blocked: panel row | **Decided (user, 2026-10-22):** Production / Spinning; `MC_SP_A/B/C` are part of the spinning process. Rows `MC_SP_A/B/C` → SPINNING, and `LVMDP_SPINNING_2` → SPINNING, because the one-level CHILDREN rule doesn't reach the board through the unmetered sub-panels. No change to the rule |
+| `LVMDB_TF630` | 32,173 of 67,754 (47%) | `OFFICE_2` (Office TF630kv, no category on purpose); `TWIST_PANEL` passes `MC302_1_8` (TWISTING) on, own 0 | `LIGHTING_MAIN` (LIGHTING), `WTP_1` (WTP) | 1, but blocked: panel row | **Decided (user, 2026-10-22):** Production; `OFFICE_2` is unmetered and counted as Production for now (two broad classes, as `FLR_124`). Rows `OFFICE_2` → PRODUCTION and `LVMDB_TF630` → PRODUCTION: `TWIST_PANEL` is a direct unmetered child with no category, so `OFFICE_2`'s row alone would not reach the board. Half the board unaccounted is still large for one office feed; loads may be missing from the SLD |
+| `LVMDB_B2` | 24,597 of 661,947 (3.7%) | none | Fabric: BEAM, RAPID, PRESS, PKR, GARUK, PACKING, RAINCOAT, LAB; Utilities: BOILER (`BOILER_MIURA`, `FINISHING_21`), COMPRESSOR (`COMP_100HP`), WTP (`WTP_2`) | 2: panel row | **Decided (user, 2026-10-22):** the unmetered remainder is Production / Fabric (the user's note: GARUK). Row `LVMDB_B2` → FABRIC. `BOILER_MIURA`, `FINISHING_21`, `COMP_100HP` and `WTP_2` are Utilities, as their rows already say |
+| `LVMDB_TEXTURE_2` | 23,561 of 255,505 (9%) | `LABKNIT` (Lab Knitting), `MC_MOTOR_6` (MC 6), neither categorised | MC_MOTOR, COMPRESSOR, HVAC, REWINDING (`MDP_MC_13`), `HEATER_TOTAL`, `MC_MOTOR_5` | 1, loads disagree: panel row | **Decided (user, 2026-10-22):** `LABKNIT` → Production / Fabric (row → FABRIC); `MC_MOTOR_6` → MC_MOTOR, from its siblings. The two differ, so the CHILDREN rule gives the board nothing; its own residual is Yarn (Texture): row `LVMDB_TEXTURE_2` → YARN (no Texture category exists under Yarn) |
+
+**Migration 058 (dev, 2026-10-22)** adds all 15 rows. September 2026: Unassigned 390,413 →
+200,472, meter 94's remainder alone; Production 1,303,661 → 1,493,602 (Fabric +27,856: A1 and B2;
+Yarn +129,912: Spinning 2, MC_MOTOR_5, HEATER_TOTAL, Texture 2; Production itself +32,173: TF630);
+Utilities does not move. The migration checks that Utilities is unchanged, that Production gains
+what Unassigned loses, and that no node but a source remainder is left Unassigned with a value.
+`LVMDB_A2`'s −956 is a negative residual, not drawn, and stays a diagnostic.
+
+On production since 2026-10-19 (053–055; same September figures as dev). G3 rows: 058 on dev, not yet on production. Then the Grafana panel (§8 item 5).
