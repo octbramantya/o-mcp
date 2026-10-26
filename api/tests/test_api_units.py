@@ -90,6 +90,16 @@ def test_sources_follow_device_totals(resolution, is_daily, rules, want):
     assert values.sources(resolution, is_daily, rules) == want
 
 
+def test_summary_until_leaves_out_the_quarter_still_arriving():
+    jkt = ZoneInfo("Asia/Jakarta")
+    day = dt.datetime(2026, 10, 26)
+    run = dt.datetime(2026, 10, 26, 6, 30, 0, 210000, tzinfo=dt.UTC)     # 13:30 site time
+    assert values.summary_until(day, run, jkt) == dt.datetime(2026, 10, 26, 13, 15, tzinfo=jkt)
+    later = dt.datetime(2026, 10, 28, 16, 30, tzinfo=dt.UTC)              # a run two days on
+    assert values.summary_until(day, later, jkt) == dt.datetime(2026, 10, 27, tzinfo=jkt)
+    assert values.summary_until(day, None, jkt) == dt.datetime(2026, 10, 27, tzinfo=jkt)
+
+
 def test_instant_pieces_cut_at_midnight():
     cuts = [dt.date(2026, 9, 28)]
     assert value.change_days(t("2026-09-27T18:00"), t("2026-09-28T06:00")) == (dt.date(2026, 9, 27),

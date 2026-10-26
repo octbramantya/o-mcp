@@ -15,7 +15,7 @@ window's last day. An id the tenant's role can't see is refused, as if it didn't
 
 data_until is where the data the solve read stops, in site time: the source's last minute or bucket
 inside the window, for the whole tenant (not per meter), or for the daily summary the earlier of its
-last day's end and that day's last refresh, which a cron job runs. Short of the window's end, the
+last day's end and the quarter before that day's last refresh (summary_until). Short of the window's end, the
 answer carries DATA_INCOMPLETE: a range running to now, a stalled feed, a day not yet summarised.
 """
 import datetime as dt
@@ -67,6 +67,14 @@ def sources(resolution, is_daily, rules):
             for r in rules}
 
 
+def summary_until(day, refreshed, tz):
+    """Where a daily summary row stops: its day's end, or for a day still filling the quarter before its
+    last refresh. pgAgent runs the refresh every 30 minutes and stamps the run's start, when the quarter
+    then ending hasn't all arrived."""
+    day_end = (day + dt.timedelta(days=1)).replace(tzinfo=tz)
+    return day_end if refreshed is None else min(day_end, _floor(refreshed.astimezone(tz), QUARTER) - QUARTER)
+
+
 async def _until(conn, tenant, source, start, end):
     """Where source's data inside [start, end) stops, aware, or None when it has none there."""
     tz = start.tzinfo
@@ -76,11 +84,7 @@ async def _until(conn, tenant, source, start, end):
                              " AND daily_bucket >= %s AND daily_bucket < %s"
                              " GROUP BY 1 ORDER BY 1 DESC LIMIT 1",
                        (tenant, start.replace(tzinfo=None), end.replace(tzinfo=None)))
-        if not r:
-            return None
-        day_end = (r[0]["d"] + dt.timedelta(days=1)).replace(tzinfo=tz)
-        return day_end if r[0]["refreshed"] is None else min(day_end, _floor(r[0]["refreshed"].astimezone(tz),
-                                                                             QUARTER))
+        return summary_until(r[0]["d"], r[0]["refreshed"], tz) if r else None
     column, step = ("timestamp", MINUTE) if source == "telemetry_data" else ("bucket", QUARTER)
     s, e = timewin.Window(start, end).utc()
     t = (await rows(conn, f"SELECT max({column}) AS t FROM {source} WHERE tenant_id = %s"

@@ -340,8 +340,8 @@ snapped outwards to its resolution. The answer carries `resolution`, the snapped
 `pieces` it was solved in, and per node the value, origin and parts, with the findings
 `NOT_IN_NETWORK`, `NO_VALUE` and `PLANT_CHANGED` as `node_value` has them. It also names the
 `source` the solve read and its `data_until`: the last minute or bucket inside the window, for the
-whole tenant, or for the daily summary the earlier of its last day's end and that day's
-`last_refreshed` (a cron job fills it). Short of the window's end the answer carries
+whole tenant, or for the daily summary the earlier of its last day's end and the quarter
+before that day's `last_refreshed` (the run's start, when that quarter hasn't all arrived). Short of the window's end the answer carries
 `DATA_INCOMPLETE`, so a range running to now, a stalled feed or a day not yet summarised is
 labelled, not shown as a drop. A single silent meter isn't caught here. Answers are cached for
 30 s by tenant, quantity, nodes and the window rounded to the minute, and identical requests in
@@ -405,10 +405,11 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 Next to build: dashboards in `api/`, more plant routes as widgets need them (topology, readings,
 sankey), then `web/` (§9). A whole-day range that includes today takes the daily path, which reaches as far as the
 daily summary's last refresh. On production (read 2026-10-26 13:50 site time) today's rows were
-refreshed at 13:30 and the days before last at 23:30, so the job runs at least hourly at :30 and
-recomputes the last three days each time (`refresh_daily_energy_costs`); its schedule is in `cron`,
-which `grafReader` can't read. "Today" is then up to an hour behind the 15-minute data, and says so
-with `DATA_INCOMPLETE`. Before `api/` is deployed:
+refreshed at 13:30 and the days before last at 23:30. pgAgent job 4 runs
+`refresh_daily_energy_costs` every 30 minutes, on the hour and the half hour (its log, read by the
+user the same day), in about 2 minutes, recomputing the last three site days each time, and
+`last_refreshed` is the run's start. "Today" is then up to 45 minutes behind the 15-minute data,
+and says so with `DATA_INCOMPLETE`. Before `api/` is deployed:
 
 - behind a reverse proxy, the client's address (for the per-address limit and the audit) must come
   from a trusted `X-Forwarded-For`; today it is the peer's;
