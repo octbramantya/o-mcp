@@ -17,8 +17,10 @@ import datetime as dt
 import functools
 import json
 import logging
+import pathlib
 import sys
 
+import jsonschema
 import psycopg
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse, PlainTextResponse
@@ -358,6 +360,7 @@ async def assign_user(request, conn, s, body):
 # only, until web/ fixes the format.
 FORMAT_VERSION = 1
 MAX_DOCUMENT = 256 * 1024
+DASHBOARD_SCHEMA = pathlib.Path(__file__).resolve().parent.parent / "design" / "dashboard-v1.schema.json"
 MAX_TITLE = 200
 DASHBOARD_COLUMNS = ("d.id, d.title, d.format_version, d.from_template, d.created_at, d.updated_at,"
                      " d.owner_id, u.email AS owner_email, u.display_name AS owner_name, u.role AS owner_role")
@@ -378,7 +381,17 @@ def _document(body):
         raise ApiError(400, f"document is larger than {MAX_DOCUMENT // 1024} KiB.")
     if _id(version, "format_version") != FORMAT_VERSION:
         raise ApiError(400, f"format_version must be {FORMAT_VERSION}.")
+    error = next(iter(sorted(_dashboard_schema().iter_errors(doc), key=lambda e: list(e.absolute_path))), None)
+    if error is not None:
+        where = "/".join(map(str, error.absolute_path)) or "the top level"
+        raise ApiError(400, f"document isn't an o-mcp/dashboard v1 document: at {where}, {error.message}")
     return doc, version
+
+
+@functools.cache
+def _dashboard_schema():
+    """design/dashboard-v1.schema.json, which web/ writes to (design/frontend.md §8)."""
+    return jsonschema.Draft202012Validator(json.loads(DASHBOARD_SCHEMA.read_text()))
 
 
 def _shown(d, s, document=None):

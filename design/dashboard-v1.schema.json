@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp/dashboard/v1",
+  "title": "o-mcp/dashboard v1",
+  "description": "A saved dashboard's document (frontend.dashboard.document, format_version 1): its time range, refresh, channels, and each widget's place and own settings (design/frontend.md §3-§5, §8). Written by web/, checked by the API on every save. The shell reads everything but `settings`, which belongs to the widget type and is never read by anything else. Version 1 may gain optional fields; a reader ignores fields it doesn't know. Removing or renaming a field, or changing what one means, makes version 2, and web/ migrates older documents when it reads them.",
+  "type": "object",
+  "required": ["time", "refresh", "channels", "widgets"],
+  "additionalProperties": false,
+  "properties": {
+    "time": {
+      "type": "object",
+      "description": "The dashboard's one time range (decision 1), in the tenant's time zone, half-open. Relative ends follow Grafana: `now`, `now-30m`, `now-24h`, `now-7d`; `/d`, `/w`, `/M` or `/y` rounds to the start of that unit, or as `to` its end, so `now/d` to `now/d` is today. Absolute ends are site dates or minutes.",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"$ref": "#/$defs/instant"},
+        "to": {"$ref": "#/$defs/instant"}
+      }
+    },
+    "refresh": {
+      "type": ["integer", "null"],
+      "minimum": 30,
+      "description": "Seconds between refreshes, or null for off, the default (decision 2). The API answers faster polls from its 30 s cache."
+    },
+    "channels": {
+      "type": "object",
+      "description": "The entity each channel holds (§5): widgets on a channel show it and follow when it changes. Channels A to D; an empty channel is left out.",
+      "propertyNames": {"enum": ["A", "B", "C", "D"]},
+      "additionalProperties": {"$ref": "#/$defs/entity"}
+    },
+    "widgets": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "x", "y", "w", "h", "channel", "settings"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "minLength": 1, "maxLength": 64, "description": "Unique within the dashboard."},
+          "type": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "The widget registry's key. An unknown type is drawn as a placeholder, never dropped."},
+          "title": {"type": ["string", "null"], "maxLength": 200, "description": "Shown in the header; null for the type's default."},
+          "x": {"type": "integer", "minimum": 0, "maximum": 23, "description": "Column, of 24 (§4), as a Grafana panel's gridPos."},
+          "y": {"type": "integer", "minimum": 0, "description": "Row."},
+          "w": {"type": "integer", "minimum": 1, "maximum": 24, "description": "Width in columns. The registry's minimum applies when drawn, not when saved."},
+          "h": {"type": "integer", "minimum": 1, "maximum": 100, "description": "Height in rows."},
+          "channel": {"enum": ["A", "B", "C", "D", null], "description": "The channel the widget follows, or null for its own settings only."},
+          "settings": {"type": "object", "description": "The widget type's own settings. Nodes are graph.node ids (decision 19)."}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "instant": {
+      "type": "string",
+      "pattern": "^(now(-[0-9]{1,4}[mhdwMy])?(/[dwMy])?|[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?)$"
+    },
+    "entity": {
+      "type": "object",
+      "description": "What a channel carries: its kind as well as its id, so a node widget ignores a device (§5).",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"enum": ["node", "device", "category"]},
+        "id": {"type": ["integer", "string"], "description": "graph.node.id, public.devices.id, or a graph category code."}
+      }
+    }
+  }
+}

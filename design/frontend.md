@@ -212,6 +212,11 @@ Minimum sizes come from the widget registry when the dashboard is drawn, not fro
 document, so a corrected minimum reaches old dashboards. Below a set width the dashboard stacks
 its widgets in one column instead of squeezing them.
 
+**Built (2026-10-26)** in `web/src/dashboards/Canvas.tsx`: react-grid-layout's responsive grid, 24
+columns above 768 px, rows of 30 px, 8 px gaps. Below 768 px the widgets stack in reading order and
+can't be moved, so nothing laid out on a phone is saved. Widgets move by their header, and only
+in edit mode.
+
 ## 5. What widgets show
 
 Each engineer builds the dashboard for their own work: one around the compressors' nodes and
@@ -265,6 +270,31 @@ generates its TypeScript types from them, so a format change shows up as a type 
 **Frame.** The left panel holds ways to choose a node: the finder, the category tree, a starred
 list. The bottom bar holds data health: the time of the latest telemetry, the number of silent
 meters, refresh on or off, the tenant's clock.
+
+**Built (2026-10-26), `web/` slice 1.** The frame:
+- a top bar with the site, which an admin switches there; the account; the password; log-out;
+- a left panel listing every node in effect today, where a click puts the node on channel A;
+- a bottom bar with the site's clock and the open dashboard's refresh.
+
+Widgets (`web/src/widgets/`, one file each):
+
+| widget | route |
+|---|---|
+| value | `/api/values` |
+| readings | `/api/readings` |
+| node finder | `/api/nodes` |
+| plant section | `/api/section`, an indented tree, not yet a drawn single-line diagram |
+| meters | `/api/meters` |
+| sankey | `/api/sankey`, drawn as the Grafana panel draws it |
+| diagnostics | `/api/diagnostics` |
+
+- **Channels:** four (A–D), each holding a `{kind, id}` entity. A finder, section or diagnostics
+  row puts its node on the widget's channel, and node widgets on that channel follow it.
+- **Loading:** while a widget reloads, its previous answer stays on screen, dimmed and marked
+  "Loading…", so it is never read as the new one.
+- **Errors:** an error boundary around each widget keeps one failure off the others.
+- **Not yet:** the category tree, the starred list, the bottom bar's latest telemetry and silent
+  meters (no route yet), the Now widget, and a drawn single-line diagram.
 
 ## 6. Database connections
 
@@ -328,9 +358,9 @@ everything that changes state is a POST with an `application/json` body, which w
 - The first super admin comes from the command line (`python -m api create-super-admin`).
 - Dashboards (2026-10-26): every route works in the session's tenant, so an admin chooses one
   first (409). Another user's dashboard, a deleted one and an unknown id are all 404, so an id
-  reveals nothing; a user never sees an admin's dashboards. The document is the frontend's and is
-  stored as sent: the API checks that it is an object of at most 256 KiB at `format_version` 1,
-  until `web/` fixes the format and its migrations on read.
+  reveals nothing; a user never sees an admin's dashboards. The document is the frontend's: the API
+  checks it against `design/dashboard-v1.schema.json` (§8), at most 256 KiB, at `format_version` 1,
+  and never reads a widget's settings.
 
 **Plant reads (2026-10-26), on dev.** A pool per active row of `frontend.tenant`, as its `db_role`
 (`prs_frontend` for tenant 3), with the password from `O_API_TENANT_<id>_PASSWORD`
@@ -405,9 +435,23 @@ they name that tenant's nodes. The API returns a dashboard to its owner, and rea
 admin in the same tenant (§2); no user sees another user's. The document holds the time range, refresh, channels, and each widget's type,
 position, size, channel and own settings, with a version number migrated on read.
 
+**The document's format is `o-mcp/dashboard` v1** (`design/dashboard-v1.schema.json`, fixed
+2026-10-26):
+- `time` is `{from, to}`, each a Grafana-style relative time (`now-24h`, `now/d`; a rounded `to` is
+  the end of its unit) or a site date or minute;
+- `refresh` is null or at least 30 seconds;
+- `channels` maps A–D to an entity;
+- `widgets` holds up to 60, each with an id, type, title, `x`/`y`/`w`/`h` on the 24-column grid, a
+  channel and its own `settings`.
+
+The API checks every save against the schema (400 naming the first error). web/ generates its
+types from it, and `migrate` in `web/src/dashboards/document.ts` is where a version 2 will be
+read. A type the frontend doesn't know is drawn as a placeholder, never dropped.
+
 **Templates are static documents shipped with the frontend**, per tenant where they name nodes.
 Starting from one copies it into `frontend.dashboard` as the user's own; changing a template later
-doesn't touch the copies.
+doesn't touch the copies. Built: `web/src/templates/`, so far tenant 3's "Energy overview" (sankey,
+finder, and value, readings, section, meters and diagnostics on channel A).
 
 Migrations for `frontend` go in `migrations/`, in the one numbering sequence, through
 `tools/migrate.sh`.
@@ -438,8 +482,18 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - read production's `telemetry_data` indexes and time a 6-hour solve;
 - deploy the `node_value` change to the agent with 059.
 
-Built 2026-10-26: the plant routes the widget list needs (§7). Next: `web/` (§9), which fixes the
-dashboard document's format. The "Now" widget (the latest reading per meter) is the one widget without
+Built 2026-10-26: the plant routes the widget list needs (§7), and `web/` slice 1 (§5): the frame,
+the dashboards, the canvas, seven widgets and the document format (§8). Checked in a headless
+browser against dev, from log-in to a saved dashboard, at desktop and phone widths. Run it with the
+API on `O_API_BIND` and `cd web && npm run dev` (Vite forwards `/api`; `O_API_URL` names another
+API). Next in `web/`:
+- the left panel's category tree and starred nodes;
+- the bottom bar's data health, which needs a status route;
+- a drawn single-line diagram;
+- export and import as JSON.
+
+Open: how `web/dist` is served in production. It must be the API's origin (the cookie is
+`SameSite=Strict`): the reverse proxy serving both, or Starlette serving the files. The "Now" widget (the latest reading per meter) is the one widget without
 a route of its own yet; `GET /api/meters` gives each device's last reading time. A whole-day range that includes today takes the daily path, which reaches as far as the
 daily summary's last refresh. On production (read 2026-10-26 13:50 site time) today's rows were
 refreshed at 13:30 and the days before last at 23:30. pgAgent job 4 runs

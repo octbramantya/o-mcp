@@ -259,8 +259,9 @@ def as_(c, cookie):
     c.cookies.set(auth.COOKIE, cookie)
 
 
-DOC = {"range": {"from": "now-24h", "to": "now"}, "refresh": None,
-       "widgets": [{"type": "value", "x": 0, "y": 0, "w": 6, "h": 4, "nodes": [PLN]}]}
+DOC = {"time": {"from": "now-24h", "to": "now"}, "refresh": None, "channels": {"A": {"kind": "node", "id": PLN}},
+       "widgets": [{"id": "w1", "type": "value", "title": None, "x": 0, "y": 0, "w": 6, "h": 4, "channel": "A",
+                    "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED", "nodes": [PLN]}}]}
 
 
 def test_dashboards_owner_only_and_admin_read_only(env, client):
@@ -285,7 +286,10 @@ def test_dashboards_owner_only_and_admin_read_only(env, client):
     for bad in ({"title": "x", "document": [], "format_version": 1},
                 {"title": "x", "document": DOC, "format_version": 2},
                 {"title": " ", "document": DOC, "format_version": 1},
-                {"title": "x", "document": {"pad": "x" * 300_000}, "format_version": 1}):
+                {"title": "x", "document": DOC | {"pad": "x" * 300_000}, "format_version": 1},
+                {"title": "x", "document": DOC | {"refresh": 5}, "format_version": 1},
+                {"title": "x", "document": DOC | {"time": {"from": "yesterday", "to": "now"}}, "format_version": 1},
+                {"title": "x", "document": DOC | {"widgets": [DOC["widgets"][0] | {"x": 24}]}, "format_version": 1}):
         assert post(c, "/api/dashboards", bad).status_code == 400
     assert c.get("/api/admin/dashboards").status_code == 403
 
