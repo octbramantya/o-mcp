@@ -1,5 +1,5 @@
-"""The frontend's HTTP API: log-in, sessions, the tenant switch, the super admin's accounts
-(design/frontend.md §2, §7, §8), and the plant's values (api/values.py). Dashboards come next.
+"""The frontend's HTTP API: log-in, sessions, the tenant switch, the super admin's accounts, users'
+dashboards (design/frontend.md §2, §7, §8), and the plant's values (api/values.py).
 
 Every request is one transaction on frontend_api's pool; a plant request then reads in a second, on
 its tenant's pool (api/tenants.py), once the first has closed. The session, not the request, says who
@@ -33,6 +33,7 @@ from .tenants import TenantError, Tenants
 log = logging.getLogger("o-mcp-api")
 
 ROLES = ("user", "admin", "super_admin")
+ADMINS = ("admin", "super_admin")
 USER_COLUMNS = ("id, email, display_name, role, tenant_id, must_change_password, created_at, password_changed_at,"
                 " last_login_at, disabled_at")
 
@@ -93,7 +94,8 @@ def _id(v, key):
 
 
 def endpoint(who="session", before_password_change=False, plant=False):
-    """who: "anyone" (log-in), "session" (any logged-in account) or "super_admin". The handler gets
+    """who: "anyone" (log-in), "session" (any logged-in account), "admin" (admin or super admin) or
+    "super_admin". The handler gets
     (request, conn, session, body); an ApiError rolls the transaction back and becomes the response.
     With plant=True it gets the session's tenant (api/tenants.py) in place of conn, after the
     frontend transaction has closed, so a slow solve holds no frontend_api connection."""
@@ -112,6 +114,8 @@ def endpoint(who="session", before_password_change=False, plant=False):
                             raise ApiError(403, "Change your password first.", "must_change_password")
                         if who == "super_admin" and s["role"] != "super_admin":
                             raise ApiError(403, "Only a super admin manages accounts.")
+                        if who == "admin" and s["role"] not in ADMINS:
+                            raise ApiError(403, "Only an admin opens other people's dashboards.")
                     if not plant:
                         return await fn(request, conn, s, body)
                 return await fn(request, request.app.state.tenants.for_session(s), s, body)
@@ -344,6 +348,165 @@ async def assign_user(request, conn, s, body):
     return Json({"ok": True})
 
 
+# -- dashboards -----------------------------------------------------------------------------------
+# A dashboard belongs to its owner and a tenant (design/frontend.md §1, 12 and §8): every route works
+# in the session's current tenant, and another user's dashboard is answered as if it didn't exist. An
+# admin may list and open the dashboards of the current tenant's users, read-only, and copy one into
+# their own; each open and copy is audited. Deleting sets deleted_at; frontend_api can't DELETE.
+# The document is the frontend's (widgets, channels, the range): the API checks its size and version
+# only, until web/ fixes the format.
+FORMAT_VERSION = 1
+MAX_DOCUMENT = 256 * 1024
+MAX_TITLE = 200
+DASHBOARD_COLUMNS = ("d.id, d.title, d.format_version, d.from_template, d.created_at, d.updated_at,"
+                     " d.owner_id, u.email AS owner_email, u.display_name AS owner_name, u.role AS owner_role")
+
+
+def _title(body, required=True):
+    t = _text(body, "title", required)
+    if t is not None and len(t.strip()) > MAX_TITLE:
+        raise ApiError(400, f"title is longer than {MAX_TITLE} characters.")
+    return t and t.strip()
+
+
+def _document(body):
+    doc, version = body.get("document"), body.get("format_version")
+    if not isinstance(doc, dict):
+        raise ApiError(400, "document must be a JSON object.")
+    if len(json.dumps(doc, ensure_ascii=False).encode()) > MAX_DOCUMENT:
+        raise ApiError(400, f"document is larger than {MAX_DOCUMENT // 1024} KiB.")
+    if _id(version, "format_version") != FORMAT_VERSION:
+        raise ApiError(400, f"format_version must be {FORMAT_VERSION}.")
+    return doc, version
+
+
+def _shown(d, s, document=None):
+    out = {k: d[k] for k in ("id", "title", "format_version", "from_template", "created_at", "updated_at")}
+    out["owner"] = {"id": d["owner_id"], "email": d["owner_email"], "display_name": d["owner_name"]}
+    out["read_only"] = d["owner_id"] != s["user_id"]
+    if document is not None:
+        out["document"] = document
+    return out
+
+
+async def _load(conn, s, tenant, did, write=False):
+    """A dashboard in the session's tenant: the caller's own, or for an admin reading, one of the
+    tenant's users'. Anything else is 404, so ids reveal nothing."""
+    d = await one(conn, f"""
+        SELECT {DASHBOARD_COLUMNS}, d.document
+          FROM frontend.dashboard d JOIN frontend.app_user u ON u.id = d.owner_id
+         WHERE d.id = %s AND d.tenant_id = %s AND d.deleted_at IS NULL""", (did, tenant.id))
+    if d is None or d["owner_id"] != s["user_id"] and not (s["role"] in ADMINS and d["owner_role"] == "user"):
+        raise ApiError(404, "No such dashboard.")
+    if write and d["owner_id"] != s["user_id"]:
+        raise ApiError(403, "Another user's dashboard is read-only; copy it to change it.")
+    return d
+
+
+async def _dashboard(request, conn, s, write=False):
+    """The tenant and the dashboard in the path."""
+    tenant = request.app.state.tenants.for_session(s)
+    try:
+        did = int(request.path_params["dashboard_id"])
+    except ValueError as e:
+        raise ApiError(404, "No such dashboard.") from e
+    return tenant, await _load(conn, s, tenant, did, write)
+
+
+async def _insert(conn, s, tenant, title, doc, version, template):
+    d = await one(conn, """
+        INSERT INTO frontend.dashboard (owner_id, tenant_id, title, document, format_version, from_template)
+        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                  (s["user_id"], tenant.id, title, json.dumps(doc), version, template))
+    return await _load(conn, s, tenant, d["id"])
+
+
+@endpoint()
+async def list_dashboards(request, conn, s, _body):
+    tenant = request.app.state.tenants.for_session(s)
+    got = await rows(conn, f"""
+        SELECT {DASHBOARD_COLUMNS}
+          FROM frontend.dashboard d JOIN frontend.app_user u ON u.id = d.owner_id
+         WHERE d.owner_id = %s AND d.tenant_id = %s AND d.deleted_at IS NULL
+         ORDER BY d.updated_at DESC""", (s["user_id"], tenant.id))
+    return Json({"dashboards": [_shown(d, s) for d in got]})
+
+
+@endpoint("admin")
+async def list_users_dashboards(request, conn, s, _body):
+    """The current tenant's users' dashboards, for an admin to open read-only (§1, 17)."""
+    tenant = request.app.state.tenants.for_session(s)
+    got = await rows(conn, f"""
+        SELECT {DASHBOARD_COLUMNS}
+          FROM frontend.dashboard d JOIN frontend.app_user u ON u.id = d.owner_id
+         WHERE d.tenant_id = %s AND u.role = 'user' AND d.deleted_at IS NULL
+         ORDER BY lower(u.email), d.updated_at DESC""", (tenant.id,))
+    return Json({"dashboards": [_shown(d, s) for d in got]})
+
+
+@endpoint()
+async def create_dashboard(request, conn, s, body):
+    """A blank canvas or a template's document (§1, 13), which the frontend ships and sends here."""
+    tenant = request.app.state.tenants.for_session(s)
+    title = _title(body)
+    doc, version = _document(body)
+    template = _text(body, "from_template", required=False)
+    d = await _insert(conn, s, tenant, title, doc, version, template)
+    return Json(_shown(d, s, d["document"]), status_code=201)
+
+
+@endpoint()
+async def get_dashboard(request, conn, s, _body):
+    tenant, d = await _dashboard(request, conn, s)
+    if d["owner_id"] != s["user_id"]:
+        await auth.audit(conn, "dashboard_opened_by_admin", actor=s["user_id"], email=s["email"], tenant=tenant.id,
+                         target=d["owner_id"], dashboard=d["id"], ip=auth.client_ip(request))
+    return Json(_shown(d, s, d["document"]))
+
+
+@endpoint()
+async def update_dashboard(request, conn, s, body):
+    """Title, document or both. updated_at must be the one the caller last read: a save from a stale
+    copy (another tab, another device) is refused with 409, not written over the newer one."""
+    tenant, d = await _dashboard(request, conn, s, write=True)
+    try:
+        seen = dt.datetime.fromisoformat(_text(body, "updated_at"))
+    except ValueError as e:
+        raise ApiError(400, "updated_at must be the dashboard's updated_at, as last read.") from e
+    title = _title(body, required=False) or d["title"]
+    doc, version = _document(body) if "document" in body or "format_version" in body else (d["document"],
+                                                                                           d["format_version"])
+    # the check is in the UPDATE, so of two saves from the same copy only the first is written
+    cur = await conn.execute("UPDATE frontend.dashboard SET title = %s, document = %s, format_version = %s"
+                             " WHERE id = %s AND updated_at = %s AND deleted_at IS NULL",
+                             (title, json.dumps(doc), version, d["id"], seen))
+    if cur.rowcount == 0:
+        raise ApiError(409, "The dashboard was saved elsewhere since you opened it; reload it first.")
+    d = await _load(conn, s, tenant, d["id"])
+    return Json(_shown(d, s, d["document"]))
+
+
+@endpoint()
+async def delete_dashboard(request, conn, s, _body):
+    _, d = await _dashboard(request, conn, s, write=True)
+    await conn.execute("UPDATE frontend.dashboard SET deleted_at = now() WHERE id = %s", (d["id"],))
+    return Json({"ok": True})
+
+
+@endpoint()
+async def copy_dashboard(request, conn, s, body):
+    """A copy into the caller's own dashboards: of their own, or for an admin of a user's (§2). The copy
+    keeps the template it came from; the original is untouched."""
+    tenant, d = await _dashboard(request, conn, s)
+    title = _title(body, required=False) or f"Copy of {d['title']}"[:MAX_TITLE]
+    c = await _insert(conn, s, tenant, title, d["document"], d["format_version"], d["from_template"])
+    if d["owner_id"] != s["user_id"]:
+        await auth.audit(conn, "dashboard_copied_by_admin", actor=s["user_id"], email=s["email"], tenant=tenant.id,
+                         target=d["owner_id"], dashboard=d["id"], ip=auth.client_ip(request),
+                         detail={"copy": c["id"]})
+    return Json(_shown(c, s, c["document"]), status_code=201)
+
+
 # -- the plant ------------------------------------------------------------------------------------
 @endpoint(plant=True)
 async def get_values(request, tenant, _s, _body):
@@ -397,6 +560,13 @@ def build(config):
         Route("/api/admin/users/{user_id}/disable", disable_user, methods=["POST"]),
         Route("/api/admin/users/{user_id}/enable", enable_user, methods=["POST"]),
         Route("/api/admin/users/{user_id}/assign", assign_user, methods=["POST"]),
+        Route("/api/dashboards", list_dashboards, methods=["GET"]),
+        Route("/api/dashboards", create_dashboard, methods=["POST"]),
+        Route("/api/dashboards/{dashboard_id}", get_dashboard, methods=["GET"]),
+        Route("/api/dashboards/{dashboard_id}", update_dashboard, methods=["POST"]),
+        Route("/api/dashboards/{dashboard_id}/delete", delete_dashboard, methods=["POST"]),
+        Route("/api/dashboards/{dashboard_id}/copy", copy_dashboard, methods=["POST"]),
+        Route("/api/admin/dashboards", list_users_dashboards, methods=["GET"]),
         Route("/api/values", get_values, methods=["GET"]),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)

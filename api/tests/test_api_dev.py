@@ -39,6 +39,7 @@ def env():
         conn.execute("DELETE FROM frontend.audit WHERE actor_id = ANY(%s) OR target_user_id = ANY(%s)"
                      " OR email LIKE %s", (ids, ids, f"%+{run}@%"))
         conn.execute("DELETE FROM frontend.session WHERE user_id = ANY(%s)", (ids,))
+        conn.execute("DELETE FROM frontend.dashboard WHERE owner_id = ANY(%s)", (ids,))
         conn.execute("UPDATE frontend.app_user SET created_by = NULL WHERE id = ANY(%s)", (ids,))
         conn.execute("DELETE FROM frontend.app_user WHERE id = ANY(%s)", (ids,))
 
@@ -228,3 +229,94 @@ def test_values_by_resolution_and_tenant(env, client):
     for i, v in enumerate(day["values"]):
         minutes = sum(q["values"][i]["value"] for q in quarters)
         assert abs(minutes - v["value"]) <= max(1, 0.01 * v["value"]), (v["code"], minutes, v["value"])
+
+
+def account(c, who, role="user"):
+    """A new account with its password changed, logged in; returns its cookie. c must hold a super
+    admin's cookie, which it holds again afterwards."""
+    admin = c.cookies.get(auth.COOKIE)
+    r = post(c, "/api/admin/users", {"email": who, "role": role} | ({"tenant_id": TENANT} if role == "user" else {}))
+    temp = r.json()["temporary_password"]
+    login(c, who, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "a password 2026"})
+    cookie = c.cookies.get(auth.COOKIE)
+    c.cookies.clear()
+    c.cookies.set(auth.COOKIE, admin)
+    return cookie
+
+
+def as_(c, cookie):
+    c.cookies.clear()
+    c.cookies.set(auth.COOKIE, cookie)
+
+
+DOC = {"range": {"from": "now-24h", "to": "now"}, "refresh": None,
+       "widgets": [{"type": "value", "x": 0, "y": 0, "w": 6, "h": 4, "nodes": [PLN]}]}
+
+
+def test_dashboards_owner_only_and_admin_read_only(env, client):
+    c = client
+    boss = email(env, "boss3")
+    temp = asyncio.run(app.create_super_admin(env[0], boss))
+    login(c, boss, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "boss password 3"})
+    carol, dave, ada = (account(c, email(env, "carol")), account(c, email(env, "dave")),
+                        account(c, email(env, "ada3"), "admin"))
+
+    # A user's own dashboard: created, listed, opened.
+    as_(c, carol)
+    r = post(c, "/api/dashboards", {"title": " Compressors ", "document": DOC, "format_version": 1})
+    assert r.status_code == 201
+    mine = r.json()
+    assert mine["title"] == "Compressors" and mine["document"] == DOC and mine["read_only"] is False
+    path = f"/api/dashboards/{mine['id']}"
+    assert [d["id"] for d in c.get("/api/dashboards").json()["dashboards"]] == [mine["id"]]
+    assert "document" not in c.get("/api/dashboards").json()["dashboards"][0]
+    assert c.get(path).json()["document"] == DOC
+    for bad in ({"title": "x", "document": [], "format_version": 1},
+                {"title": "x", "document": DOC, "format_version": 2},
+                {"title": " ", "document": DOC, "format_version": 1},
+                {"title": "x", "document": {"pad": "x" * 300_000}, "format_version": 1}):
+        assert post(c, "/api/dashboards", bad).status_code == 400
+    assert c.get("/api/admin/dashboards").status_code == 403
+
+    # A save from a stale copy is refused; each save moves updated_at on.
+    assert post(c, path, {"title": "x", "updated_at": "2026-01-01T00:00:00+00:00"}).status_code == 409
+    r = post(c, path, {"title": "Compressors, 2", "updated_at": mine["updated_at"]})
+    assert r.status_code == 200 and r.json()["title"] == "Compressors, 2" and r.json()["document"] == DOC
+    assert r.json()["updated_at"] != mine["updated_at"]
+    assert post(c, path, {"title": "lost", "updated_at": mine["updated_at"]}).status_code == 409
+
+    # Another user can't tell it exists.
+    as_(c, dave)
+    assert c.get("/api/dashboards").json()["dashboards"] == []
+    assert c.get(path).status_code == 404
+    assert post(c, path, {"title": "x", "updated_at": mine["updated_at"]}).status_code == 404
+    assert post(c, f"{path}/copy").status_code == 404 and post(c, f"{path}/delete").status_code == 404
+    assert c.get("/api/dashboards/x").status_code == 404
+
+    # An admin chooses a site, then lists, opens and copies a user's dashboard, read-only; both audited.
+    as_(c, ada)
+    assert c.get("/api/admin/dashboards").status_code == 409
+    post(c, "/api/tenant", {"tenant_id": TENANT})
+    listed = c.get("/api/admin/dashboards").json()["dashboards"]
+    assert mine["id"] in [d["id"] for d in listed]
+    r = c.get(path).json()
+    assert r["read_only"] is True and r["owner"]["email"] == email(env, "carol")
+    assert audited(env, "dashboard_opened_by_admin", email(env, "ada3")) == 1
+    assert post(c, path, {"title": "x", "updated_at": r["updated_at"]}).status_code == 403
+    assert post(c, f"{path}/delete").status_code == 403
+    r = post(c, f"{path}/copy")
+    assert r.status_code == 201 and r.json()["read_only"] is False and r.json()["title"] == "Copy of Compressors, 2"
+    copy = r.json()["id"]
+    assert audited(env, "dashboard_copied_by_admin", email(env, "ada3")) == 1
+    assert [d["id"] for d in c.get("/api/dashboards").json()["dashboards"]] == [copy]
+
+    # The user sees neither the admin's copy nor the admin's own dashboards; deleting hides theirs.
+    as_(c, carol)
+    assert c.get(f"/api/dashboards/{copy}").status_code == 404
+    assert c.get(path).json()["title"] == "Compressors, 2"
+    assert post(c, f"{path}/delete").status_code == 200
+    assert c.get(path).status_code == 404 and c.get("/api/dashboards").json()["dashboards"] == []
+    as_(c, ada)
+    assert mine["id"] not in [d["id"] for d in c.get("/api/admin/dashboards").json()["dashboards"]]

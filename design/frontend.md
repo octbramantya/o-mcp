@@ -304,8 +304,8 @@ from the session's tenant (§2), and Postgres enforces the rest, so a bug in cho
 the one way across tenants. Tests pin it: a non-admin session asking for another tenant is
 refused, and an admin's request runs as the selected tenant's role.
 
-**Built so far (2026-10-26), on dev:** log-in, sessions, the tenant switch and the super admin's
-accounts (`api/app.py`, `api/auth.py`), Starlette on a pool of `frontend_api`. JSON in and out;
+**Built so far (2026-10-26), on dev:** log-in, sessions, the tenant switch, the super admin's
+accounts and users' dashboards (`api/app.py`, `api/auth.py`), Starlette on a pool of `frontend_api`. JSON in and out;
 everything that changes state is a POST with an `application/json` body, which with the
 `SameSite=Strict` cookie keeps other sites out without a CSRF token.
 
@@ -315,6 +315,9 @@ everything that changes state is a POST with an `application/json` body, which w
 | `POST /api/logout`, `GET /api/me`, `POST /api/password` | any session, also before a forced change | end the session; the account, current tenant and switchable tenants; change the password (ends the account's other sessions) |
 | `POST /api/tenant` | any session | switch the session's tenant: a user may only name their own (403 otherwise), an admin any active one (audited) |
 | `GET/POST /api/admin/users`, `POST /api/admin/users/{id}/reset-password`, `…/disable`, `…/enable`, `…/assign` | super admin | list and create accounts (a temporary password, shown once); reset, disable, enable; set role and tenant together. Never on their own account |
+| `GET/POST /api/dashboards` | any session, in its tenant | the caller's own dashboards (no documents); create one from a blank canvas or a template's document, `from_template` naming it |
+| `GET/POST /api/dashboards/{id}`, `POST …/delete`, `…/copy` | the owner; an admin reads | open; save title or document, with the `updated_at` last read (a stale save is 409, checked in the `UPDATE`); delete (`deleted_at`); copy into the caller's own. An admin opens and copies the current tenant's users' dashboards, read-only (403 on save or delete), each audited |
+| `GET /api/admin/dashboards` | admin | the current tenant's users' dashboards, with their owners |
 
 - A session lasts 12 hours, ends after 2 hours idle, and is checked against the account on every
   request; a reset, disable, or role or tenant change revokes it.
@@ -323,6 +326,11 @@ everything that changes state is a POST with an `application/json` body, which w
 - An account with `must_change_password` reaches only `/api/me`, `/api/password` and `/api/logout`.
 - An admin's session starts with no tenant; the frontend asks them to pick one.
 - The first super admin comes from the command line (`python -m api create-super-admin`).
+- Dashboards (2026-10-26): every route works in the session's tenant, so an admin chooses one
+  first (409). Another user's dashboard, a deleted one and an unknown id are all 404, so an id
+  reveals nothing; a user never sees an admin's dashboards. The document is the frontend's and is
+  stored as sent: the API checks that it is an object of at most 256 KiB at `format_version` 1,
+  until `web/` fixes the format and its migrations on read.
 
 **Plant reads (2026-10-26), on dev.** A pool per active row of `frontend.tenant`, as its `db_role`
 (`prs_frontend` for tenant 3), with the password from `O_API_TENANT_<id>_PASSWORD`
@@ -402,8 +410,8 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - read production's `telemetry_data` indexes and time a 6-hour solve;
 - deploy the `node_value` change to the agent with 059.
 
-Next to build: dashboards in `api/`, more plant routes as widgets need them (topology, readings,
-sankey), then `web/` (§9). A whole-day range that includes today takes the daily path, which reaches as far as the
+Next to build: more plant routes as widgets need them (topology, readings, sankey), then `web/`
+(§9), which fixes the dashboard document's format. A whole-day range that includes today takes the daily path, which reaches as far as the
 daily summary's last refresh. On production (read 2026-10-26 13:50 site time) today's rows were
 refreshed at 13:30 and the days before last at 23:30. pgAgent job 4 runs
 `refresh_daily_energy_costs` every 30 minutes, on the hour and the half hour (its log, read by the
