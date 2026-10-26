@@ -4,8 +4,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from plant import resolve, timewin
-from server import config, sqlfile
+from plant import resolve, sqlfile, timewin
+from server import config
 
 JKT = ZoneInfo("Asia/Jakarta")
 

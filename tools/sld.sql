@@ -1,6 +1,6 @@
 -- The neighbourhood of one node down (or up) :depth levels, as one o-mcp/subgraph v1 document.
 -- The format is defined in design/subgraph-format.md; tools/sld.py renders it, and the MCP server's
--- plant_section returns it (server/sqlfile.py runs this file unchanged).
+-- plant_section and the API's /api/section return it (plant/sqlfile.py runs this file unchanged).
 --
 --   psql -v tenant=3 -v root=INCOMING_PLN -v as_of=2026-10-01 -v depth=2 -v utility= -v direction=down \
 --        -f tools/sld.sql
@@ -111,7 +111,7 @@ SELECT json_build_object(
                              'depth', :depth, 'utility', nullif(:'utility', ''), 'direction', :'direction'),
   'nodes', coalesce((
     SELECT json_agg(json_build_object(
-             'code', n.node_code, 'name', n.node_name, 'class', n.node_class, 'type', n.node_type,
+             'id', n.id, 'code', n.node_code, 'name', n.node_name, 'class', n.node_class, 'type', n.node_type,
              'attrs', n.attrs, 'scope', i.scope, 'depth', i.depth,
              'children_total', (SELECT count(*) FROM live_e e WHERE e.from_node_id = n.id),
              'children_not_included', (SELECT count(*) FROM live_e e

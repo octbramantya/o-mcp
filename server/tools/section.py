@@ -1,9 +1,8 @@
 """plant_section: one node and what it feeds, or what feeds it, as an o-mcp/subgraph v1 document.
 The query is tools/sld.sql, the same file tools/sld.py draws from."""
-from plant import resolve
+from plant import resolve, section
 
-from .. import sqlfile, tools
-from ..db import client_rows
+from .. import tools
 
 NAME = "plant_section"
 TITLE = "Plant section"
@@ -25,7 +24,7 @@ with `carries_flow` false move no energy; leave them out of totals.
 report needs and the site has not supplied. For what a type, edge type or property means, call \
 plant_vocabulary. A node's siblings are plant_section of its feeder at depth 1."""
 
-DEPTH_MAX = 12
+DEPTH_MAX = section.DEPTH_MAX
 
 
 def input_schema(ctx):
@@ -50,9 +49,8 @@ async def run(ctx, args):
     async with ctx.db.tx() as conn:
         nodes = await resolve.live_nodes(conn, ctx.config.tenant, args["as_of"])
         root, how = resolve.pick(nodes, args["root"], args["as_of"])
-        doc = (await client_rows(conn, sqlfile.load("tools/sld.sql"), {
-            "tenant": ctx.config.tenant, "root": root["code"], "as_of": args["as_of"], "depth": args["depth"],
-            "utility": args.get("utility") or "", "direction": args["direction"]}))[0]["json_build_object"]
+        doc = await section.subgraph(conn, ctx.config.tenant, root["code"], args["as_of"], args["depth"],
+                                     args["direction"], args.get("utility"))
     reached = sum(1 for n in doc["nodes"] if n["scope"] == "reached")
     summary = (f"{root['code']} ({root['name']}), {args['direction']} {args['depth']} level(s) as of {args['as_of']}: "
                f"{reached} nodes reached, {len(doc['nodes']) - reached} outside, {len(doc['edges'])} edges, "

@@ -2,6 +2,8 @@
 (design/mcp-tools.md)."""
 import difflib
 
+from plant import vocab
+
 from ..errors import ToolError
 
 NAME = "plant_vocabulary"
@@ -14,7 +16,6 @@ in a result is unfamiliar, before saying what a type can connect to or which val
 or to learn what a quantity code measures and how it is read (COUNTER or SAMPLE). \
 Narrow it with `kind` and `code`: everything at once is about 65 kB, a third of it quantities."""
 
-PROPERTY_FIELDS = ("key", "datatype", "unit", "min", "max", "enum_values", "kind", "description")
 KINDS = ("node_class", "node_type", "edge_class", "edge_type", "property", "utility", "quantity")
 
 
@@ -32,39 +33,7 @@ def input_schema(ctx):
     }
 
 
-def build(v):
-    """The whole o-mcp/vocabulary v1 document."""
-    props_of = {}
-    for tp in v.type_properties:
-        props_of.setdefault(tp["node_type"], []).append(
-            {"key": tp["key"], "requirement": tp["requirement"], "used_by": tp["used_by"],
-             "defined_on": tp["defined_on"]})
-    type_codes = {t["code"] for t in v.node_types}
-    class_codes = {c["code"] for c in v.node_classes}
-
-    def end(kind):
-        return "type" if kind in type_codes else "class" if kind in class_codes else "unknown"
-
-    ends_of = {}
-    for e in v.endpoints:
-        ends_of.setdefault(e["edge_type"], []).append(
-            {"from": e["from_kind"], "from_is": end(e["from_kind"]), "to": e["to_kind"], "to_is": end(e["to_kind"])})
-    served = {q["code"] for q in v.node_value_quantities()}
-    return {
-        "schema": "o-mcp/vocabulary", "version": 1,
-        "node_classes": [dict(c) for c in v.node_classes],
-        "node_types": [dict(t, properties=props_of.get(t["code"], [])) for t in v.node_types],
-        "edge_classes": [dict(c) for c in v.edge_classes],
-        "edge_types": [dict(t, endpoints=ends_of.get(t["code"], [])) for t in v.edge_types],
-        "properties": [{k: p[k] for k in PROPERTY_FIELDS} for p in v.properties],
-        "utilities": [dict(u) for u in v.utilities],
-        "quantities": [{"code": q["code"], "quantity_id": q["quantity_id"], "unit": q["unit"], "reading": q["reading"],
-                        "description": q["description"], "rule": q["rule"], "node_value": q["code"] in served}
-                       for q in v.quantities],
-        "derived_quantities": [{"code": d["code"], "utility": d["utility"], "unit": d["unit"],
-                                "description": d["description"], "from": list(d["from"]), "node_value": True}
-                               for d in v.derived],
-    }
+build = vocab.document
 
 
 SECTIONS = {"node_class": "node_classes", "node_type": "node_types", "edge_class": "edge_classes",

@@ -1,4 +1,4 @@
-"""Run a psql script's single query from the server, so tools/sld.sql has one copy.
+"""Run a psql script's single query from Python, so tools/sld.sql has one copy.
 
 psql substitutes :'name' as a quoted literal and :name as is. Translated here to psycopg's
 %(name)s, run through a client-side cursor, which also interpolates literals, so the query sees

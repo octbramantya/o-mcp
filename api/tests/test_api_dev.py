@@ -7,16 +7,25 @@ superuser (DB_USER, DB_PASSWORD), which removes the test's accounts afterwards:
 frontend_api is NOLOGIN as 061 creates it; on dev, give it LOGIN and a password by hand first.
 """
 import asyncio
+import copy
 import datetime as dt
+import json
 import os
+import pathlib
+import sys
 import uuid
 
+import jsonschema
 import psycopg
 import pytest
 from starlette.testclient import TestClient
 
 from api import app, auth, config
 from server.config import parse_env_file
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+from check_subgraph import strict  # noqa: E402
 
 ENV = os.environ.get("O_API_TEST_ENV")
 pytestmark = pytest.mark.skipif(not ENV, reason="O_API_TEST_ENV not set")
@@ -320,3 +329,85 @@ def test_dashboards_owner_only_and_admin_read_only(env, client):
     assert c.get(path).status_code == 404 and c.get("/api/dashboards").json()["dashboards"] == []
     as_(c, ada)
     assert mine["id"] not in [d["id"] for d in c.get("/api/admin/dashboards").json()["dashboards"]]
+
+
+def strictly(doc, fmt):
+    """doc against its v1 schema with every property required and no other allowed, as the server's tests."""
+    schema = strict(copy.deepcopy(json.loads((ROOT / "design" / fmt).read_text())))
+    errors = list(jsonschema.Draft202012Validator(schema).iter_errors(doc))
+    assert not errors, [e.message for e in errors[:5]]
+
+
+def test_plant_reads(env, client):
+    c = client
+    boss = email(env, "boss4")
+    temp = asyncio.run(app.create_super_admin(env[0], boss))
+    login(c, boss, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "boss password 4"})
+    dan = account(c, email(env, "dan"))
+    c.cookies.clear()
+    assert c.get("/api/nodes").status_code == 401
+    as_(c, dan)
+
+    v = c.get("/api/vocabulary").json()
+    strictly(v, "vocabulary-v1.schema.json")
+
+    # The finder, a section and a node's meters, each in the MCP tool's format with node ids.
+    found = c.get("/api/nodes", params={"text": "A5", "as_of": DAY}).json()
+    strictly(found, "nodelist-v1.schema.json")
+    assert A5 in [n["id"] for n in found["nodes"]]
+    assert c.get("/api/nodes", params={"type": "NO_SUCH_TYPE"}).status_code == 400
+    sec = c.get("/api/section", params={"node": PLN, "as_of": DAY, "depth": 2}).json()
+    strictly(sec, "subgraph-v1.schema.json")
+    assert [n["id"] for n in sec["nodes"] if n["depth"] == 0] == [PLN] and A5 in [n["id"] for n in sec["nodes"]]
+    up = c.get("/api/section", params={"node": A5, "as_of": DAY, "direction": "up", "depth": 3}).json()
+    assert PLN in [n["id"] for n in up["nodes"] if n["scope"] == "reached"]
+    m = c.get("/api/meters", params={"node": A5, "as_of": DAY}).json()
+    strictly(m, "meters-v1.schema.json")
+    assert m["node"]["id"] == A5 and m["devices"]
+
+    # A node retired before as_of is refused by its code; an unknown id as such.
+    with psycopg.connect(**env[1]) as conn:
+        retired = conn.execute("SELECT id FROM graph.node WHERE tenant_id = %s AND node_code = 'MC302_BARU'",
+                               (TENANT,)).fetchone()[0]
+    r = c.get("/api/meters", params={"node": retired, "as_of": DAY})
+    assert r.status_code == 400 and "MC302_BARU" in r.json()["message"]
+    assert c.get("/api/section", params={"node": retired, "as_of": "2026-09-01"}).status_code == 200
+    assert c.get("/api/section", params={"node": 999_999}).status_code == 400
+
+    # Readings: minutes for a short window within the minute data, adding up to the 15-minute buckets.
+    q = {"node": A5, "quantities": "ACTIVE_ENERGY_DELIVERED,PF_TOTAL", "start": f"{DAY}T10:00", "end": f"{DAY}T12:00"}
+    short = c.get("/api/readings", params=q).json()
+    strictly(short, "readings-v1.schema.json")
+    assert short["query"]["interval"] == "minute" and short["query"]["node_id"] == A5
+    whole = c.get("/api/readings", params=q | {"interval": "window"}).json()
+    assert whole["query"]["interval"] == "window"
+    for s, w in zip(short["series"], whole["series"], strict=True):
+        assert s["device_id"] == w["device_id"] and s["quantity"] == w["quantity"]
+        if s["reading"] == "COUNTER":
+            minutes = sum(p["consumption"] for p in s["points"])
+            assert len(s["points"]) == 120
+            assert abs(minutes - w["points"][0]["consumption"]) <= max(1, 0.01 * minutes), (minutes, w)
+        else:
+            assert 0 <= min(p["min"] for p in s["points"] if p["min"] is not None) <= 1
+    assert c.get("/api/readings", params=q | {"start": f"{OLD}T10:00", "end": f"{OLD}T12:00"}).json()[
+        "query"]["interval"] == "15min"
+    assert c.get("/api/readings", params=q | {"start": "2026-10-01", "end": "2026-10-22"}).json()[
+        "query"]["interval"] == "hour"
+    assert c.get("/api/readings", params=q | {"quantities": "NOPE"}).status_code == 400
+    r = c.get("/api/readings", params=q | {"start": "2026-08-01", "end": "2026-10-22", "interval": "15min"})
+    assert r.status_code == 400 and "points" in r.json()["message"]
+
+    # The sankey and its diagnostics, in whole site days, drawn on the window's last day.
+    s = c.get("/api/sankey", params={"start": "2026-10-20", "end": "2026-10-22"}).json()
+    assert s["as_of"] == "2026-10-21" and s["window"]["end"].startswith("2026-10-22T00:00")
+    assert s["source"] == "daily_energy_cost_summary" and not s["findings"]
+    supply = sum(x["value"] for x in s["links"] if x["link_kind"] == "SUPPLY")
+    assert supply > 0
+    d = c.get("/api/diagnostics", params={"start": "2026-10-20", "end": "2026-10-22"}).json()
+    assert d["diagnostics"] and len(d["property_gaps"]) == 31
+    assert all(g["node_id"] for g in d["property_gaps"])
+    s = c.get("/api/sankey", params={"start": "2026-09-27", "end": "2026-09-29"}).json()
+    assert {"PLANT_CHANGED", "DATA_INCOMPLETE"} <= {f["code"] for f in s["findings"]}
+    assert c.get("/api/sankey", params={"start": "2026-10-20", "end": "2026-10-22",
+                                        "quantity": "THD_VOLTAGE_LN"}).status_code == 400

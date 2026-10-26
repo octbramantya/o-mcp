@@ -10,7 +10,7 @@ async def rows(conn, sql, params=None):
 
 
 async def client_rows(conn, sql, params):
-    """Run with client-side binding, the way psql substitutes :'var' (see server/sqlfile.py)."""
+    """Run with client-side binding, the way psql substitutes :'var' (see plant/sqlfile.py)."""
     async with psycopg.AsyncClientCursor(conn, row_factory=dict_row) as cur:
         await cur.execute(sql, params)
         return await cur.fetchall()

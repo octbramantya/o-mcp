@@ -18,6 +18,8 @@ PF_ENCODED = ("PF_TOTAL", "PF_A", "PF_B", "PF_C", "DPF_TOTAL", "DPF_A", "DPF_B",
 # (gap 4). PF_TRUE is the node-level power factor.
 NOT_A_NODE_VALUE = ("PF_TOTAL",)
 
+PROPERTY_FIELDS = ("key", "datatype", "unit", "min", "max", "enum_values", "kind", "description")
+
 
 @dataclass
 class Vocabulary:
@@ -113,3 +115,38 @@ async def load(conn, tenant):
     if missing:
         raise RuntimeError(f"quantity terms missing for power factor decoding: {', '.join(missing)}")
     return v
+
+
+def document(v):
+    """The whole o-mcp/vocabulary v1 document: plant_vocabulary's body and GET /api/vocabulary."""
+    props_of = {}
+    for tp in v.type_properties:
+        props_of.setdefault(tp["node_type"], []).append(
+            {"key": tp["key"], "requirement": tp["requirement"], "used_by": tp["used_by"],
+             "defined_on": tp["defined_on"]})
+    type_codes = {t["code"] for t in v.node_types}
+    class_codes = {c["code"] for c in v.node_classes}
+
+    def end(kind):
+        return "type" if kind in type_codes else "class" if kind in class_codes else "unknown"
+
+    ends_of = {}
+    for e in v.endpoints:
+        ends_of.setdefault(e["edge_type"], []).append(
+            {"from": e["from_kind"], "from_is": end(e["from_kind"]), "to": e["to_kind"], "to_is": end(e["to_kind"])})
+    served = {q["code"] for q in v.node_value_quantities()}
+    return {
+        "schema": "o-mcp/vocabulary", "version": 1,
+        "node_classes": [dict(c) for c in v.node_classes],
+        "node_types": [dict(t, properties=props_of.get(t["code"], [])) for t in v.node_types],
+        "edge_classes": [dict(c) for c in v.edge_classes],
+        "edge_types": [dict(t, endpoints=ends_of.get(t["code"], [])) for t in v.edge_types],
+        "properties": [{k: p[k] for k in PROPERTY_FIELDS} for p in v.properties],
+        "utilities": [dict(u) for u in v.utilities],
+        "quantities": [{"code": q["code"], "quantity_id": q["quantity_id"], "unit": q["unit"], "reading": q["reading"],
+                        "description": q["description"], "rule": q["rule"], "node_value": q["code"] in served}
+                       for q in v.quantities],
+        "derived_quantities": [{"code": d["code"], "utility": d["utility"], "unit": d["unit"],
+                                "description": d["description"], "from": list(d["from"]), "node_value": True}
+                               for d in v.derived],
+    }

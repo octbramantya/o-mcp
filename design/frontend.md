@@ -355,6 +355,34 @@ labelled, not shown as a drop. A single silent meter isn't caught here. Answers 
 30 s by tenant, quantity, nodes and the window rounded to the minute, and identical requests in
 flight run once (`api/cache.py`, one process).
 
+**The other plant reads (2026-10-26), on dev** (`api/reads.py`). Each runs the MCP tool's own query,
+moved into `plant/` (`find`, `section`, `meters`, `readings`, and the vocabulary document), so the
+agent and the frontend can't disagree, and answers in the tool's v1 format. The formats gained,
+within version 1, the node's `id` (nodelist, subgraph, meters), and in readings `query.node_id`,
+each series' `device_id` and the `minute` interval. Nodes are given by id and looked up on the
+network of `as_of`; a node not in effect that day is refused by its code. Every answer is cached as
+the values are.
+
+| route | takes | answers |
+|---|---|---|
+| `GET /api/vocabulary` | — | `o-mcp/vocabulary` v1: the pickers' types, classes, utilities and quantities |
+| `GET /api/nodes` | `as_of`, `text`, `type` (subtypes included), `class`, `utility`, `metered`, `site_status`, `limit` (≤ 500) | `o-mcp/nodelist` v1, the finder |
+| `GET /api/section` | `node`, `as_of`, `depth` (≤ 12), `direction` (`down`/`up`), `utility` | `o-mcp/subgraph` v1, the single-line diagram and the path to source |
+| `GET /api/meters` | `node`, `as_of` | `o-mcp/meters` v1: devices, last readings, what can be resolved |
+| `GET /api/readings` | `node`, `quantities` (≤ 8), `start`, `end` (≤ 92 days), `interval`, `device` | `o-mcp/readings` v1 on the meters in effect on the window's last day, at most 10,000 points |
+| `GET /api/sankey`, `GET /api/diagnostics` | `start`, `end` (≤ 92 days), `quantity`, `node_detail` | `graph.sankey`'s links; `graph.sankey_diagnostics` with node ids, and `graph.v_property_gaps` |
+
+- Topology widgets pass their range's last day as `as_of` (§3, A); readings and the sankey take
+  the window and use its last day themselves.
+- Readings' `interval` defaults to `auto`: minutes for 6 hours or less within the minute data (§3),
+  then 15 minutes up to 2 days, hours up to 31, days beyond. A widget may ask for `15min`, `hour`,
+  `day` or `window`, never minutes outside that rule.
+- The sankey works in whole site days, as `graph.sankey` does: a window not on midnights draws every
+  day it touches, as the Grafana panel. It takes the conserved quantities the solver sums (energy,
+  water, air; `ACTIVE_ENERGY_DELIVERED` by default) and is drawn on the window's last day, with
+  `PLANT_CHANGED` when the plant changed inside it and `DATA_INCOMPLETE` as `/api/values`.
+- Property gaps are as of today: node properties have no history.
+
 ## 8. Users and dashboards: the `frontend` schema
 
 In `valkyrie`, beside the plant, in a schema of their own (§1, 14), written only by the API's own
@@ -410,8 +438,9 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - read production's `telemetry_data` indexes and time a 6-hour solve;
 - deploy the `node_value` change to the agent with 059.
 
-Next to build: more plant routes as widgets need them (topology, readings, sankey), then `web/`
-(§9), which fixes the dashboard document's format. A whole-day range that includes today takes the daily path, which reaches as far as the
+Built 2026-10-26: the plant routes the widget list needs (§7). Next: `web/` (§9), which fixes the
+dashboard document's format. The "Now" widget (the latest reading per meter) is the one widget without
+a route of its own yet; `GET /api/meters` gives each device's last reading time. A whole-day range that includes today takes the daily path, which reaches as far as the
 daily summary's last refresh. On production (read 2026-10-26 13:50 site time) today's rows were
 refreshed at 13:30 and the days before last at 23:30. pgAgent job 4 runs
 `refresh_daily_energy_costs` every 30 minutes, on the hour and the half hour (its log, read by the

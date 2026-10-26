@@ -289,3 +289,53 @@ set-based pieces whichever option carries the rest. What would decide it:
    `graph.measurement` itself. The view still over-reports for any other reader.
 5. **Output schemas in `tools/list`**: 70% of its size (§3). Keep, trim descriptions, or drop,
    depending on whether Hermes passes them to the model.
+
+## 6. Shared with the frontend's API (2026-10-26)
+
+The frontend's API (`api/`, `design/frontend.md` §7) was built after phase 2, partly on the
+server's code. What to know when work on the server resumes:
+
+**One copy of each query.** `plant/` holds the queries both use: time windows, node resolution, the
+vocabulary and its document, the value solve cut at plant changes (`value`), and since 2026-10-26
+`find`, `section`, `meters`, `readings` and `sqlfile` (moved from `server/`). A server tool is now
+its name, description, input schema and one-line summary around a `plant/` call; the API's route
+is its parameters, node ids and cache around the same call. Neither package imports the other.
+**A new tool's query goes in `plant/` from the start**, so the frontend can serve it as a widget
+without a second copy.
+
+**One format per answer.** The `design/*-v1.schema.json` files are both the tools' `outputSchema`
+and the frontend's data contracts (its TypeScript types are to be generated from them). Each
+side's tests check answers strictly (every property required, no other allowed), so a field one
+side adds must go into the schema, which then describes the other side too. Added for the
+frontend, within v1: the node's `id` (nodelist, subgraph, meters), and in readings `query.node_id`,
+each series' `device_id` and the `minute` interval, which only the API gives.
+
+**Deliberate differences**, not drift:
+
+| | MCP server | API |
+|---|---|---|
+| a node is named by | code or name, resolved and reported (`resolve.pick`) | `graph.node.id` (decision 19) |
+| `as_of` | required, default today | the range's last day (decision 20, A) |
+| `meter_readings` / readings | 31 days, 500 points, 15-minute data only | 92 days, 10,000 points, minutes for ≤ 6 h |
+| `node_value` / values | whole site days only | minute, 15-minute or day, chosen from the window (`api/values.py`) |
+| cache | none | 30 s, identical requests in flight run once |
+
+**Worth bringing back to the server:**
+
+1. **`node_value`'s `data_until` for the daily summary** is the day after the tenant's last
+   `daily_bucket`, anywhere, so a window ending today reads as complete while today's row is still
+   filling. `api/values.py` takes the last day inside the window, and for it the quarter before its
+   `last_refreshed` (pgAgent job 4 refreshes every 30 minutes; `design/frontend.md` §10). Move
+   `data_until` / `summary_until` from `api/values.py` into `plant/` and have both use it.
+2. **Short windows for `node_value`**: the minute and 15-minute resolution choice
+   (`api/values.py`, `choose`) could move into `plant/` too, if the agent is to answer "the last
+   30 minutes". Open 3 above (raw `telemetry_data`) is the same question for `meter_readings`.
+3. **`energy_flow`** (layer 4): the API serves `graph.sankey` and `graph.sankey_diagnostics`
+   (`api/reads.py`) in whole days on the last day's network, with `PLANT_CHANGED` and
+   `DATA_INCOMPLETE`. A tool can reuse that, but its answer needs a schema of its own first: the
+   API answers it in an ad hoc shape. The cost mode is gone since 062.
+
+**Deployment.** `hermes-prs` runs the server as deployed before the move into `plant/`. The next
+deploy (`tools/deploy_server.sh`) carries the move and the new id fields, which change no answer
+otherwise; run `server/tests` against dev and `tools/mcp_smoke.py` after it, as usual.
+

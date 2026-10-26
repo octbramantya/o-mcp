@@ -31,8 +31,9 @@
       "description": "The matching nodes, by code.",
       "items": {
         "type": "object",
-        "required": ["code", "name", "class", "type", "utilities", "metered", "feeders", "site_status", "site_status_as_of"],
+        "required": ["id", "code", "name", "class", "type", "utilities", "metered", "feeders", "site_status", "site_status_as_of"],
         "properties": {
+          "id": {"type": "integer", "description": "The node's graph.node.id, which stays when its code changes (design/frontend.md §5). The frontend stores it."},
           "code": {"type": "string", "description": "The node's code; other tools take it."},
           "name": {"type": "string", "description": "Human-readable name, as the site calls it."},
           "class": {"type": "string", "description": "Node class, the broad role."},

@@ -32,8 +32,9 @@
       "description": "Every node in the document, each once. Ordered by scope (reached, parent, context), then depth, then code.",
       "items": {
         "type": "object",
-        "required": ["code", "name", "class", "type", "attrs", "scope", "depth", "children_total", "children_not_included"],
+        "required": ["id", "code", "name", "class", "type", "attrs", "scope", "depth", "children_total", "children_not_included"],
         "properties": {
+          "id": {"type": "integer", "description": "The node's graph.node.id, which stays when its code changes (design/frontend.md §5). The frontend stores it."},
           "code": {"type": "string", "description": "The node's code, unique within the tenant. Edges and findings refer to nodes by this code."},
           "name": {"type": "string", "description": "Human-readable name, as the site calls it."},
           "class": {

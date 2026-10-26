@@ -65,6 +65,7 @@ a change like that is a version 2.
 
 | field | type | meaning |
 |---|---|---|
+| `id` | integer | `graph.node.id`, which stays when the code changes (added 2026-10-26, within v1; the frontend stores it) |
 | `code` | string | `graph.node.node_code`, unique per tenant |
 | `name` | string | `node_name` |
 | `class` | string | `SOURCE`, `BUS`, `CONVERSION`, `TREATMENT`, `STORAGE`, `LOAD` or `SINK`. `SINK` is where the utility leaves the graph unconsumed (an outfall, an overflow, or a recycle cut naming where it re-enters in `attrs.reenters_at`); keep it out of consumption totals. `CONVERSION` delivers a different utility from what it takes in (compressor, boiler); `TREATMENT` passes the same utility through, changed and with some lost (softener, RO unit). A main board and a sub-board are both `BUS`; `type` tells them apart (`MAIN_LV_BOARD`, `SUB_BOARD`) |

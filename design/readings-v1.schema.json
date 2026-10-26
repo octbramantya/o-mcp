@@ -11,12 +11,13 @@
     "query": {
       "type": "object",
       "description": "What was asked for.",
-      "required": ["tenant", "node", "as_of", "interval", "window", "quantities", "device"],
+      "required": ["tenant", "node", "node_id", "as_of", "interval", "window", "quantities", "device"],
       "properties": {
         "tenant": {"type": "integer", "description": "Tenant (site) id."},
         "node": {"type": "string", "description": "Code of the node the server resolved the request to."},
+        "node_id": {"type": "integer", "description": "That node's graph.node.id."},
         "as_of": {"type": "string", "format": "date", "description": "Which devices were on the node: as on this day."},
-        "interval": {"enum": ["15min", "hour", "day", "window"], "description": "Point size; window is one point for the whole window. hour and day follow site time."},
+        "interval": {"enum": ["minute", "15min", "hour", "day", "window"], "description": "Point size; window is one point for the whole window. hour and day follow site time. minute reads minute telemetry; only the frontend's API gives it, for windows of 6 hours or less."},
         "window": {
           "type": "object", "description": "The window, start included, end excluded.",
           "required": ["start", "end"],
@@ -34,8 +35,9 @@
       "description": "One per device and quantity, by device code.",
       "items": {
         "type": "object",
-        "required": ["device", "device_name", "quantity", "unit", "reading", "decoded", "points"],
+        "required": ["device_id", "device", "device_name", "quantity", "unit", "reading", "decoded", "points"],
         "properties": {
+          "device_id": {"type": "integer", "description": "The device's public.devices id."},
           "device": {"type": "string", "description": "Device code."},
           "device_name": {"type": ["string", "null"], "description": "Device name."},
           "quantity": {"type": "string", "description": "Quantity code."},
@@ -54,7 +56,7 @@
                 "mean": {"type": ["number", "null"], "description": "SAMPLE only: mean of the 15-minute values."},
                 "min": {"type": ["number", "null"], "description": "SAMPLE only: smallest 15-minute value (a 15-minute mean, not an instantaneous minimum)."},
                 "max": {"type": ["number", "null"], "description": "SAMPLE only: largest 15-minute value."},
-                "samples": {"type": "integer", "description": "15-minute values in the interval; 4 per full hour."},
+                "samples": {"type": "integer", "description": "Values in the interval: 15-minute values (4 per full hour), or minute values at interval minute."},
                 "rejected": {"type": "integer", "description": "COUNTER only: steps where the register went backwards or jumped implausibly, counted as zero."}
               }
             }

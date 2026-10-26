@@ -1,5 +1,6 @@
 """The frontend's HTTP API: log-in, sessions, the tenant switch, the super admin's accounts, users'
-dashboards (design/frontend.md §2, §7, §8), and the plant's values (api/values.py).
+dashboards (design/frontend.md §2, §7, §8), and the plant: values (api/values.py) and the other reads
+(api/reads.py).
 
 Every request is one transaction on frontend_api's pool; a plant request then reads in a second, on
 its tenant's pool (api/tenants.py), once the first has closed. The session, not the request, says who
@@ -25,7 +26,7 @@ from starlette.routing import Route
 
 from plant.errors import PlantError
 
-from . import auth, values
+from . import auth, reads, values
 from .cache import Cache
 from .db import Database, one, rows
 from .tenants import TenantError, Tenants
@@ -517,6 +518,15 @@ async def get_values(request, tenant, _s, _body):
     return Json(await request.app.state.cache.get(key, lambda: values.run(tenant, q, ids, w)))
 
 
+def _read(read):
+    """A plant route answered by one of api/reads.py's reads, through the cache."""
+    @endpoint(plant=True)
+    async def handler(request, tenant, _s, _body):
+        key, compute = read(tenant, request.query_params)
+        return Json(await request.app.state.cache.get(key, compute))
+    return handler
+
+
 # -- the app --------------------------------------------------------------------------------------
 def build(config):
     db = Database(config)
@@ -568,6 +578,13 @@ def build(config):
         Route("/api/dashboards/{dashboard_id}/copy", copy_dashboard, methods=["POST"]),
         Route("/api/admin/dashboards", list_users_dashboards, methods=["GET"]),
         Route("/api/values", get_values, methods=["GET"]),
+        Route("/api/vocabulary", _read(reads.vocabulary_doc), methods=["GET"]),
+        Route("/api/nodes", _read(reads.nodes), methods=["GET"]),
+        Route("/api/section", _read(reads.subgraph), methods=["GET"]),
+        Route("/api/meters", _read(reads.node_meters), methods=["GET"]),
+        Route("/api/readings", _read(reads.node_readings), methods=["GET"]),
+        Route("/api/sankey", _read(reads.sankey), methods=["GET"]),
+        Route("/api/diagnostics", _read(reads.diagnostics), methods=["GET"]),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.db, app.state.tenants, app.state.cache = db, tenants, Cache()

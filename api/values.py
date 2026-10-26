@@ -98,6 +98,13 @@ async def data_until(conn, tenant, names, start, end):
     return min(got, key=lambda x: (x[1] is not None, x[1] or start))
 
 
+async def oldest_minute(conn, tenant):
+    """The tenant's oldest minute reading, aware in site time, or None if it has none."""
+    t = (await rows(conn, "SELECT min(timestamp) AS t FROM telemetry_data WHERE tenant_id = %s",
+                    (tenant.id,)))[0]["t"]
+    return t.replace(tzinfo=dt.UTC).astimezone(tenant.tz) if t else None
+
+
 def parse(params, tenant):
     """The query's quantity, node ids and window, or PlantError naming what's wrong."""
     v = tenant.vocab
@@ -120,14 +127,10 @@ def _num(x):
 
 
 async def run(tenant, q, ids, w):
-    v, tz = tenant.vocab, tenant.tz
+    v = tenant.vocab
     derived = q["kind"] == "DERIVED"
     async with tenant.tx() as conn:
-        oldest = None
-        if w.end - w.start <= MINUTE_MAX + MINUTE:
-            t = (await rows(conn, "SELECT min(timestamp) AS t FROM telemetry_data WHERE tenant_id = %s",
-                            (tenant.id,)))[0]["t"]
-            oldest = t.replace(tzinfo=dt.UTC).astimezone(tz) if t else None
+        oldest = await oldest_minute(conn, tenant) if w.end - w.start <= MINUTE_MAX + MINUTE else None
         resolution, start, end = choose(w.start, w.end, oldest)
         is_daily = resolution == "day" and daily(q, v)
         if resolution != "day":
