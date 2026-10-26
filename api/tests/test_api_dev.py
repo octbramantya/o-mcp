@@ -7,6 +7,7 @@ superuser (DB_USER, DB_PASSWORD), which removes the test's accounts afterwards:
 frontend_api is NOLOGIN as 061 creates it; on dev, give it LOGIN and a password by hand first.
 """
 import asyncio
+import datetime as dt
 import os
 import uuid
 
@@ -194,6 +195,18 @@ def test_values_by_resolution_and_tenant(env, client):
     assert old["resolution"] == "15min" and old["window"]["start"].startswith(f"{OLD}T10:00")
     assert old["values"][0]["value"] is not None
 
+    # A window running past the 15-minute data says where it stops.
+    with psycopg.connect(**env[1]) as conn:
+        last = conn.execute("SELECT max(bucket) FROM telemetry_15min_agg WHERE tenant_id = %s",
+                            (TENANT,)).fetchone()[0]
+    tz = c.app.state.tenants.by_id[TENANT].tz
+    stop = (last + dt.timedelta(minutes=15)).replace(tzinfo=dt.UTC).astimezone(tz)
+    r = values(c, [PLN], (stop - dt.timedelta(hours=7)).isoformat(timespec="minutes"),
+               (stop + dt.timedelta(hours=1)).isoformat(timespec="minutes")).json()
+    assert r["resolution"] == "15min" and r["source"] == "telemetry_15min_agg"
+    assert r["data_until"] == stop.isoformat(timespec="minutes")
+    assert "DATA_INCOMPLETE" in [f["code"] for f in r["findings"]]
+
     # Refusals: an id the role can't see, a quantity the solver can't resolve.
     r = values(c, [999_999], f"{DAY}T00:00", f"{DAY}T06:00")
     assert r.status_code == 400 and "999999" in r.json()["message"]
@@ -203,12 +216,15 @@ def test_values_by_resolution_and_tenant(env, client):
     quarters = [values(c, [PLN, A5], f"{DAY}T{h:02d}:00", f"{DAY}T{h + 6:02d}:00" if h < 18 else "2026-10-22T00:00")
                 .json() for h in (0, 6, 12, 18)]
     assert {q["resolution"] for q in quarters} == {"minute"}
+    assert not [f for q in quarters for f in q["findings"] if f["code"] == "DATA_INCOMPLETE"]
     assert all(v["value"] is not None for q in quarters for v in q["values"])
     if c.app.state.tenants.by_id[TENANT].vocab.shift_names == ["UNKNOWN"]:
         pytest.skip("dev has no tenant_shift_periods rows, so the daily summary filters to nothing; "
                     "rebuild dev with tools/dev_refresh.sh, which copies them")
     day = values(c, [PLN, A5], f"{DAY}T00:00", "2026-10-22T00:00").json()
     assert day["resolution"] == "day" and all(v["origin"] != "NONE" for v in day["values"])
+    assert day["source"] == "daily_energy_cost_summary" and day["data_until"].startswith("2026-10-22T00:00")
+    assert "DATA_INCOMPLETE" not in [f["code"] for f in day["findings"]]
     for i, v in enumerate(day["values"]):
         minutes = sum(q["values"][i]["value"] for q in quarters)
         assert abs(minutes - v["value"]) <= max(1, 0.01 * v["value"]), (v["code"], minutes, v["value"])

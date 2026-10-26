@@ -12,6 +12,11 @@ and the answer says which resolution and window it used, for the widget to label
 
 Nodes are given by graph.node.id (decision 19) and answered with their code and name as of the
 window's last day. An id the tenant's role can't see is refused, as if it didn't exist.
+
+data_until is where the data the solve read stops, in site time: the source's last minute or bucket
+inside the window, for the whole tenant (not per meter), or for the daily summary the earlier of its
+last day's end and that day's last refresh, which a cron job runs. Short of the window's end, the
+answer carries DATA_INCOMPLETE: a range running to now, a stalled feed, a day not yet summarised.
 """
 import datetime as dt
 
@@ -50,6 +55,43 @@ def choose(start, end, oldest_minute):
     if e - s <= MINUTE_MAX and oldest_minute is not None and s >= oldest_minute:
         return "minute", s, e
     return "15min", _floor(start, QUARTER), _ceil(end, QUARTER)
+
+
+def sources(resolution, is_daily, rules):
+    """The tables graph.device_totals reads at this resolution, one per rule (060)."""
+    if resolution == "minute":
+        return {"telemetry_data"}
+    if is_daily:
+        return {"daily_energy_cost_summary"}
+    return {"telemetry_intervals_water" if r["utility"] == "WATER" and r["conserved"] else "telemetry_15min_agg"
+            for r in rules}
+
+
+async def _until(conn, tenant, source, start, end):
+    """Where source's data inside [start, end) stops, aware, or None when it has none there."""
+    tz = start.tzinfo
+    if source == "daily_energy_cost_summary":
+        r = await rows(conn, "SELECT daily_bucket AS d, max(last_refreshed) AS refreshed"
+                             " FROM daily_energy_cost_summary WHERE tenant_id = %s"
+                             " AND daily_bucket >= %s AND daily_bucket < %s"
+                             " GROUP BY 1 ORDER BY 1 DESC LIMIT 1",
+                       (tenant, start.replace(tzinfo=None), end.replace(tzinfo=None)))
+        if not r:
+            return None
+        day_end = (r[0]["d"] + dt.timedelta(days=1)).replace(tzinfo=tz)
+        return day_end if r[0]["refreshed"] is None else min(day_end, _floor(r[0]["refreshed"].astimezone(tz),
+                                                                             QUARTER))
+    column, step = ("timestamp", MINUTE) if source == "telemetry_data" else ("bucket", QUARTER)
+    s, e = timewin.Window(start, end).utc()
+    t = (await rows(conn, f"SELECT max({column}) AS t FROM {source} WHERE tenant_id = %s"
+                          f" AND {column} >= %s AND {column} < %s", (tenant, s, e)))[0]["t"]
+    return None if t is None else _floor(t.replace(tzinfo=dt.UTC), step).astimezone(tz) + step
+
+
+async def data_until(conn, tenant, names, start, end):
+    """(source, until) for the source whose data stops first."""
+    got = [(n, await _until(conn, tenant, n, start, end)) for n in sorted(names)]
+    return min(got, key=lambda x: (x[1] is not None, x[1] or start))
 
 
 def parse(params, tenant):
@@ -104,6 +146,8 @@ async def run(tenant, q, ids, w):
             raise PlantError(f"No node {', '.join(map(str, unknown))} in this site.")
         live = {n["id"]: n for n in await live_nodes(conn, tenant.id, [d for _, _, d in every])}
         solved = await solve(conn, tenant.id, v, q, plan, bounds)
+        rules = [v.quantity(c)["rule"] for c in q["from"]] if derived else [q["rule"]]
+        source, until = await data_until(conn, tenant.id, sources(resolution, is_daily, rules), start, end)
 
     values, findings = [], []
     for i in ids:
@@ -125,8 +169,14 @@ async def run(tenant, q, ids, w):
             f"The plant changed on {on}; each value was worked out in {len(plan)} pieces." if len(plan) > 1 else
             f"The plant changed on {on}, and {q['code']} can't be combined across pieces, so the window was "
             f"worked out on the network of {plan[0][2]}.")})
+    if until is None or until < end:
+        findings.append({"code": "DATA_INCOMPLETE", "message": (
+            f"{source} has no data for this window." if until is None else
+            f"{source} has data only up to {timewin.iso(until)}; the window runs to {timewin.iso(end)}, so "
+            f"values are short of the full window.")})
     return {"tenant": tenant.id,
             "quantity": {"code": q["code"], "utility": q["utility"], "unit": q["unit"], "kind": q["kind"]},
             "requested": w.as_json(), "window": timewin.Window(start, end).as_json(), "resolution": resolution,
+            "source": source, "data_until": timewin.iso(until) if until else None,
             "pieces": [{"start": timewin.iso(a), "end": timewin.iso(b), "as_of": d.isoformat()} for a, b, d in plan],
             "values": values, "findings": findings}

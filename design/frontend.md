@@ -338,7 +338,12 @@ nodes by `graph.node.id`, over a site-time window of up to 92 days. The resoluti
 reads minutes; anything else reads 15-minute buckets, electricity energy included. The window is
 snapped outwards to its resolution. The answer carries `resolution`, the snapped `window`, the
 `pieces` it was solved in, and per node the value, origin and parts, with the findings
-`NOT_IN_NETWORK`, `NO_VALUE` and `PLANT_CHANGED` as `node_value` has them. Answers are cached for
+`NOT_IN_NETWORK`, `NO_VALUE` and `PLANT_CHANGED` as `node_value` has them. It also names the
+`source` the solve read and its `data_until`: the last minute or bucket inside the window, for the
+whole tenant, or for the daily summary the earlier of its last day's end and that day's
+`last_refreshed` (a cron job fills it). Short of the window's end the answer carries
+`DATA_INCOMPLETE`, so a range running to now, a stalled feed or a day not yet summarised is
+labelled, not shown as a drop. A single silent meter isn't caught here. Answers are cached for
 30 s by tenant, quantity, nodes and the window rounded to the minute, and identical requests in
 flight run once (`api/cache.py`, one process).
 
@@ -398,8 +403,10 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - deploy the `node_value` change to the agent with 059.
 
 Next to build: dashboards in `api/`, more plant routes as widgets need them (topology, readings,
-sankey), then `web/` (§9). `/api/values` doesn't yet say when the data stops short of the
-window (`node_value`'s `DATA_INCOMPLETE`). Before `api/` is deployed:
+sankey), then `web/` (§9). Open: a whole-day range that includes today takes the daily path, and the daily
+summary has no row for a day until the cron job's next run, so "today" answers `NO_VALUE` with
+`DATA_INCOMPLETE` while 15-minute data is there; the choice of resolution should look at how far the
+summary reaches (production's refresh schedule to be read first). Before `api/` is deployed:
 
 - behind a reverse proxy, the client's address (for the per-address limit and the audit) must come
   from a trusted `X-Forwarded-For`; today it is the peer's;

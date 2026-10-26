@@ -74,6 +74,22 @@ def test_choose_resolution(start, end, oldest, want):
     assert (r, s, e) == (want[0], t(want[1]), t(want[2]))
 
 
+ELEC = {"utility": "ELECTRICITY", "conserved": True}
+WATER = {"utility": "WATER", "conserved": True}
+THD = {"utility": "ELECTRICITY", "conserved": False}
+
+
+@pytest.mark.parametrize("resolution, is_daily, rules, want", [
+    ("minute", False, [WATER], {"telemetry_data"}),
+    ("day", True, [ELEC, ELEC], {"daily_energy_cost_summary"}),
+    ("day", False, [WATER], {"telemetry_intervals_water"}),
+    ("15min", False, [ELEC], {"telemetry_15min_agg"}),
+    ("15min", False, [THD, WATER], {"telemetry_15min_agg", "telemetry_intervals_water"}),
+])
+def test_sources_follow_device_totals(resolution, is_daily, rules, want):
+    assert values.sources(resolution, is_daily, rules) == want
+
+
 def test_instant_pieces_cut_at_midnight():
     cuts = [dt.date(2026, 9, 28)]
     assert value.change_days(t("2026-09-27T18:00"), t("2026-09-28T06:00")) == (dt.date(2026, 9, 27),
