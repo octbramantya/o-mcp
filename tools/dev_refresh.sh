@@ -255,6 +255,23 @@ tgt -q -c "DO \$\$ DECLARE r text; BEGIN
     END LOOP;
 END \$\$"
 
+# The roles' settings in this database (ALTER ROLE ... IN DATABASE ... SET, as 044 and 061 give the
+# tenant roles their search_path and timeouts) belong to the database, so DROP DATABASE took them,
+# and pg_dump doesn't carry them. Copied from the source's database. search_path is a list and is
+# written unquoted: quoted, it would name one schema "prs, graph, public". LOGIN and passwords are
+# the role's, cluster-wide, and a role that already exists here is left as it is.
+role_settings=$(src -tAq -c "
+    SELECT format('ALTER ROLE %I IN DATABASE %I SET %s = %s;', r.rolname, '$TGT_NAME', split_part(c, '=', 1),
+                  CASE WHEN split_part(c, '=', 1) = 'search_path' THEN substr(c, strpos(c, '=') + 1)
+                       ELSE quote_literal(substr(c, strpos(c, '=') + 1)) END)
+    FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole, unnest(s.setconfig) c
+    WHERE s.setdatabase = (SELECT oid FROM pg_database WHERE datname = current_database())
+    ORDER BY r.rolname, c")
+if [ -n "$role_settings" ]; then
+    echo "role settings in $TGT_NAME: $(echo "$role_settings" | wc -l | tr -d ' ')"
+    printf '%s\n' "$role_settings" | tgt -q -v ON_ERROR_STOP=1
+fi
+
 "$PG_BIN/pg_restore" -l "$WORK/schema.dump" | grep -vE 'EXTENSION - timescaledb|EXTENSION .*timescaledb' > "$WORK/all.toc"
 grep -E '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - ' "$WORK/all.toc" | grep -vE ' SCHEMA - public ' > "$WORK/schemas.toc" || true
 grep -vE '^[0-9]+; [0-9]+ [0-9]+ SCHEMA - ' "$WORK/all.toc" > "$WORK/rest.toc"
