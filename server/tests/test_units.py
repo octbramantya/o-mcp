@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from server import config, resolve, sqlfile, timewin
+from plant import resolve, timewin
+from server import config, sqlfile
 
 JKT = ZoneInfo("Asia/Jakarta")
 
@@ -101,7 +102,7 @@ def test_config_tls_passes_to_libpq(monkeypatch, tmp_path):
 
 
 def test_pieces_cut_at_changes():
-    from server.tools import value
+    from plant import value
     d = dt.date.fromisoformat
     assert value.pieces(d("2026-09-01"), d("2026-10-01"), []) == [(d("2026-09-01"), d("2026-10-01"), d("2026-09-30"))]
     assert value.pieces(d("2026-09-01"), d("2026-10-01"), [d("2026-09-28")]) == [
@@ -111,7 +112,7 @@ def test_pieces_cut_at_changes():
 def test_combine_pieces():
     from decimal import Decimal as D
 
-    from server.tools import value
+    from plant import value
     m = {"val": D(10), "origin": "MEASURED"}
     r = {"val": D(5), "origin": "ROLLUP"}
     assert value.combine([m, None], False) == (D(10), "MEASURED", None)        # retired after the first piece

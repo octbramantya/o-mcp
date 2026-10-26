@@ -10,16 +10,15 @@ The solver reads two kinds of bucket, and the window is converted for each (foun
 So the tool takes whole site-time days. Shifts are not filtered: every shift name the tenant has is
 passed, plus UNKNOWN, which public.get_shift_period answers for an hour no shift covers.
 
-The plant can change inside a window (design/frontend.md §3, decided 2026-10-22). The window is cut
-at graph.change_dates, each piece is solved on the network of its own last day, and the pieces are
-combined by the quantity's rule: DELTA totals add. Any other rule (THD_VOLTAGE_LN's P95: a range's
-95th percentile can't be rebuilt from its pieces') is solved once, on the network of the window's last
-day, with a PLANT_CHANGED finding. Without a change, nearly always, there is one piece and one solve.
+The plant can change inside a window: the window is cut at its change dates and solved piece by
+piece (plant/value.py, shared with the frontend's API), with a PLANT_CHANGED finding.
 """
 import datetime as dt
-import itertools
 
-from .. import resolve, timewin, tools
+from plant import resolve, timewin
+from plant.value import combine, cuts, daily, live_nodes, pieces, solve, splits
+
+from .. import tools
 from ..db import rows
 from ..errors import ToolError
 
@@ -68,52 +67,6 @@ def input_schema(ctx):
     }
 
 
-def _rules(q, v):
-    return [v.quantity(c)["rule"] for c in q["from"]] if q["kind"] == "DERIVED" else [q["rule"]]
-
-
-def daily(q, v):
-    """True when the solver reads this quantity from site-time days."""
-    return all(r["utility"] == "ELECTRICITY" and r["conserved"] for r in _rules(q, v))
-
-
-# Rules whose totals over pieces of a window add up to the window's (design/frontend.md §3). A rule
-# not listed is solved on one network; a new rule joins only once it says how its pieces combine.
-ADDS = ("DELTA",)
-
-
-def splits(q, v):
-    """True when q is worked out piece by piece where the plant changed inside the window."""
-    return all(r["time_agg"] in ADDS for r in _rules(q, v))
-
-
-def pieces(first, end, cuts):
-    """(start, end, as_of) per piece: the days first..end (excluded) cut at each change date, each
-    solved on the network of its own last day."""
-    bounds = [first, *cuts, end]
-    return [(a, b, b - dt.timedelta(days=1)) for a, b in itertools.pairwise(bounds)]
-
-
-def combine(parts, derived):
-    """One node's value from its pieces' solver rows, None where it wasn't in that piece's network.
-    Returns (value, origin, parts) or None when the node is in no piece's network."""
-    got = [r for r in parts if r is not None]
-    if not got:
-        return None
-    if derived:
-        p = [r["p_val"] for r in got]
-        q = [r["q_val"] for r in got]
-        if None in p or None in q:
-            return None, "NONE", (None if None in p else sum(p), None if None in q else sum(q))
-        p, q = sum(p), sum(q)
-        val = None if p == 0 and q == 0 else round(p / (p * p + q * q).sqrt(), 4)
-        return val, "DERIVED" if val is not None else "NONE", (p, q)
-    if any(r["val"] is None or r["origin"] == "NONE" for r in got):
-        return None, "NONE", None
-    origins = {r["origin"] for r in got}
-    return sum(r["val"] for r in got), origins.pop() if len(origins) == 1 else "ROLLUP", None
-
-
 def _num(x):
     return None if x is None else round(float(x), 4)
 
@@ -141,17 +94,11 @@ async def run(ctx, args):
         return s, e - dt.timedelta(minutes=15)
 
     async with ctx.db.tx(read_only=False) as conn:
-        cuts = [r["change_date"] for r in await rows(conn, "SELECT change_date FROM graph.change_dates(%s, %s, %s)",
-                                                       (cfg.tenant, first, end))]
-        plan = pieces(first, end, cuts) if splits(q, v) else [(first, end, last_day)]
+        changes = await cuts(conn, cfg.tenant, first, end)
+        plan = pieces(first, end, changes) if splits(q, v) else [(first, end, last_day)]
         # a node is found if it is in effect on any piece's day, the latest piece first
-        nodes, seen = [], set()
-        for _, _, as_of in reversed(pieces(first, end, cuts)):
-            for n in await resolve.live_nodes(conn, cfg.tenant, as_of):
-                if n["id"] not in seen:
-                    seen.add(n["id"])
-                    nodes.append(n)
-        span = last_day.isoformat() if not cuts else f"any day from {first} to {last_day}"
+        nodes = await live_nodes(conn, cfg.tenant, [d for _, _, d in pieces(first, end, changes)])
+        span = last_day.isoformat() if not changes else f"any day from {first} to {last_day}"
         picked, notes, misses = [], [], []
         for given in args["nodes"]:
             try:
@@ -165,17 +112,7 @@ async def run(ctx, args):
                 notes.append(how)
         if misses:
             raise ToolError(" ".join(misses))
-        solved = []
-        for a, b, as_of in plan:
-            p_start, p_end = bounds(a, b)
-            if q["kind"] == "DERIVED":
-                got = await rows(conn, "SELECT * FROM graph.get_node_derived(%s, %s, %s, %s, %s, %s)",
-                                 (cfg.tenant, q["code"], p_start, p_end, as_of, v.shift_names))
-            else:
-                got = await rows(conn, "SELECT * FROM graph.get_node_quantity(%s, %s, %s, %s, %s, %s, %s)",
-                                 (cfg.tenant, q["utility"], q["quantity_id"], p_start, p_end, as_of,
-                                  v.shift_names))
-            solved.append({r["node_id"]: r for r in got})
+        solved = await solve(conn, cfg.tenant, v, q, plan, bounds)
         if source == DAILY_SOURCE:
             last = (await rows(conn, "SELECT max(daily_bucket) AS t FROM daily_energy_cost_summary "
                                      "WHERE tenant_id = %s", (cfg.tenant,)))[0]["t"]
@@ -204,8 +141,8 @@ async def run(ctx, args):
                                         f"around it to work it out from"
                                         f"{' on part of it' if len(plan) > 1 else ''}. This is not zero."})
         values.append(row)
-    if cuts:
-        on = ", ".join(d.isoformat() for d in cuts)
+    if changes:
+        on = ", ".join(d.isoformat() for d in changes)
         findings.append({"code": "PLANT_CHANGED", "message": (
             f"The plant changed on {on}, inside this window; each value was worked out in {len(plan)} pieces, "
             f"each on the network of its own days." if len(plan) > 1 else

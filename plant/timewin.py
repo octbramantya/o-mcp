@@ -1,16 +1,16 @@
-"""Time. Telemetry is stored in UTC, without a zone; people think in site time. Tools take and
-return site time (O_MCP_TZ), and every window is half-open: start included, end excluded, so a
+"""Time. Telemetry is stored in UTC, without a zone; people think in site time. The MCP tools and
+the API take and return site time (the tenant's zone), and every window is half-open: start included, end excluded, so a
 week is start 2026-09-28, end 2026-10-05. A bare date means midnight site time.
 """
 import datetime as dt
 from dataclasses import dataclass
 
-from .errors import ToolError
+from .errors import PlantError
 
 UTC = dt.UTC
 
 
-class BadWindow(ToolError):
+class BadWindow(PlantError):
     """A tool error the model can act on."""
 
 

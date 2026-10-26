@@ -9,7 +9,7 @@
 # --confirm  must repeat HOST.
 #
 # What it does: packs the files the server needs from that commit (git archive: server/,
-# pyproject.toml, uv.lock, tools/sld.sql, the output schemas, the smoke test), copies them over,
+# plant/, pyproject.toml, uv.lock, tools/sld.sql, the output schemas, the smoke test), copies them over,
 # and on the host, as root:
 #   - first run only: creates the system user o-mcp and installs uv (pinned, checksum checked);
 #   - unpacks to /opt/o-mcp/releases/<commit>, builds its .venv with `uv sync --frozen --no-dev`
@@ -50,7 +50,7 @@ git fetch -q origin main
 git merge-base --is-ancestor "$SHA" origin/main || die "$SHA is not on origin/main; push it first"
 SHORT=${SHA:0:12}
 
-FILES=(server pyproject.toml uv.lock deploy/o-mcp.service tools/sld.sql tools/mcp_smoke.py tools/check_subgraph.py)
+FILES=(server plant pyproject.toml uv.lock deploy/o-mcp.service tools/sld.sql tools/mcp_smoke.py tools/check_subgraph.py)
 while IFS= read -r f; do FILES+=("$f"); done < <(git ls-tree --name-only "$SHA" design/ | grep -E -- '-v1\.schema\.json$')
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
@@ -90,7 +90,7 @@ else
     tar -xzf "$TARBALL" -C "$REL.tmp"
     (cd "$REL.tmp" && UV_PYTHON=/usr/bin/python3 UV_PYTHON_DOWNLOADS=never UV_CACHE_DIR=/var/cache/o-mcp-uv \
         uv sync --frozen --no-dev --compile-bytecode --quiet) || fail "uv sync"
-    /usr/bin/python3 -m compileall -q "$REL.tmp/server" >/dev/null
+    /usr/bin/python3 -m compileall -q "$REL.tmp/server" "$REL.tmp/plant" >/dev/null
     echo "$SHA" > "$REL.tmp/REVISION"
     chown -R root:root "$REL.tmp"; chmod -R go-w,o+rX "$REL.tmp"
     mv "$REL.tmp" "$REL"; say "built release $SHORT"

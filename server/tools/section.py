@@ -1,6 +1,8 @@
 """plant_section: one node and what it feeds, or what feeds it, as an o-mcp/subgraph v1 document.
 The query is tools/sld.sql, the same file tools/sld.py draws from."""
-from .. import resolve, sqlfile, tools
+from plant import resolve
+
+from .. import sqlfile, tools
 from ..db import client_rows
 
 NAME = "plant_section"

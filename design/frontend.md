@@ -324,6 +324,24 @@ everything that changes state is a POST with an `application/json` body, which w
 - An admin's session starts with no tenant; the frontend asks them to pick one.
 - The first super admin comes from the command line (`python -m api create-super-admin`).
 
+**Plant reads (2026-10-26), on dev.** A pool per active row of `frontend.tenant`, as its `db_role`
+(`prs_frontend` for tenant 3), with the password from `O_API_TENANT_<id>_PASSWORD`
+(`api/tenants.py`). The API refuses to start if a pool's `current_user` isn't that role or sees
+another tenant's devices. `Tenants.for_session` is the one place a session becomes a pool: an
+admin with no tenant chosen gets 409, and a user's session naming a tenant other than their own
+gets 403. The plant read runs after the frontend transaction has closed, so a slow solve holds no
+`frontend_api` connection.
+
+`GET /api/values?quantity=&nodes=<ids>&start=&end=` (`api/values.py`): one quantity for up to 50
+nodes by `graph.node.id`, over a site-time window of up to 92 days. The resolution is chosen as in
+§3: whole site days read as before; a window of 6 hours or less starting within the minute data
+reads minutes; anything else reads 15-minute buckets, electricity energy included. The window is
+snapped outwards to its resolution. The answer carries `resolution`, the snapped `window`, the
+`pieces` it was solved in, and per node the value, origin and parts, with the findings
+`NOT_IN_NETWORK`, `NO_VALUE` and `PLANT_CHANGED` as `node_value` has them. Answers are cached for
+30 s by tenant, quantity, nodes and the window rounded to the minute, and identical requests in
+flight run once (`api/cache.py`, one process).
+
 ## 8. Users and dashboards: the `frontend` schema
 
 In `valkyrie`, beside the plant, in a schema of their own (§1, 14), written only by the API's own
@@ -355,14 +373,17 @@ Migrations for `frontend` go in `migrations/`, in the one numbering sequence, th
 
 | path | what |
 |---|---|
+| `plant/` | the plant queries both use (below) |
 | `server/` | the MCP server, as today |
 | `api/` | the frontend's HTTP API: log-in, sessions, tenants, dashboards, and the plant queries |
 | `web/` | the frontend (React, Vite, TypeScript) |
 | `design/`, `migrations/`, `tools/`, `deploy/` | as today, shared by both |
 
-The plant queries are written once. Whether `api/` imports them from `server/` or both import a
-shared package is decided when `api/` is written; they must not be copied, or the two answers
-drift apart. The repository's name follows.
+The plant queries are written once, in `plant/` (decided 2026-10-26): time windows (`timewin`),
+node resolution (`resolve`), the vocabulary (`vocab`), and solving a value over a window cut at
+plant changes (`value`). `server/` and `api/` both import it; neither imports the other, so the API
+doesn't start with the MCP server's settings. `plant/` raises `PlantError`, which the server
+answers as a tool error and the API as a 400. The repository's name follows.
 
 ## 10. Open
 
@@ -374,8 +395,9 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - read production's `telemetry_data` indexes and time a 6-hour solve;
 - deploy the `node_value` change to the agent with 059.
 
-Next to build: the rest of `api/` (tenant pools and the plant queries, then dashboards), then
-`web/` (§9). Before `api/` is deployed:
+Next to build: dashboards in `api/`, more plant routes as widgets need them (topology, readings,
+sankey), then `web/` (§9). `/api/values` doesn't yet say when the data stops short of the
+window (`node_value`'s `DATA_INCOMPLETE`). Before `api/` is deployed:
 
 - behind a reverse proxy, the client's address (for the per-address limit and the audit) must come
   from a trusted `X-Forwarded-For`; today it is the peer's;

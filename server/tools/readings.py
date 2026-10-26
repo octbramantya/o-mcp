@@ -7,7 +7,9 @@ and max. Power factor is decoded before any statistic (design/mcp-tools.md, gap 
 """
 import math
 
-from .. import resolve, timewin, tools, vocab
+from plant import resolve, timewin, vocab
+
+from .. import tools
 from ..db import rows
 from ..errors import ToolError
 from .meters import DEVICES
@@ -43,7 +45,7 @@ WITH raw AS (
   SELECT r.device_id, r.quantity_id, r.bucket,
          CASE WHEN r.quantity_id = ANY (%(counters)s)
               THEN r.v - lag(r.v) OVER (PARTITION BY r.device_id, r.quantity_id ORDER BY r.bucket) END AS d,
-         CASE WHEN NOT r.quantity_id = ANY (%(pf)s) THEN r.v      -- the magnitude, any model (server/vocab.py)
+         CASE WHEN NOT r.quantity_id = ANY (%(pf)s) THEN r.v      -- the magnitude, any model (plant/vocab.py)
               WHEN r.v <= -2 THEN NULL                             -- Schneider: no load
               WHEN r.v > 1 THEN 2 - r.v                            -- Schneider: leading import
               WHEN r.v < -1 THEN r.v + 2                           -- Schneider: lagging export

@@ -8,9 +8,9 @@ public.<table> is refused to that role. The graph solver relies on the same, so 
 """
 from contextlib import asynccontextmanager
 
-import psycopg
-from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
+
+from plant.db import client_rows, rows  # noqa: F401  (re-exported for the tools)
 
 STATEMENT_TIMEOUT = "20s"
 
@@ -37,15 +37,3 @@ class Database:
                 await conn.execute(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT}'")
                 yield conn
 
-
-async def rows(conn, sql, params=None):
-    async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(sql, params)
-        return await cur.fetchall()
-
-
-async def client_rows(conn, sql, params):
-    """Run with client-side binding, the way psql substitutes :'var' (see sqlfile.py)."""
-    async with psycopg.AsyncClientCursor(conn, row_factory=dict_row) as cur:
-        await cur.execute(sql, params)
-        return await cur.fetchall()

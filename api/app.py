@@ -1,7 +1,8 @@
-"""The frontend's HTTP API, first slice: log-in, sessions, the tenant switch and the super admin's
-accounts (design/frontend.md §2, §7, §8). Plant queries and dashboards come next.
+"""The frontend's HTTP API: log-in, sessions, the tenant switch, the super admin's accounts
+(design/frontend.md §2, §7, §8), and the plant's values (api/values.py). Dashboards come next.
 
-Every request is one transaction on frontend_api's pool. The session, not the request, says who
+Every request is one transaction on frontend_api's pool; a plant request then reads in a second, on
+its tenant's pool (api/tenants.py), once the first has closed. The session, not the request, says who
 the caller is and which tenant they are in: a user's tenant is fixed, and a request naming another
 is refused, not filtered. An account that must change its password reaches only /api/me,
 /api/password and /api/logout until it has.
@@ -22,8 +23,12 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
-from . import auth
+from plant.errors import PlantError
+
+from . import auth, values
+from .cache import Cache
 from .db import Database, one, rows
+from .tenants import TenantError, Tenants
 
 log = logging.getLogger("o-mcp-api")
 
@@ -87,9 +92,11 @@ def _id(v, key):
     return v
 
 
-def endpoint(who="session", before_password_change=False):
+def endpoint(who="session", before_password_change=False, plant=False):
     """who: "anyone" (log-in), "session" (any logged-in account) or "super_admin". The handler gets
-    (request, conn, session, body); an ApiError rolls the transaction back and becomes the response."""
+    (request, conn, session, body); an ApiError rolls the transaction back and becomes the response.
+    With plant=True it gets the session's tenant (api/tenants.py) in place of conn, after the
+    frontend transaction has closed, so a slow solve holds no frontend_api connection."""
     def wrap(fn):
         @functools.wraps(fn)
         async def handler(request):
@@ -105,9 +112,15 @@ def endpoint(who="session", before_password_change=False):
                             raise ApiError(403, "Change your password first.", "must_change_password")
                         if who == "super_admin" and s["role"] != "super_admin":
                             raise ApiError(403, "Only a super admin manages accounts.")
-                    return await fn(request, conn, s, body)
+                    if not plant:
+                        return await fn(request, conn, s, body)
+                return await fn(request, request.app.state.tenants.for_session(s), s, body)
             except ApiError as e:
                 return _error(e)
+            except TenantError as e:
+                return _error(ApiError(e.status, e.message))
+            except PlantError as e:
+                return _error(ApiError(400, str(e)))
             except psycopg.errors.UniqueViolation:
                 return _error(ApiError(409, "An account with that email already exists."))
             except Exception:
@@ -331,9 +344,20 @@ async def assign_user(request, conn, s, body):
     return Json({"ok": True})
 
 
+# -- the plant ------------------------------------------------------------------------------------
+@endpoint(plant=True)
+async def get_values(request, tenant, _s, _body):
+    q, ids, w = values.parse(request.query_params, tenant)
+    # relative ranges from many viewers differ by seconds: one key per minute (design/frontend.md §6)
+    key = ("values", tenant.id, q["code"], tuple(ids), values._floor(w.start, values.MINUTE),
+           values._ceil(w.end, values.MINUTE))
+    return Json(await request.app.state.cache.get(key, lambda: values.run(tenant, q, ids, w)))
+
+
 # -- the app --------------------------------------------------------------------------------------
 def build(config):
     db = Database(config)
+    tenants = Tenants()
 
     async def healthz(_request):
         try:
@@ -353,8 +377,11 @@ def build(config):
         if r["plant"]:
             log.warning("database role %s can read the plant schema graph: frontend_api (migration 061) can't. "
                         "Expected for a developer's own role; in production, use frontend_api", r["role"])
-        log.info("serving %d tenant(s) on %s as %s", r["tenants"], config.db_label, r["role"])
+        await tenants.open(config, db)
+        log.info("serving %d tenant(s) on %s as %s: %s", r["tenants"], config.db_label, r["role"],
+                 ", ".join(f"{t.id} {t.name} as {t.role}" for t in tenants.by_id.values()))
         yield
+        await tenants.close()
         await db.close()
 
     routes = [
@@ -370,9 +397,10 @@ def build(config):
         Route("/api/admin/users/{user_id}/disable", disable_user, methods=["POST"]),
         Route("/api/admin/users/{user_id}/enable", enable_user, methods=["POST"]),
         Route("/api/admin/users/{user_id}/assign", assign_user, methods=["POST"]),
+        Route("/api/values", get_values, methods=["GET"]),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)
-    app.state.db = db
+    app.state.db, app.state.tenants, app.state.cache = db, tenants, Cache()
     return app
 
 

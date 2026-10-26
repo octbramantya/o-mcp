@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Rebuild the development database from production: the whole structure, the
-# data of the graph schema, public.devices and public.quantities, and optionally
-# one window of 15-minute telemetry.
+# data of the graph schema, public.devices, public.quantities and
+# public.tenant_shift_periods (the solver's "every shift" comes from it; without it
+# every daily electricity value is NONE), and optionally one window of telemetry.
 #
 #   tools/dev_refresh.sh -s SOURCE_ENV [-t TARGET_ENV] [--telemetry FROM TO] [--raw FROM TO] --confirm LABEL
 #
@@ -155,19 +156,19 @@ missing=$(src -tAq -c "
     SELECT string_agg(format('%I.%I', n.nspname, c.relname), ', ' ORDER BY 1)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE (   (n.nspname = 'graph' AND c.relkind IN ('r','p'))
-           OR (n.nspname = 'public' AND c.relname IN ('devices','quantities'))
+           OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods'))
            OR ($NEED_TEL AND n.nspname = 'public' AND c.relname IN ('telemetry_15min_agg', 'daily_energy_cost_summary'))
            OR ($NEED_RAW AND n.nspname = 'public' AND c.relname = 'telemetry_data'))
       AND NOT has_table_privilege(c.oid, 'SELECT')")
 [ -z "$missing" ] || die "$SRC_USER cannot read what must be copied: $missing"
 
-# What is copied with data: graph's tables and the two it points at. A partition
+# What is copied with data: graph's tables, the two it points at, and the shifts. A partition
 # is copied through its parent, never on its own, so rows are not doubled.
 COPY_TABLES=$(src -tAq -c "
     SELECT format('%I.%I', n.nspname, c.relname)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE ((n.nspname = 'graph' AND c.relkind IN ('r','p'))
-        OR (n.nspname = 'public' AND c.relname IN ('devices','quantities')))
+        OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods')))
       AND NOT c.relispartition
     ORDER BY 1")
 
@@ -219,7 +220,8 @@ for rel in $STANDINS $UNREADABLE; do excl+=(-T "$rel"); done
 for nsp in $NOUSAGE; do excl+=(-N "$nsp"); done
 echo "dumping structure..."
 src_dump -Fc --schema-only "${excl[@]}" -f "$WORK/schema.dump"
-echo "reading data: $(echo $COPY_TABLES | wc -w | tr -d ' ') tables (graph.*, public.devices, public.quantities)..."
+echo "reading data: $(echo $COPY_TABLES | wc -w | tr -d ' ') tables (graph.*, public.devices, public.quantities,"
+echo "  public.tenant_shift_periods)..."
 # COPY, not pg_dump --data-only: pg_dump also reads every owned sequence, which
 # needs SELECT on it. One REPEATABLE READ transaction keeps the tables consistent.
 mkdir "$WORK/data"
@@ -355,7 +357,8 @@ tgt -tAq -c "$INVENTORY" > "$WORK/inv.tgt"
 
 COUNTS_SQL="SELECT format('SELECT %L || '' '' || count(*) FROM %s;', t, t) FROM (
     SELECT format('%I.%I', schemaname, tablename) t FROM pg_tables WHERE schemaname = 'graph'
-    UNION ALL SELECT 'public.devices' UNION ALL SELECT 'public.quantities') x ORDER BY 1"
+    UNION ALL SELECT 'public.devices' UNION ALL SELECT 'public.quantities'
+    UNION ALL SELECT 'public.tenant_shift_periods') x ORDER BY 1"
 src -tAq -c "$COUNTS_SQL" > "$WORK/counts.sql"
 src -tAq -f "$WORK/counts.sql" > "$WORK/counts.src"
 tgt -tAq -f "$WORK/counts.sql" > "$WORK/counts.tgt"

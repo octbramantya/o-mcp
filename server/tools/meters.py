@@ -7,7 +7,9 @@ graph.v_device_attachment is not used: it filters is_active only, not the effect
 """
 import datetime as dt
 
-from .. import resolve, timewin, tools
+from plant import resolve, timewin
+
+from .. import tools
 from ..db import rows
 
 NAME = "node_meters"

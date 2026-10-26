@@ -14,7 +14,9 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
-from . import timewin, tools, vocab
+from plant import timewin, vocab
+
+from . import tools
 from .db import Database, rows
 from .errors import ToolError
 

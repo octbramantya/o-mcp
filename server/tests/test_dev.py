@@ -14,7 +14,8 @@ import sys
 import jsonschema
 import pytest
 
-from server import app, config, tools, vocab
+from plant import vocab
+from server import app, config, tools
 from server.db import Database
 from server.errors import ToolError
 

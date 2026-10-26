@@ -1,4 +1,4 @@
-"""The ontology and the quantity vocabulary, loaded once at startup.
+"""The ontology and the quantity vocabulary, loaded once at startup (per tenant in the API).
 
 They become the enums of the tools' input schemas (the ontology-as-enum rule in CLAUDE.md) and
 the body of plant_vocabulary. A failed or empty load stops the server: stale or empty enums are

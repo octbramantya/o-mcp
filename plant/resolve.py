@@ -8,7 +8,7 @@ import difflib
 import re
 
 from .db import rows
-from .errors import ToolError
+from .errors import PlantError
 
 LIVE_NODES = """
     SELECT n.id, n.node_code AS code, n.node_name AS name, n.node_class AS class, n.node_type AS type, n.attrs
@@ -19,7 +19,7 @@ LIVE_NODES = """
 """
 
 
-class NotFound(ToolError):
+class NotFound(PlantError):
     """A tool error the model can act on: the message names the nearest nodes."""
 
 

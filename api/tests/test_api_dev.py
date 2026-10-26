@@ -147,3 +147,68 @@ def test_accounts_sessions_and_tenants(env, client):
     assert post(c, "/api/logout").status_code == 200
     c.cookies.set(auth.COOKIE, boss_cookie)
     assert c.get("/api/me").status_code == 401
+
+
+DAY = "2026-10-21"      # a site day with minute data, 15-minute buckets and the daily summary on dev
+OLD = "2026-10-19"      # before dev's minute data
+PLN, A5 = 61, 75        # INCOMING_PLN, LVMDB_A5
+
+
+def values(c, nodes, start, end, quantity="ACTIVE_ENERGY_DELIVERED"):
+    return c.get("/api/values", params={"quantity": quantity, "nodes": ",".join(map(str, nodes)),
+                                        "start": start, "end": end})
+
+
+def test_values_by_resolution_and_tenant(env, client):
+    c = client
+    boss, bob, ada = email(env, "boss2"), email(env, "bob"), email(env, "ada")
+    temp = asyncio.run(app.create_super_admin(env[0], boss))
+    login(c, boss, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "boss password 2"})
+    temps = {bob: post(c, "/api/admin/users", {"email": bob, "role": "user", "tenant_id": TENANT}),
+             ada: post(c, "/api/admin/users", {"email": ada, "role": "admin"})}
+    accounts = {}
+    for who, r in temps.items():
+        temp = r.json()["temporary_password"]
+        login(c, who, temp)
+        post(c, "/api/password", {"current_password": temp, "new_password": "a password 2026"})
+        accounts[who] = c.cookies.get(auth.COOKIE)
+
+    # The tenant's pool is its own role, and sees only its tenant.
+    async def whoami():
+        async with c.app.state.tenants.by_id[TENANT].tx() as conn:
+            return (await (await conn.execute("SELECT current_user")).fetchone())[0]
+    assert c.portal.call(whoami) == "prs_frontend"
+
+    # An admin reads nothing until they choose a site.
+    c.cookies.clear()
+    c.cookies.set(auth.COOKIE, accounts[ada])
+    assert values(c, [PLN], f"{DAY}T00:00", f"{DAY}T06:00").status_code == 409
+    post(c, "/api/tenant", {"tenant_id": TENANT})
+    assert values(c, [PLN], f"{DAY}T00:00", f"{DAY}T06:00").status_code == 200
+
+    c.cookies.clear()
+    c.cookies.set(auth.COOKIE, accounts[bob])
+    # A short window older than the minute data is drawn from 15-minute buckets.
+    old = values(c, [PLN], f"{OLD}T10:07", f"{OLD}T11:00").json()
+    assert old["resolution"] == "15min" and old["window"]["start"].startswith(f"{OLD}T10:00")
+    assert old["values"][0]["value"] is not None
+
+    # Refusals: an id the role can't see, a quantity the solver can't resolve.
+    r = values(c, [999_999], f"{DAY}T00:00", f"{DAY}T06:00")
+    assert r.status_code == 400 and "999999" in r.json()["message"]
+    assert values(c, [PLN], f"{DAY}T00:00", f"{DAY}T06:00", quantity="PF_TOTAL").status_code == 400
+
+    # Four 6-hour windows at minute resolution add up to the day from the daily summary.
+    quarters = [values(c, [PLN, A5], f"{DAY}T{h:02d}:00", f"{DAY}T{h + 6:02d}:00" if h < 18 else "2026-10-22T00:00")
+                .json() for h in (0, 6, 12, 18)]
+    assert {q["resolution"] for q in quarters} == {"minute"}
+    assert all(v["value"] is not None for q in quarters for v in q["values"])
+    if c.app.state.tenants.by_id[TENANT].vocab.shift_names == ["UNKNOWN"]:
+        pytest.skip("dev has no tenant_shift_periods rows, so the daily summary filters to nothing; "
+                    "rebuild dev with tools/dev_refresh.sh, which copies them")
+    day = values(c, [PLN, A5], f"{DAY}T00:00", "2026-10-22T00:00").json()
+    assert day["resolution"] == "day" and all(v["origin"] != "NONE" for v in day["values"])
+    for i, v in enumerate(day["values"]):
+        minutes = sum(q["values"][i]["value"] for q in quarters)
+        assert abs(minutes - v["value"]) <= max(1, 0.01 * v["value"]), (v["code"], minutes, v["value"])

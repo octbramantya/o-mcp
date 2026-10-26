@@ -9,7 +9,8 @@ import json
 import pathlib
 from dataclasses import dataclass
 
-from .. import timewin
+from plant import timewin
+
 from . import find, meters, readings, section, value, vocabulary
 
 DESIGN = pathlib.Path(__file__).resolve().parent.parent.parent / "design"
