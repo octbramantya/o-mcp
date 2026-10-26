@@ -345,7 +345,9 @@ flight run once (`api/cache.py`, one process).
 ## 8. Users and dashboards: the `frontend` schema
 
 In `valkyrie`, beside the plant, in a schema of their own (§1, 14), written only by the API's own
-role, `frontend_api`. **Built as migration 061** (on dev 2026-10-22), with `prs_frontend`, tenant 3's
+role, `frontend_api`. Row-level security (063) shows `frontend_api` every row, `grafReader` only
+`frontend.tenant` (so `tools/dev_refresh.sh` can copy the schema's structure), and everyone else
+nothing. **Built as migration 061** (on dev 2026-10-22), with `prs_frontend`, tenant 3's
 read role for the frontend (§6): the `tenant_3` policies name it beside `prs_hermes_agent`, and it
 can't reach `frontend`. Both roles are `NOLOGIN` until set by hand, as 044's.
 

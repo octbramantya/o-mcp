@@ -163,12 +163,16 @@ missing=$(src -tAq -c "
 [ -z "$missing" ] || die "$SRC_USER cannot read what must be copied: $missing"
 
 # What is copied with data: graph's tables, the two it points at, and the shifts. A partition
-# is copied through its parent, never on its own, so rows are not doubled.
+# is copied through its parent, never on its own, so rows are not doubled. Also frontend.tenant
+# once the source can read it (063): its rows are the only frontend rows grafReader sees, and the
+# API needs them. The rest of frontend arrives as structure only, and starts empty on dev.
 COPY_TABLES=$(src -tAq -c "
     SELECT format('%I.%I', n.nspname, c.relname)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE ((n.nspname = 'graph' AND c.relkind IN ('r','p'))
-        OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods')))
+        OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods'))
+        OR (n.nspname = 'frontend' AND c.relname = 'tenant' AND has_schema_privilege(n.oid, 'USAGE')
+            AND has_table_privilege(c.oid, 'SELECT')))
       AND NOT c.relispartition
     ORDER BY 1")
 
@@ -375,7 +379,9 @@ tgt -tAq -c "$INVENTORY" > "$WORK/inv.tgt"
 COUNTS_SQL="SELECT format('SELECT %L || '' '' || count(*) FROM %s;', t, t) FROM (
     SELECT format('%I.%I', schemaname, tablename) t FROM pg_tables WHERE schemaname = 'graph'
     UNION ALL SELECT 'public.devices' UNION ALL SELECT 'public.quantities'
-    UNION ALL SELECT 'public.tenant_shift_periods') x ORDER BY 1"
+    UNION ALL SELECT 'public.tenant_shift_periods'
+    UNION ALL SELECT 'frontend.tenant' WHERE has_schema_privilege(to_regnamespace('frontend'), 'USAGE')
+                                         AND has_table_privilege(to_regclass('frontend.tenant'), 'SELECT')) x ORDER BY 1"
 src -tAq -c "$COUNTS_SQL" > "$WORK/counts.sql"
 src -tAq -f "$WORK/counts.sql" > "$WORK/counts.src"
 tgt -tAq -f "$WORK/counts.sql" > "$WORK/counts.tgt"

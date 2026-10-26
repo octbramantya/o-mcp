@@ -23,8 +23,8 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–062`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
-| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, `public.tenant_shift_periods`, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–063`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, `public.tenant_shift_periods`, `frontend.tenant` (the rest of `frontend` as structure only), the roles' per-database settings, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
 | `tools/gen_037.py` | renders migration 037 from `design/quantity_terms.csv`. Same rule |
@@ -321,6 +321,18 @@ and comments carried over, and the energy output for 2026-10-20 to 21 is checked
 before and after. `graph.solve_flow` and `graph.device_totals` keep `p_is_cost`. The Grafana panels
 in `grafana/graph-sankey/` use it. Applied on dev, then on production on 2026-10-22 with the same
 row-for-row result; `grafReader` runs the panel's queries there.
+
+## Migration 063 (on dev since 2026-10-26)
+
+Migration 063 turns on row-level security in `frontend`: `frontend_api` sees and writes every row
+as before, `grafReader` sees `frontend.tenant`'s rows and nothing else, and every other role
+nothing. `grafReader` gets USAGE and SELECT on the schema, which `pg_dump` needs to dump even the
+structure (it locks each table). Before it, `tools/dev_refresh.sh` left `frontend` out and a
+refreshed dev had no such schema while its ledger said 061 had run. Now the structure comes across
+with every other schema's, a data dump is refused, and `dev_refresh` copies `frontend.tenant`'s
+rows. Checked on dev as a member of `grafReader`: 0 of the users, the tenant row, and the whole
+schema's structure in the dump. Not yet on production; until it is, a refresh still leaves
+`frontend` out.
 
 ## Two rules worth not rediscovering
 
