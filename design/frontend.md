@@ -403,10 +403,12 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - deploy the `node_value` change to the agent with 059.
 
 Next to build: dashboards in `api/`, more plant routes as widgets need them (topology, readings,
-sankey), then `web/` (§9). Open: a whole-day range that includes today takes the daily path, and the daily
-summary has no row for a day until the cron job's next run, so "today" answers `NO_VALUE` with
-`DATA_INCOMPLETE` while 15-minute data is there; the choice of resolution should look at how far the
-summary reaches (production's refresh schedule to be read first). Before `api/` is deployed:
+sankey), then `web/` (§9). A whole-day range that includes today takes the daily path, which reaches as far as the
+daily summary's last refresh. On production (read 2026-10-26 13:50 site time) today's rows were
+refreshed at 13:30 and the days before last at 23:30, so the job runs at least hourly at :30 and
+recomputes the last three days each time (`refresh_daily_energy_costs`); its schedule is in `cron`,
+which `grafReader` can't read. "Today" is then up to an hour behind the 15-minute data, and says so
+with `DATA_INCOMPLETE`. Before `api/` is deployed:
 
 - behind a reverse proxy, the client's address (for the per-address limit and the audit) must come
   from a trusted `X-Forwarded-For`; today it is the peer's;
