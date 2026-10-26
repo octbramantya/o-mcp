@@ -304,6 +304,26 @@ from the session's tenant (§2), and Postgres enforces the rest, so a bug in cho
 the one way across tenants. Tests pin it: a non-admin session asking for another tenant is
 refused, and an admin's request runs as the selected tenant's role.
 
+**Built so far (2026-10-26), on dev:** log-in, sessions, the tenant switch and the super admin's
+accounts (`api/app.py`, `api/auth.py`), Starlette on a pool of `frontend_api`. JSON in and out;
+everything that changes state is a POST with an `application/json` body, which with the
+`SameSite=Strict` cookie keeps other sites out without a CSRF token.
+
+| route | who | does |
+|---|---|---|
+| `POST /api/login` | anyone | email and password; sets the session cookie; returns what `/api/me` does |
+| `POST /api/logout`, `GET /api/me`, `POST /api/password` | any session, also before a forced change | end the session; the account, current tenant and switchable tenants; change the password (ends the account's other sessions) |
+| `POST /api/tenant` | any session | switch the session's tenant: a user may only name their own (403 otherwise), an admin any active one (audited) |
+| `GET/POST /api/admin/users`, `POST /api/admin/users/{id}/reset-password`, `…/disable`, `…/enable`, `…/assign` | super admin | list and create accounts (a temporary password, shown once); reset, disable, enable; set role and tenant together. Never on their own account |
+
+- A session lasts 12 hours, ends after 2 hours idle, and is checked against the account on every
+  request; a reset, disable, or role or tenant change revokes it.
+- Failed log-ins are counted from `frontend.audit`: 5 per email or 20 per address in 15 minutes
+  lock further attempts out, right password or not. Locked-out tries are logged, not counted.
+- An account with `must_change_password` reaches only `/api/me`, `/api/password` and `/api/logout`.
+- An admin's session starts with no tenant; the frontend asks them to pick one.
+- The first super admin comes from the command line (`python -m api create-super-admin`).
+
 ## 8. Users and dashboards: the `frontend` schema
 
 In `valkyrie`, beside the plant, in a schema of their own (§1, 14), written only by the API's own
@@ -354,4 +374,9 @@ Built on dev 2026-10-22: `graph.change_dates` (059) and `node_value` splitting o
 - read production's `telemetry_data` indexes and time a 6-hour solve;
 - deploy the `node_value` change to the agent with 059.
 
-Next to build: `api/`, then `web/` (§9).
+Next to build: the rest of `api/` (tenant pools and the plant queries, then dashboards), then
+`web/` (§9). Before `api/` is deployed:
+
+- behind a reverse proxy, the client's address (for the per-address limit and the audit) must come
+  from a trusted `X-Forwarded-For`; today it is the peer's;
+- LOGIN and passwords for `frontend_api` and `prs_frontend`, and their PgBouncer entries, by hand.

@@ -3,6 +3,7 @@ name = "o-mcp"
 version = "0.0.0"
 requires-python = ">=3.11"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "jsonschema>=4.26.0",
     "mcp>=1.20",
     "psycopg-pool>=3.3.3",
@@ -23,4 +24,4 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["server/tests"]
+testpaths = ["server/tests", "api/tests"]

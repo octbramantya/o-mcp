@@ -58,19 +58,8 @@ def parse_env_file(path):
     return vals
 
 
-def load(env_file=None):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
-    if env_file:
-        env.update(parse_env_file(env_file))
-    missing = [f"DB_{k}" for k in DB_KEYS if not env.get(f"DB_{k}")]
-    missing += [f"O_MCP_{k}" for k in SERVER_KEYS if not env.get(f"O_MCP_{k}")]
-    if missing:
-        raise ConfigError(f"missing {', '.join(missing)}. See .env.example.")
-    host, _, port = env["O_MCP_BIND"].rpartition(":")
-    if not host or not port.isdigit():
-        raise ConfigError(f"O_MCP_BIND must be host:port, got {env['O_MCP_BIND']!r}")
-    if len(env["O_MCP_TOKEN"]) < 32:
-        raise ConfigError("O_MCP_TOKEN is shorter than 32 characters")
+def tls(env):
+    """DB_SSLMODE and DB_SSLROOTCERT, checked: outside dev the server's certificate must be verified."""
     sslmode, rootcert = env["DB_SSLMODE"], env.get("DB_SSLROOTCERT") or None
     if sslmode not in SSL_MODES:
         raise ConfigError(f"DB_SSLMODE must be one of {', '.join(SSL_MODES)}, got {sslmode!r}")
@@ -84,6 +73,23 @@ def load(env_file=None):
             raise ConfigError(f"DB_SSLROOTCERT {rootcert} not found")
     elif rootcert:
         raise ConfigError(f"DB_SSLROOTCERT is set but DB_SSLMODE {sslmode} does not check certificates")
+    return sslmode, rootcert
+
+
+def load(env_file=None):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
+    if env_file:
+        env.update(parse_env_file(env_file))
+    missing = [f"DB_{k}" for k in DB_KEYS if not env.get(f"DB_{k}")]
+    missing += [f"O_MCP_{k}" for k in SERVER_KEYS if not env.get(f"O_MCP_{k}")]
+    if missing:
+        raise ConfigError(f"missing {', '.join(missing)}. See .env.example.")
+    host, _, port = env["O_MCP_BIND"].rpartition(":")
+    if not host or not port.isdigit():
+        raise ConfigError(f"O_MCP_BIND must be host:port, got {env['O_MCP_BIND']!r}")
+    if len(env["O_MCP_TOKEN"]) < 32:
+        raise ConfigError("O_MCP_TOKEN is shorter than 32 characters")
+    sslmode, rootcert = tls(env)
     try:
         tz = ZoneInfo(env["O_MCP_TZ"])
     except (ZoneInfoNotFoundError, ValueError) as e:
