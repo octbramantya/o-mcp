@@ -69,7 +69,7 @@ graph authoring tools but they import `scripts/db.py`, so they move only togethe
 
 ## Current state of the model (dev and production, 2026-10-22)
 
-Tenant 3, after migration 062, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 065, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19, 057 the same day, and 058–062 on
@@ -350,13 +350,15 @@ as `grafReader` production shows the tenant row, 0 accounts and 0 stars. Backup 
 `logs/prod/frontend_backup_pre063.20261027-113611.dump`. `frontend_api` and `prs_frontend` are still
 `NOLOGIN` on production.
 
-## Migration 065 (on dev since 2026-10-27; production pending)
+## Migration 065 (on production since 2026-10-27)
 
 Migration 065 changes `graph.device_totals_minute`'s check that the minute data reaches back to the
 window. 060's `min(timestamp)` runs as the caller, and through `prs.telemetry_data` (security_barrier)
 the planner scans every chunk: about 74 M rows on production, over 20 s, so every short window the
 frontend or the agent asked for timed out. "A reading at or before the start" reads one index entry.
-On dev the 597 device totals over 2026-10-21 17:00 to 22:59 are the same before and after.
+On dev the 597 device totals over 2026-10-21 17:00 to 22:59 are the same before and after; on
+production, applied the same day, the 598 over 2026-10-26 23:00 to 2026-10-27 04:59, and an hour's
+minute totals as `prs_frontend` take 94 ms. Backup first: `logs/prod/graph_backup_pre065.20261027-124011.dump`.
 
 ## Two rules worth not rediscovering
 
