@@ -477,7 +477,7 @@ can't reach `frontend`. Both roles are `NOLOGIN` until set by hand, as 044's.
 | `frontend.session` | server-side sessions, so a password reset or a disabled account ends them: the SHA-256 of the cookie's token, the user, the session's current tenant (an admin's is what they switched to), expiry, revoked |
 | `frontend.dashboard` | owner, tenant (a user's must be their own, by trigger), title, the document (JSONB) and its format version, the template it came from, created, updated, deleted |
 | `frontend.audit` | append-only to `frontend_api`: log-ins, failed log-ins, log-outs, tenant switches, account changes, an admin opening or copying a user's dashboard |
-| `frontend.starred_node` | an account's starred nodes per tenant (064, on dev 2026-10-27): user, tenant (a user's own, by trigger), `graph.node.id` with no foreign key, as in a document. Deleted with the account |
+| `frontend.starred_node` | an account's starred nodes per tenant (064, on dev and production 2026-10-27): user, tenant (a user's own, by trigger), `graph.node.id` with no foreign key, as in a document. Deleted with the account |
 
 **A dashboard belongs to its owner and a tenant.** An admin's dashboards are per tenant, since
 they name that tenant's nodes. The API returns a dashboard to its owner, and read-only to an
@@ -537,7 +537,7 @@ browser against dev, from log-in to a saved dashboard, at desktop and phone widt
 API on `O_API_BIND` and `cd web && npm run dev` (Vite forwards `/api`; `O_API_URL` names another
 API). Slice 2 (2026-10-27): the account screen, data health, the Now widget, and the checks (§5).
 Slice 3 (2026-10-27): the category tree, starred nodes (064), the drawn single-line diagram, and
-export and import (§5). Next: the full review of slices 1–3. Before production, 063 and 064.
+export and import (§5). Next: the full review of slices 1–3. 063 and 064 are on production since 2026-10-27.
 
 Open: how `web/dist` is served in production. It must be the API's origin (the cookie is
 `SameSite=Strict`): the reverse proxy serving both, or Starlette serving the files. A whole-day range that includes today takes the daily path, which reaches as far as the

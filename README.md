@@ -37,6 +37,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/mcp-tenancy.md` | one Hermes agent per tenant: the authorization layers that keep each agent to its tenant, a database role per tenant enforced by Postgres, and what that changes in migration 043 (proposed, decisions open) |
 | `design/mcp-catalogue.md` | every tool the MCP server is expected to need, by layer (vocabulary, topology, instruments, values, analysis), how their discovery is staggered (by release, not at run time), and what it shares with the frontend's API (§6) |
 | `design/frontend.md` | the custom frontend that replaces Grafana in the long run: dashboard time range and refresh, snapping tiles, one tenant per user plus an admin group, each user's own dashboards in a `frontend` schema, database pooling through one shared API, and the monorepo layout (decided 2026-10-22; its database side built as 059–061) |
+| `design/frontend-review.md` | the handover for the review and redesign of `web/` slices 1–3: where the work stands, how to run the frontend against production's data (`.env.api`) and the checks against dev (`.env.api-dev`), known gaps, and the log of questions and answers |
 | `tools/check_subgraph.py` | checks v1 documents against the schema, strictly: `uv run --no-project --with jsonschema tools/check_subgraph.py doc.json` |
 | `server/` | the MCP server, phases 1 and 2: `plant_vocabulary`, `plant_find`, `plant_section`, `node_meters`, `meter_readings`, `node_value`, one module each in `server/tools/` (each holds the tool's description and input schema). Run against dev: `O_MCP_TOKEN=… O_MCP_BIND=127.0.0.1:8765 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run python -m server --env-file .env` (`--phase 1` for the topology tools only). Keys in `.env.example` |
 | `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
@@ -325,7 +326,7 @@ before and after. `graph.solve_flow` and `graph.device_totals` keep `p_is_cost`.
 in `grafana/graph-sankey/` use it. Applied on dev, then on production on 2026-10-22 with the same
 row-for-row result; `grafReader` runs the panel's queries there.
 
-## Migration 063 (on dev since 2026-10-26)
+## Migrations 063 and 064 (on production since 2026-10-27)
 
 Migration 063 turns on row-level security in `frontend`: `frontend_api` sees and writes every row
 as before, `grafReader` sees `frontend.tenant`'s rows and nothing else, and every other role
@@ -334,17 +335,20 @@ structure (it locks each table). Before it, `tools/dev_refresh.sh` left `fronten
 refreshed dev had no such schema while its ledger said 061 had run. Now the structure comes across
 with every other schema's, a data dump is refused, and `dev_refresh` copies `frontend.tenant`'s
 rows. Checked on dev as a member of `grafReader`: 0 of the users, the tenant row, and the whole
-schema's structure in the dump. Not yet on production; until it is, a refresh still leaves
-`frontend` out.
-
-## Migration 064 (on dev since 2026-10-27)
+schema's structure in the dump.
 
 Migration 064 adds `frontend.starred_node`, each account's starred nodes per tenant, for the
 frontend's left panel (decided 2026-10-27: per account in the database, not per browser). A user's
 stars are in their own tenant, by trigger as on `frontend.dashboard`; the node is `graph.node.id`
 with no foreign key, as nodes in a dashboard document are; deleting an account deletes its stars.
 `frontend_api` reads, adds and removes them under 063's row-level security; `grafReader` gets the
-structure and no rows. Needs 063 first, so production takes both together.
+structure and no rows.
+
+063 was applied on dev on 2026-10-26 and 064 on 2026-10-27, then both on production on 2026-10-27,
+where `frontend` held its one tenant row and no accounts. Each migration's checks ran again there, and
+as `grafReader` production shows the tenant row, 0 accounts and 0 stars. Backup first:
+`logs/prod/frontend_backup_pre063.20261027-113611.dump`. `frontend_api` and `prs_frontend` are still
+`NOLOGIN` on production.
 
 ## Two rules worth not rediscovering
 
