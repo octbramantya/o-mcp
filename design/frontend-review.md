@@ -128,7 +128,12 @@ newest last. Keep open questions in §7 until they are answered.
 | date | topic | question or finding | answer or decision | change |
 |---|---|---|---|---|
 | 2026-10-27 | setup | review against production's data | `.env.api` on production through the tunnel; checks stay on dev | 063, 064 on production; this file |
+| 2026-10-27 | dashboard | the toolbar (title, range, edit, save) scrolls away below a tall canvas | sticky at the top of `main` | `styles.css` `.toolbar` |
+| 2026-10-27 | frame | the left panel can't be hidden | « in its tab row collapses it to a 28 px strip, » brings it back; remembered per browser (`localStorage`) | `Frame.tsx`, `LeftPanel.tsx` |
+| 2026-10-27 | channels | how does the left panel fill channels B–D? | it can't: a click always sets A. B–D are set from a widget on that channel (Finder, Section). Decided: a picker (A–D) at the top of the panel, not saved with the dashboard | `LeftPanel.tsx` |
+| 2026-10-27 | logging | what do the API and Vite log? | API: stderr, INFO and up, start-up lines and the traceback of any unhandled error; no access log, no timings. Account events in `frontend.audit`. Frontend: nothing beyond Vite's dev output; a widget's error shows in the widget only. Decided: an access log; client errors to the API not yet | `api/app.py` `AccessLog` |
+| 2026-10-27 | readings | Readings times out (20 s) on "Last 1 hour" | the API's check for minute data, `min(timestamp)` on `telemetry_data`, is a full scan of every chunk through `prs.telemetry_data` (security_barrier): ~74 M rows, still running at 25 s as `prs_frontend` on production. `graph.device_totals_minute` (060) has the same check, so short Value windows would fail next. Both now ask "is there a reading at or before the start", 0.05 ms on production | `api/values.py` `minutes_kept`; migration 065 (dev 2026-10-27, production pending) |
 
 ## 7. Open questions
 
-(none yet)
+- **Client errors.** Should a widget's error be posted to the API and logged there?

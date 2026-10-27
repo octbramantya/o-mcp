@@ -46,13 +46,14 @@ def _midnight(t):
     return t.timetz().replace(tzinfo=None) == dt.time()
 
 
-def choose(start, end, oldest_minute):
+def choose(start, end, minutes_kept):
     """(resolution, start, end): the resolution for a site-time window, and the window snapped to it.
-    oldest_minute is the tenant's oldest minute reading (aware), or None if it has none."""
+    minutes_kept: whether the tenant's minute data reaches back to the start floored to the minute
+    (minutes_kept() below)."""
     if _midnight(start) and _midnight(end):
         return "day", start, end
     s, e = _floor(start, MINUTE), _ceil(end, MINUTE)
-    if e - s <= MINUTE_MAX and oldest_minute is not None and s >= oldest_minute:
+    if e - s <= MINUTE_MAX and minutes_kept:
         return "minute", s, e
     return "15min", _floor(start, QUARTER), _ceil(end, QUARTER)
 
@@ -98,11 +99,14 @@ async def data_until(conn, tenant, names, start, end):
     return min(got, key=lambda x: (x[1] is not None, x[1] or start))
 
 
-async def oldest_minute(conn, tenant):
-    """The tenant's oldest minute reading, aware in site time, or None if it has none."""
-    t = (await rows(conn, "SELECT min(timestamp) AS t FROM telemetry_data WHERE tenant_id = %s",
-                    (tenant.id,)))[0]["t"]
-    return t.replace(tzinfo=dt.UTC).astimezone(tenant.tz) if t else None
+async def minutes_kept(conn, tenant, start):
+    """Whether the tenant's minute data reaches back to start (aware): a reading at or before it,
+    which is start >= the oldest reading. Not min(timestamp): through the tenant's security_barrier
+    view (prs.telemetry_data) the planner can't take the minimum from an index and scans every
+    chunk, over 20 s on production (2026-10-27). This probe reads one index entry."""
+    s = start.astimezone(dt.UTC).replace(tzinfo=None)
+    return (await rows(conn, "SELECT EXISTS (SELECT 1 FROM telemetry_data"
+                             " WHERE tenant_id = %s AND timestamp <= %s) AS k", (tenant.id, s)))[0]["k"]
 
 
 def parse(params, tenant):
@@ -130,8 +134,9 @@ async def run(tenant, q, ids, w):
     v = tenant.vocab
     derived = q["kind"] == "DERIVED"
     async with tenant.tx() as conn:
-        oldest = await oldest_minute(conn, tenant) if w.end - w.start <= MINUTE_MAX + MINUTE else None
-        resolution, start, end = choose(w.start, w.end, oldest)
+        short = w.end - w.start <= MINUTE_MAX + MINUTE
+        kept = short and await minutes_kept(conn, tenant, _floor(w.start, MINUTE))
+        resolution, start, end = choose(w.start, w.end, kept)
         is_daily = resolution == "day" and daily(q, v)
         if resolution != "day":
             await conn.execute("SELECT set_config('graph.resolution', %s, true)", (resolution,))

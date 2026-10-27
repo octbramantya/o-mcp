@@ -75,14 +75,29 @@ function BottomBar() {
   );
 }
 
+// whether the left panel is collapsed, remembered per browser: a convenience, so storage may fail
+const COLLAPSED = 'o-mcp.left-collapsed';
+
+function useCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(COLLAPSED) === '1'; } catch { return false; }
+  });
+  const toggle = () => setCollapsed((c) => {
+    try { localStorage.setItem(COLLAPSED, c ? '0' : '1'); } catch { /* not remembered */ }
+    return !c;
+  });
+  return [collapsed, toggle];
+}
+
 export function Frame() {
   const [password, setPassword] = useState(false);
+  const [collapsed, toggleLeft] = useCollapsed();
   const onDashboard = useMatch('/dashboards/:id');
   const me = useMe().data!;
   return (
-    <div className={`frame${onDashboard ? ' with-left' : ''}`}>
+    <div className={`frame${onDashboard ? ' with-left' : ''}${collapsed ? ' left-collapsed' : ''}`}>
       <TopBar onPassword={() => setPassword(true)} />
-      {onDashboard && me.tenant && <LeftPanel />}
+      {onDashboard && me.tenant && <LeftPanel collapsed={collapsed} onToggle={toggleLeft} />}
       <main>
         {password ? <PasswordPage forced={false} onDone={() => setPassword(false)} /> : <Outlet />}
         {password && <button type="button" className="link pad" onClick={() => setPassword(false)}>Cancel</button>}

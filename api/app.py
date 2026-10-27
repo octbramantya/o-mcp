@@ -19,10 +19,12 @@ import json
 import logging
 import pathlib
 import sys
+import time
 
 import jsonschema
 import psycopg
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
@@ -34,6 +36,7 @@ from .db import Database, one, rows
 from .tenants import TenantError, Tenants
 
 log = logging.getLogger("o-mcp-api")
+access = logging.getLogger("o-mcp-api.access")
 
 ROLES = ("user", "admin", "super_admin")
 ADMINS = ("admin", "super_admin")
@@ -119,6 +122,7 @@ def endpoint(who="session", before_password_change=False, plant=False):
                             raise ApiError(403, "Only a super admin manages accounts.")
                         if who == "admin" and s["role"] not in ADMINS:
                             raise ApiError(403, "Only an admin opens other people's dashboards.")
+                        request.state.who = (s["user_id"], s["tenant_id"])
                     if not plant:
                         return await fn(request, conn, s, body)
                 return await fn(request, request.app.state.tenants.for_session(s), s, body)
@@ -578,6 +582,33 @@ def _read(read):
 
 
 # -- the app --------------------------------------------------------------------------------------
+class AccessLog:
+    """One line per request on o-mcp-api.access: method, path and query, status, milliseconds, and
+    the session's user and tenant once endpoint() has read them (- before log-in). The query names
+    nodes and windows only; passwords travel in POST bodies, never logged."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        t0, status = time.perf_counter(), [500]
+
+        async def send_status(message):
+            if message["type"] == "http.response.start":
+                status[0] = message["status"]
+            await send(message)
+        try:
+            await self.app(scope, receive, send_status)
+        finally:
+            ms = (time.perf_counter() - t0) * 1000
+            q = scope.get("query_string", b"").decode("latin-1")
+            user, tenant = scope.get("state", {}).get("who", ("-", "-"))
+            access.info("%s %s%s %d %.0fms user=%s tenant=%s", scope["method"], scope["path"], f"?{q}" if q else "",
+                        status[0], ms, user, tenant)
+
+
 def build(config):
     db = Database(config)
     tenants = Tenants()
@@ -641,7 +672,7 @@ def build(config):
         Route("/api/now", _read(reads.node_now), methods=["GET"]),
         Route("/api/status", _read(reads.data_status), methods=["GET"]),
     ]
-    app = Starlette(routes=routes, lifespan=lifespan)
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(AccessLog)])
     app.state.db, app.state.tenants, app.state.cache = db, tenants, Cache()
     return app
 

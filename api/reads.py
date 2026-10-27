@@ -132,11 +132,11 @@ def node_meters(tenant, params):
     return ("meters", tenant.id, nid, as_of), compute
 
 
-def auto_interval(w, oldest_minute):
+def auto_interval(w, minutes_kept):
     """minute for a window of 6 hours or less within the minute data (design/frontend.md §3), else
     the coarsest point that still draws a line: 15min up to 2 days, hour up to 31, day beyond."""
     span = w.end - w.start
-    if span <= values.MINUTE_MAX and oldest_minute is not None and w.start >= oldest_minute:
+    if span <= values.MINUTE_MAX and minutes_kept:
         return "minute"
     return "15min" if span <= dt.timedelta(days=2) else "hour" if span <= dt.timedelta(days=31) else "day"
 
@@ -159,8 +159,8 @@ def node_readings(tenant, params):
         async with tenant.tx() as conn:
             chosen = interval
             if chosen == "auto":
-                oldest = await values.oldest_minute(conn, tenant) if w.end - w.start <= values.MINUTE_MAX else None
-                chosen = auto_interval(w, oldest)
+                kept = w.end - w.start <= values.MINUTE_MAX and await values.minutes_kept(conn, tenant, w.start)
+                chosen = auto_interval(w, kept)
             node = await node_on(conn, tenant.id, nid, as_of)
             return await readings.document(conn, tenant.id, v, tenant.tz, node, as_of, codes, w, chosen,
                                            READINGS_MAX_POINTS, device or None)

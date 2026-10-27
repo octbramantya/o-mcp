@@ -23,7 +23,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–064`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–065`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, `public.tenant_shift_periods`, `frontend.tenant` (the rest of `frontend` as structure only), the roles' per-database settings, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -349,6 +349,14 @@ where `frontend` held its one tenant row and no accounts. Each migration's check
 as `grafReader` production shows the tenant row, 0 accounts and 0 stars. Backup first:
 `logs/prod/frontend_backup_pre063.20261027-113611.dump`. `frontend_api` and `prs_frontend` are still
 `NOLOGIN` on production.
+
+## Migration 065 (on dev since 2026-10-27; production pending)
+
+Migration 065 changes `graph.device_totals_minute`'s check that the minute data reaches back to the
+window. 060's `min(timestamp)` runs as the caller, and through `prs.telemetry_data` (security_barrier)
+the planner scans every chunk: about 74 M rows on production, over 20 s, so every short window the
+frontend or the agent asked for timed out. "A reading at or before the start" reads one index entry.
+On dev the 597 device totals over 2026-10-21 17:00 to 22:59 are the same before and after.
 
 ## Two rules worth not rediscovering
 
