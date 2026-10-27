@@ -1,6 +1,7 @@
 // The routes, behind the session: log-in, then the forced password change, then (for an admin) a
 // site, then the dashboards.
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
+import { AccountsPage } from './admin/AccountsPage';
 import { useMe } from './api/hooks';
 import { LoginPage, PasswordPage } from './auth/LoginPage';
 import { DashboardPage } from './dashboards/DashboardPage';
@@ -25,12 +26,17 @@ function Sited({ children }: { children: React.ReactNode }) {
   return useMe().data?.tenant ? <>{children}</> : <Navigate to="/" replace />;
 }
 
+function SuperAdmin({ children }: { children: React.ReactNode }) {
+  return useMe().data?.user.role === 'super_admin' ? <>{children}</> : <Navigate to="/" replace />;
+}
+
 const router = createBrowserRouter([{
   path: '/',
   element: <Gate><Frame /></Gate>,
   children: [
     { index: true, element: <Home /> },
     { path: 'dashboards/:id', element: <Sited><DashboardPage /></Sited> },
+    { path: 'accounts', element: <SuperAdmin><AccountsPage /></SuperAdmin> },
     { path: '*', element: <Navigate to="/" replace /> },
   ],
 }]);

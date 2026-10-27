@@ -11,6 +11,7 @@ import { PasswordPage } from '../auth/LoginPage';
 import { CHANNELS } from '../dashboards/document';
 import { useDashboard } from '../dashboards/store';
 import { siteNow } from '../time/range';
+import { DataHealth } from './DataHealth';
 
 export function useSwitchTenant() {
   const qc = useQueryClient();
@@ -44,6 +45,7 @@ function TopBar({ onPassword }: { onPassword: () => void }) {
         </select>
       )}
       <span className="spacer" />
+      {me.user.role === 'super_admin' && <Link to="/accounts">Accounts</Link>}
       <span className="muted who">{me.user.display_name ?? me.user.email} · {me.user.role.replace('_', ' ')}</span>
       <button type="button" className="link" onClick={onPassword}>Password</button>
       <button type="button" className="link" onClick={() => logout.mutate()}>Log out</button>
@@ -93,6 +95,7 @@ function BottomBar() {
   return (
     <footer className="bottombar">
       {tz && <span>{me.tenant?.name} {clock(now)} <span className="muted">({tz})</span></span>}
+      {tz && <DataHealth />}
       <span className="spacer" />
       {open && tz && <span className="muted">{refresh ? `Refreshing every ${refresh} s` : 'Refresh off'} · loaded {clock(new Date(tick)).slice(11)}</span>}
     </footer>

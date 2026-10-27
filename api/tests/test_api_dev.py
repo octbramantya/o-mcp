@@ -415,3 +415,34 @@ def test_plant_reads(env, client):
     assert {"PLANT_CHANGED", "DATA_INCOMPLETE"} <= {f["code"] for f in s["findings"]}
     assert c.get("/api/sankey", params={"start": "2026-10-20", "end": "2026-10-22",
                                         "quantity": "THD_VOLTAGE_LN"}).status_code == 400
+
+
+def test_now_and_status(env, client):
+    c = client
+    boss = email(env, "boss5")
+    temp = asyncio.run(app.create_super_admin(env[0], boss))
+    login(c, boss, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "boss password 5"})
+    as_(c, account(c, email(env, "eve")))
+    at = f"{DAY}T12:00"
+
+    # The last minute readings of A5's meter at noon: instantaneous values, power factor decoded.
+    n = c.get("/api/now", params={"node": A5, "at": at}).json()
+    assert n["node"]["id"] == A5 and n["at"].startswith(at) and n["devices"]
+    got = {r["quantity"]: r for d in n["devices"] for r in d["readings"]}
+    assert got and all(r["at"] <= n["at"] for r in got.values())
+    assert 0 <= got["PF_TOTAL"]["value"] <= 1
+    assert "ACTIVE_ENERGY_DELIVERED" not in got
+    only = c.get("/api/now", params={"node": A5, "at": at, "quantities": "ACTIVE_ENERGY_DELIVERED"}).json()
+    assert {r["quantity"] for d in only["devices"] for r in d["readings"]} == {"ACTIVE_ENERGY_DELIVERED"}
+    # Long after dev's data ends, nothing is "now": each meter says so.
+    late = c.get("/api/now", params={"node": A5}).json()
+    assert {f["code"] for f in late["findings"]} == {"NO_RECENT_READING"}
+
+    # The data's status at noon: every source has data, and most meters report.
+    s = c.get("/api/status", params={"at": at}).json()
+    assert s["latest_minute"] >= f"{DAY}T11:58" and s["latest_quarter"] >= f"{DAY}T11:30"
+    assert s["meters"] > 50 and len(s["silent"]) < s["meters"] / 2
+    assert all(m["node_ids"] and m["nodes"] for m in s["silent"])
+    # A time after now is now.
+    assert c.get("/api/status", params={"at": "2099-01-01T00:00"}).json()["at"] < "2099"

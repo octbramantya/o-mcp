@@ -282,6 +282,7 @@ Widgets (`web/src/widgets/`, one file each):
 |---|---|
 | value | `/api/values` |
 | readings | `/api/readings` |
+| now (slice 2) | `/api/now` |
 | node finder | `/api/nodes` |
 | plant section | `/api/section`, an indented tree, not yet a drawn single-line diagram |
 | meters | `/api/meters` |
@@ -293,8 +294,22 @@ Widgets (`web/src/widgets/`, one file each):
 - **Loading:** while a widget reloads, its previous answer stays on screen, dimmed and marked
   "Loading…", so it is never read as the new one.
 - **Errors:** an error boundary around each widget keeps one failure off the others.
-- **Not yet:** the category tree, the starred list, the bottom bar's latest telemetry and silent
-  meters (no route yet), the Now widget, and a drawn single-line diagram.
+- **Not yet:** the category tree, the starred list and a drawn single-line diagram.
+
+**`web/` slice 2 (2026-10-27):**
+- **Account screen** (`/accounts`, super admin only): create an account, reset its password (the
+  temporary password shown once), disable or enable it, and set role and site together.
+- **Data health in the bottom bar** (`GET /api/status`, polled every minute while the tab is
+  visible). It shows how far minute data, 15-minute data and the daily summary reach, coloured by
+  age, and how many meters are silent. Meters on nodes the site turned off are counted apart. A
+  silent meter's node goes onto channel A with one click.
+- **The Now widget** (`GET /api/now`): the last reading of each of a node's meters at the range's
+  end, which for a range running to now is now.
+- **Checks:**
+  - Vitest unit tests for the time-range parsing (`npm test`);
+  - `tools/web_check.py`, which drives the whole frontend in a headless browser against dev, from
+    log-in and an account to a saved dashboard, at desktop and phone widths, and removes what it
+    created.
 
 ## 6. Database connections
 
@@ -401,6 +416,8 @@ the values are.
 | `GET /api/meters` | `node`, `as_of` | `o-mcp/meters` v1: devices, last readings, what can be resolved |
 | `GET /api/readings` | `node`, `quantities` (≤ 8), `start`, `end` (≤ 92 days), `interval`, `device` | `o-mcp/readings` v1 on the meters in effect on the window's last day, at most 10,000 points |
 | `GET /api/sankey`, `GET /api/diagnostics` | `start`, `end` (≤ 92 days), `quantity`, `node_detail` | `graph.sankey`'s links; `graph.sankey_diagnostics` with node ids, and `graph.v_property_gaps` |
+| `GET /api/now` | `node`, `at` (default now), `quantities` | each of the node's meters' last minute reading in the 15 minutes before `at`, instantaneous values by default, power factor decoded (`plant/now.py`) |
+| `GET /api/status` | `at` (default now) | the latest minute and 15-minute data in the last 24 h, the daily summary's last refresh, and the meters the graph reads that have had no 15-minute data for over 2 hours, apart from those on nodes the site turned off (`plant/status.py`) |
 
 - Topology widgets pass their range's last day as `as_of` (§3, A); readings and the sankey take
   the window and use its last day themselves.
@@ -412,6 +429,7 @@ the values are.
   water, air; `ACTIVE_ENERGY_DELIVERED` by default) and is drawn on the window's last day, with
   `PLANT_CHANGED` when the plant changed inside it and `DATA_INCOMPLETE` as `/api/values`.
 - Property gaps are as of today: node properties have no history.
+- `at` is clamped to now: nothing is read after it.
 
 ## 8. Users and dashboards: the `frontend` schema
 
@@ -451,7 +469,7 @@ read. A type the frontend doesn't know is drawn as a placeholder, never dropped.
 **Templates are static documents shipped with the frontend**, per tenant where they name nodes.
 Starting from one copies it into `frontend.dashboard` as the user's own; changing a template later
 doesn't touch the copies. Built: `web/src/templates/`, so far tenant 3's "Energy overview" (sankey,
-finder, and value, readings, section, meters and diagnostics on channel A).
+finder, and value, now, readings, section, meters and diagnostics on channel A).
 
 Migrations for `frontend` go in `migrations/`, in the one numbering sequence, through
 `tools/migrate.sh`.
@@ -486,15 +504,14 @@ Built 2026-10-26: the plant routes the widget list needs (§7), and `web/` slice
 the dashboards, the canvas, seven widgets and the document format (§8). Checked in a headless
 browser against dev, from log-in to a saved dashboard, at desktop and phone widths. Run it with the
 API on `O_API_BIND` and `cd web && npm run dev` (Vite forwards `/api`; `O_API_URL` names another
-API). Next in `web/`:
+API). Slice 2 (2026-10-27): the account screen, data health, the Now widget, and the checks (§5). Next,
+slice 3:
 - the left panel's category tree and starred nodes;
-- the bottom bar's data health, which needs a status route;
 - a drawn single-line diagram;
 - export and import as JSON.
 
 Open: how `web/dist` is served in production. It must be the API's origin (the cookie is
-`SameSite=Strict`): the reverse proxy serving both, or Starlette serving the files. The "Now" widget (the latest reading per meter) is the one widget without
-a route of its own yet; `GET /api/meters` gives each device's last reading time. A whole-day range that includes today takes the daily path, which reaches as far as the
+`SameSite=Strict`): the reverse proxy serving both, or Starlette serving the files. A whole-day range that includes today takes the daily path, which reaches as far as the
 daily summary's last refresh. On production (read 2026-10-26 13:50 site time) today's rows were
 refreshed at 13:30 and the days before last at 23:30. pgAgent job 4 runs
 `refresh_daily_energy_costs` every 30 minutes, on the hour and the half hour (its log, read by the

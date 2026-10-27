@@ -1,5 +1,6 @@
 """The plant routes beside GET /api/values (design/frontend.md §5, §7): the vocabulary, the node finder,
-a plant section, a node's meters and readings, and the sankey with its diagnostics. Each runs the
+a plant section, a node's meters, readings and last readings, the sankey with its diagnostics, and
+the data's status for the bottom bar. Each runs the
 MCP tool's own query from plant/, and answers in the tool's v1 format, which carries node ids
 (decision 19): a widget stores the id and shows the code and name the answer gives.
 
@@ -12,7 +13,7 @@ fails before the cache, and every answer is cached as /api/values' are (api/cach
 """
 import datetime as dt
 
-from plant import find, meters, readings, section, timewin
+from plant import find, meters, now, readings, section, status, timewin
 from plant import vocab as vocabulary
 from plant.db import rows
 from plant.errors import PlantError
@@ -261,3 +262,36 @@ def diagnostics(tenant, params):
             r["value"] = _num(r["value"])
         return {**head, "requested": w.as_json(), "diagnostics": diag, "property_gaps": gaps, "findings": findings}
     return ("diagnostics", tenant.id, q["code"], first, last), compute
+
+
+def _at(params, tz):
+    """An instant in site time, to the minute: at, or now. A later one is now: nothing is read after it."""
+    current = dt.datetime.now(tz).replace(second=0, microsecond=0)
+    s = params.get("at")
+    return current if not s else min(timewin.parse_local(s, tz, "at").replace(second=0, microsecond=0), current)
+
+
+def node_now(tenant, params):
+    """The last reading of each of a node's meters at an instant (plant/now.py)."""
+    v = tenant.vocab
+    nid, at = _int(params, "node"), _at(params, tenant.tz)
+    codes = list(dict.fromkeys(c.strip() for c in params.get("quantities", "").split(",") if c.strip()))
+    unknown = [c for c in codes if not v.quantity(c)]
+    if unknown:
+        raise PlantError(f"No quantity {', '.join(unknown)}; GET /api/vocabulary lists them.")
+
+    async def compute():
+        async with tenant.tx() as conn:
+            node = await node_on(conn, tenant.id, nid, at.date().isoformat())
+            return await now.document(conn, tenant.id, v, tenant.tz, node, at, codes)
+    return ("now", tenant.id, nid, tuple(codes), at), compute
+
+
+def data_status(tenant, params):
+    """Where each source stops and which meters are silent, at an instant (plant/status.py)."""
+    at = _at(params, tenant.tz)
+
+    async def compute():
+        async with tenant.tx() as conn:
+            return await status.document(conn, tenant.id, tenant.tz, at)
+    return ("status", tenant.id, at), compute

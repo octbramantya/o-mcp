@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
-    "types": "node scripts/gen-types.mjs"
+    "types": "node scripts/gen-types.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.5",
@@ -26,6 +27,7 @@
     "@vitejs/plugin-react": "4.7.0",
     "json-schema-to-typescript": "15.0.4",
     "typescript": "5.9.3",
-    "vite": "6.4.5"
+    "vite": "6.4.5",
+    "vitest": "5.0.5"
   }
 }

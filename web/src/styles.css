@@ -141,3 +141,12 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .stale { position: relative; }
 .stale > :not(.badge) { opacity: 0.45; }
 .badge { position: absolute; top: 4px; right: 8px; z-index: 2; font-size: 11px; padding: 1px 6px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); }
+.health-bar { display: flex; flex-wrap: wrap; gap: 12px; }
+.health.ok { color: var(--ok); }
+.health.warn { color: var(--warn); }
+.health.bad { color: var(--danger); }
+.popover-anchor.up .popover { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+.silent-list { width: min(560px, 90vw); max-height: 60vh; overflow: auto; }
+.new-account { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.notice { margin: 12px 0; padding: 12px; border-color: var(--warn); }
+.secret { font-size: 15px; padding: 2px 6px; background: var(--panel-2); border-radius: 4px; user-select: all; }

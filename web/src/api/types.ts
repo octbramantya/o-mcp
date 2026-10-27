@@ -83,3 +83,36 @@ export interface Diagnostics extends FlowHead {
     detail: string | null;
   }[];
 }
+
+export interface Status {
+  at: string;
+  latest_minute: string | null;
+  latest_quarter: string | null;
+  summary_refreshed: string | null;
+  lookback_hours: number;
+  meters: number;
+  silent: { device_id: number; code: string; name: string; last_reading: string | null; nodes: string[]; node_ids: number[]; declared: boolean }[];
+}
+
+export interface Now {
+  node: { id: number; code: string; name: string };
+  at: string;
+  lookback_minutes: number;
+  devices: { device_id: number; code: string; name: string; readings: { quantity: string; unit: string; value: number | null; at: string }[] }[];
+  findings: Finding[];
+}
+
+export type Role = 'user' | 'admin' | 'super_admin';
+
+export interface Account {
+  id: number;
+  email: string;
+  display_name: string | null;
+  role: Role;
+  tenant_id: number | null;
+  must_change_password: boolean;
+  created_at: string;
+  password_changed_at: string | null;
+  last_login_at: string | null;
+  disabled_at: string | null;
+}

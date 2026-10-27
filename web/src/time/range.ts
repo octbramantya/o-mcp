@@ -105,7 +105,7 @@ export function show(s: string | null | undefined): string {
   return `${+m[3]} ${month} ${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ''}`;
 }
 
-/** A moment with its own offset (a save time) as site time for people. */
-export function stamp(iso: string, tz: string): string {
+/** A moment with its own offset (a save time) as site time for people; without a site, the browser's. */
+export function stamp(iso: string, tz?: string): string {
   return new Date(iso).toLocaleString('en-GB', { timeZone: tz, day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }

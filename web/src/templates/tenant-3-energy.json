@@ -3,19 +3,13 @@
   "refresh": null,
   "channels": {"A": {"kind": "node", "id": 61}},
   "widgets": [
-    {"id": "sankey", "type": "sankey", "title": "Energy flow", "x": 0, "y": 0, "w": 16, "h": 14, "channel": null,
-     "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED", "node_detail": true}},
-    {"id": "finder", "type": "finder", "title": null, "x": 16, "y": 0, "w": 8, "h": 14, "channel": "A",
-     "settings": {"type": "", "utility": "ELECTRICITY", "metered": ""}},
-    {"id": "value", "type": "value", "title": "Energy of the selected node", "x": 0, "y": 14, "w": 8, "h": 6, "channel": "A",
-     "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED", "nodes": []}},
-    {"id": "readings", "type": "readings", "title": null, "x": 8, "y": 14, "w": 16, "h": 9, "channel": "A",
-     "settings": {"node": null, "quantities": ["ACTIVE_ENERGY_DELIVERED"], "interval": "auto"}},
-    {"id": "section", "type": "section", "title": "What it feeds", "x": 0, "y": 23, "w": 8, "h": 10, "channel": "A",
-     "settings": {"node": null, "depth": 2, "direction": "down"}},
-    {"id": "meters", "type": "meters", "title": null, "x": 8, "y": 23, "w": 16, "h": 10, "channel": "A",
-     "settings": {"node": null}},
-    {"id": "diagnostics", "type": "diagnostics", "title": null, "x": 0, "y": 33, "w": 24, "h": 12, "channel": "A",
-     "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED"}}
+    {"id": "sankey", "type": "sankey", "title": "Energy flow", "x": 0, "y": 0, "w": 16, "h": 14, "channel": null, "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED", "node_detail": true}},
+    {"id": "finder", "type": "finder", "title": null, "x": 16, "y": 0, "w": 8, "h": 14, "channel": "A", "settings": {"type": "", "utility": "ELECTRICITY", "metered": ""}},
+    {"id": "value", "type": "value", "title": "Energy of the selected node", "x": 0, "y": 14, "w": 6, "h": 9, "channel": "A", "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED", "nodes": []}},
+    {"id": "now", "type": "now", "title": null, "x": 6, "y": 14, "w": 6, "h": 9, "channel": "A", "settings": {"node": null, "quantities": []}},
+    {"id": "readings", "type": "readings", "title": null, "x": 12, "y": 14, "w": 12, "h": 9, "channel": "A", "settings": {"node": null, "quantities": ["ACTIVE_ENERGY_DELIVERED"], "interval": "auto"}},
+    {"id": "section", "type": "section", "title": "What it feeds", "x": 0, "y": 23, "w": 8, "h": 10, "channel": "A", "settings": {"node": null, "depth": 2, "direction": "down"}},
+    {"id": "meters", "type": "meters", "title": null, "x": 8, "y": 23, "w": 16, "h": 10, "channel": "A", "settings": {"node": null}},
+    {"id": "diagnostics", "type": "diagnostics", "title": null, "x": 0, "y": 33, "w": 24, "h": 12, "channel": "A", "settings": {"quantity": "ACTIVE_ENERGY_DELIVERED"}}
   ]
 }
