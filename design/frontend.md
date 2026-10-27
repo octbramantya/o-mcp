@@ -32,6 +32,7 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 18 | **The solver gets a minute-data path**, and the MCP server reads `telemetry_data` too | — |
 | 19 | **Saved dashboards store a node's id and show its code.** The id (`graph.node.id`, the primary key) never changes; the code can | a variable's `__value` and `__text` |
 | 20 | **`as_of` over a range: value widgets split the range at plant changes (C), topology widgets draw the plant on the range's last day (A)** (§3) | — |
+| 21 | **The Value widget becomes Aggregate: one quantity across several nodes over the range.** A counter shows its total, a sampled quantity its minimum, average, 95th percentile and maximum per meter, on 1-minute data up to 6 hours and 15-minute data beyond, said in the widget (§5, "Aggregate"). Decided 2026-10-27 | — |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.
@@ -255,7 +256,46 @@ A first widget list, from what the MCP server and the database already answer:
 | Node finder | nodes by text, type, class, utility, metered | `plant_find` |
 | Meters | the devices reading a node, what each reports, last reading, status | `node_meters` |
 | Readings | several nodes' quantities over the range, on one chart or stacked | `meter_readings`, at the resolution of §3 |
-| Value | one resolved quantity for one or more nodes over the range, with `origin` | `node_value` |
+| Aggregate (was Value) | one quantity across several nodes over the range: a counter's total, a sampled quantity's minimum, average, 95th percentile and maximum per meter (below) | `node_value` for counters; a new read for sampled quantities |
+
+**Aggregate (decided and built 2026-10-27).** The Value widget, renamed (§1, 21). Its use: one
+quantity, voltage say, across a board and the boards it feeds (`INCOMING_PLN` and its direct
+children), to see how that quantity behaved over the range at each of them.
+
+- **Shape.** One quantity, several nodes: a row per node, or per meter where a node has more than
+  one. The quantity is chosen in the settings; the nodes too, or a channel's node.
+- **Counters** (`COUNTER` in `graph.quantity_term`: energy, volume) show **one figure, the total**
+  over the range. Minimum, maximum and percentiles of a running register say nothing, and the
+  peak 15-minute demand is left out. Totals keep going through the solver (`node_value`) even on a
+  metered node, since a node's measured value isn't always one register: `LVMDB_A4` is meter 26
+  plus ⅓ of PV A4 (048), `LVMDB_A5` is metered on its feeder edge (046). The solver applies those
+  measurement rows; a raw register would undo them.
+- **Sampled quantities** (`SAMPLE`: voltage, current, power, THD, frequency) show the **minimum,
+  average, 95th percentile and maximum** over the range, **per meter**: two meters' voltages
+  aren't merged into one figure. Meters on the node and on its feeder edge both count.
+- **Which data.** As Readings (§3): 1-minute readings for a range of 6 hours or less within the
+  minute data kept, 15-minute data beyond. The widget says which, in words: "from 1-minute
+  readings", or "from 15-minute readings (the last reading in each 15 minutes)", since
+  `telemetry_15min_agg` keeps each bucket's last reading, not its average, and a minimum or maximum
+  of those can miss a short dip or spike.
+- **How much a figure rests on.** Each row shows its reading count against those expected for the
+  range, and the data's end, as Value's footer does now.
+- **Quantities offered**: those the selected nodes' meters report, grouped (voltage, current,
+  power, harmonics, energy), less the eight quadrant-encoded power factor registers (`PF_TOTAL`,
+  `PF_A`..`PF_C`, `DPF_TOTAL`, `DPF_A`..`DPF_C`), whose minimum or maximum is wrong until they are
+  decoded (`design/mcp-tools.md`, gap 4). `PF_TRUE`, worked out from the active and reactive
+  energy, is safe.
+- **Unmetered nodes are left out for now** for sampled quantities: the only one the solver can
+  give them is `THD_VOLTAGE_LN`, their feeder's.
+- **Unchanged underneath.** The widget's type stays `value` in saved dashboards (the document
+  format doesn't change, §1, 19 and `design/dashboard-v1.schema.json`); only the label and
+  settings change. `o-mcp/values` v1, which the MCP tool `node_value` also returns, isn't changed:
+  sampled statistics get a route and format of their own, which the agent can be given later
+  through `plant/`.
+- **Settled 2026-10-27:** an unmetered node keeps its solved total for counters, with how it was
+  found; `PF_TRUE` is one figure for the range (a spread per interval later); counters without a
+  solver rule are left out; nodes are picked by hand or come from a channel, with no "and its
+  children" set; the range is at most one year.
 | Now | the last reading of a node's meters | `telemetry_data`, latest row per device |
 | Sankey | where energy, water or air goes, by category | `graph.sankey` |
 | Diagnostics | silent meters, negative residuals, missing required properties | `graph.sankey_diagnostics`, `graph.v_property_gaps` |
@@ -280,7 +320,7 @@ Widgets (`web/src/widgets/`, one file each):
 
 | widget | route |
 |---|---|
-| value | `/api/values` |
+| value (Aggregate) | `/api/aggregate` |
 | readings | `/api/readings` |
 | now (slice 2) | `/api/now` |
 | node finder | `/api/nodes` |
@@ -413,6 +453,16 @@ another tenant's devices. `Tenants.for_session` is the one place a session becom
 admin with no tenant chosen gets 409, and a user's session naming a tenant other than their own
 gets 403. The plant read runs after the frontend transaction has closed, so a slow solve holds no
 `frontend_api` connection.
+
+`GET /api/aggregate?quantity=&nodes=<ids>&start=&end=` (`api/aggregate.py`, `plant/aggregate.py`): the
+Aggregate widget's read (§5), an `o-mcp/aggregate` v1 document (`design/aggregate-v1.schema.json`), over
+up to 50 nodes and a year. A counter with a solver rule, or `PF_TRUE`, is a `TOTAL`: `/api/values`' own
+answer per node, so the resolution, pieces and findings are the same. A sampled quantity is a
+`SPREAD`: per meter on each node (on the node or its feeder edge, on the window's last day), the
+minimum, mean, 95th percentile and maximum of its readings, with the count of readings against
+those expected; minute data for a window of 6 hours or less within the minute data kept, else
+15-minute values, as Readings chooses. The eight encoded power factor registers and the counters
+with no rule are refused. Readings' window point gained `p95` for it, within `o-mcp/readings` v1.
 
 `GET /api/values?quantity=&nodes=<ids>&start=&end=` (`api/values.py`): one quantity for up to 50
 nodes by `graph.node.id`, over a site-time window of up to 92 days. The resolution is chosen as in

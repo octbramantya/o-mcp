@@ -16,14 +16,21 @@ questions and answers as they come. When an answer becomes a decision, it goes i
 | `3f22a55` | `web/` slice 1: the frame, dashboards, canvas and seven widgets |
 | `419defc` | `web/` slice 2: accounts, data health, the Now widget, `tools/web_check.py` |
 | `83e5de0` | `web/` slice 3: starred nodes, the category tree, the drawn single-line diagram, export and import |
+| `d2c755f` | 063 and 064 on production; this file |
+| `212a467` | review round 1: sticky toolbar, collapsible left panel, channel picker, access log; the minute-data check (`minutes_kept`) and migration 065 |
+| `c0d088b` | 065 on production |
 
-Not committed yet: `README.md` and `design/frontend.md` recording 063 and 064 on production, and
-this file.
+The commit after `c0d088b` holds the Aggregate widget (§6, "built"): `api/aggregate.py`,
+`plant/aggregate.py`, `design/aggregate-v1.schema.json`, `p95` in `plant/readings.py` and
+`design/readings-v1.schema.json`, `web/src/widgets/Value.tsx`, the generated types, the dev test
+`test_aggregate`, and the docs. Every check in §3 passed on it.
 
-**Database.** Migrations 059–064 are on dev and production. 063 (row-level security on `frontend`)
+**Database.** Migrations 059–065 are on dev and production. 063 (row-level security on `frontend`)
 and 064 (`frontend.starred_node`) went to production on 2026-10-27; backup first,
 `logs/prod/frontend_backup_pre063.20261027-113611.dump`. Their checks passed there, and as
-`grafReader` production shows the tenant row and no accounts or stars.
+`grafReader` production shows the tenant row and no accounts or stars. 065 (the minute-data check
+in `graph.device_totals_minute`) went the same day; backup first,
+`logs/prod/graph_backup_pre065.20261027-124011.dump`.
 
 **Production roles.** The user gave `frontend_api` and `prs_frontend` LOGIN and passwords on the
 production host, by hand, and created the first super admin there with
@@ -41,7 +48,10 @@ uv run python -m api --env-file .env.api serve                            # term
 cd web && npm run dev                                                      # terminal 2, http://localhost:5173/
 ```
 
-Close the tunnel afterwards: `kill $(lsof -nP -tiTCP:15432 -sTCP:LISTEN)`.
+Close the tunnel afterwards: `kill $(lsof -nP -tiTCP:15432 -sTCP:LISTEN)`. If the API logs
+`connection to server at "127.0.0.1", port 15432 failed: ... Connection refused` at start-up, the
+tunnel is down: open it again. The API logs one line per request (`o-mcp-api.access`: method, path
+and query, status, milliseconds, user, site).
 
 | file | targets | used by |
 |---|---|---|
@@ -63,20 +73,31 @@ Close the tunnel afterwards: `kill $(lsof -nP -tiTCP:15432 -sTCP:LISTEN)`.
   that is older than that reads 15-minute data, without saying so (§1, 9).
 - **Today's daily figures** lag the 15-minute data by up to 45 minutes. `DATA_INCOMPLETE` says so
   (`design/frontend.md` §10).
-- **`.env.prod`** holds production's write credentials from the migration. Delete it if it still
-  exists.
+- **`.env.prod`** (production's write credentials for a migration) was deleted after 065. Create it
+  for a migration only, and delete it after.
+- **Dev's minute data** (`tools/dev_refresh.sh --raw`) holds the solver's quantities only, so on dev
+  a short window of voltage or current has no readings; production keeps every quantity.
 
 ## 3. The checks
 
-Run them against dev after any change. Each passed at `83e5de0`.
+Run them against dev after any change. Each passed on 2026-10-27 with the Aggregate widget
+(§1): 47 unit tests, 33 API tests against dev, 22 vitest tests, the MCP server's tests
+against dev, and `web_check`.
 
 ```bash
 uvx ruff check .
 uv run pytest                                                   # unit tests, server and api
-O_API_TEST_ENV=.env.api-dev uv run pytest api/tests             # the API against dev (~3 min, API stopped)
+O_API_TEST_ENV=.env.api-dev uv run pytest api/tests             # the API against dev (3–8 min, API stopped)
 cd web && npx tsc -b && npm test && npm run build               # types, vitest (22 tests), build
 uv run --with playwright python tools/web_check.py --env-file .env.api-dev   # API on .env.api-dev and Vite running
+O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=2026-10-20:2026-10-22 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run pytest server/tests   # after a change in plant/
 ```
+
+- **`web_check`'s browser.** If Playwright asks for `playwright install`, point it at a browser
+  already downloaded: `--chromium ~/Library/Caches/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-mac-arm64/chrome-headless-shell`.
+- **The dev tests' accounts** are named per test (`boss7`, `gus`...) and must be unique across the
+  file: a name used twice fails the second test with 409 when the whole file runs, though each
+  passes alone.
 
 - **The single-line diagram.** `web/src/widgets/sld.ts` is `tools/sld.py` ported line for line.
   `sld.test.ts` renders the ten documents in `web/src/widgets/sld-fixtures/` with both and
@@ -95,12 +116,12 @@ uv run --with playwright python tools/web_check.py --env-file .env.api-dev   # A
 |---|---|
 | frame | `web/src/frame/Frame.tsx` (top bar, site switch), `LeftPanel.tsx` (Find, Categories, Starred), `DataHealth.tsx` (bottom bar) |
 | dashboards | `web/src/dashboards/`: `ListPage`, `DashboardPage` (edit, save, discard, export), `Canvas` (24-column grid), `WidgetFrame`, `store.ts` (zustand), `document.ts` (format, channels A–D), `transfer.ts` (export and import) |
-| widgets | `web/src/widgets/`: one file each (Value, Readings, Now, Finder, Section, Meters, Sankey, Diagnostics); `registry.ts` (minimum sizes, settings); `sld.ts` |
+| widgets | `web/src/widgets/`: one file each (Value, shown as Aggregate; Readings, Now, Finder, Section, Meters, Sankey, Diagnostics); `registry.ts` (minimum sizes, settings); `sld.ts` |
 | time | `web/src/time/`: `range.ts` (parsing, resolution), `TimePicker.tsx` |
 | data | `web/src/api/`: `client.ts`, `hooks.ts` (TanStack Query keys per site), `types.ts`; `web/src/types/formats/` generated |
 | accounts | `web/src/admin/AccountsPage.tsx`, `web/src/auth/LoginPage.tsx` |
 | templates | `web/src/templates/tenant-3-energy.json`, the only one so far |
-| API | `api/app.py` (routes, sessions, dashboards, stars), `api/reads.py` (plant reads, 30 s cache), `api/tenants.py` (a pool per site), `plant/` (queries shared with the MCP server) |
+| API | `api/app.py` (routes, sessions, dashboards, stars, the access log), `api/reads.py` (plant reads, 30 s cache), `api/values.py` and `api/aggregate.py` (the Value and Aggregate reads), `api/tenants.py` (a pool per site), `plant/` (queries shared with the MCP server) |
 
 ## 5. Known gaps when the review started
 
@@ -133,7 +154,21 @@ newest last. Keep open questions in §7 until they are answered.
 | 2026-10-27 | channels | how does the left panel fill channels B–D? | it can't: a click always sets A. B–D are set from a widget on that channel (Finder, Section). Decided: a picker (A–D) at the top of the panel, not saved with the dashboard | `LeftPanel.tsx` |
 | 2026-10-27 | logging | what do the API and Vite log? | API: stderr, INFO and up, start-up lines and the traceback of any unhandled error; no access log, no timings. Account events in `frontend.audit`. Frontend: nothing beyond Vite's dev output; a widget's error shows in the widget only. Decided: an access log; client errors to the API not yet | `api/app.py` `AccessLog` |
 | 2026-10-27 | readings | Readings times out (20 s) on "Last 1 hour" | the API's check for minute data, `min(timestamp)` on `telemetry_data`, is a full scan of every chunk through `prs.telemetry_data` (security_barrier): ~74 M rows, still running at 25 s as `prs_frontend` on production. `graph.device_totals_minute` (060) has the same check, so short Value windows would fail next. Both now ask "is there a reading at or before the start", 0.05 ms on production | `api/values.py` `minutes_kept`; migration 065 (dev and production 2026-10-27) |
+| 2026-10-27 | value | what is the Value widget for, and why only 10 quantities? | one quantity per node over the range, solved on the graph; the quantities are those with a solver rule (`graph.quantity_rule`) | — |
+| 2026-10-27 | value | what does 1.57 % THD_VOLTAGE_LN at `INCOMING_PLN`, measured, mean? | the 95th percentile of the meter's L-N voltage THD over the range: of 1-minute readings up to 6 hours, of 15-minute snapshots (each bucket's last reading) beyond. The widget doesn't say so | §1, 21 |
+| 2026-10-27 | value | rename to Aggregate, with min, max and P95 for instantaneous values | decided: one quantity across several nodes; counters a total through the solver, sampled quantities minimum, average, 95th percentile and maximum per meter; 1-minute data up to 6 hours, 15-minute beyond, said in words; encoded power factor out; unmetered nodes left out for sampled quantities. Then: unmetered counters keep the solved total, `PF_TRUE` one figure, counters without a rule out, nodes by hand or channel, a year at most | `design/frontend.md` §1, 21 and §5 "Aggregate" |
+| 2026-10-27 | value | built | `/api/aggregate`, `o-mcp/aggregate` v1, the widget shown as Aggregate (type still `value`). A channel's node comes first, before the chosen nodes. The quantity picker is grouped, its sampled quantities narrowed to what the chosen nodes' meters reported in the last week. Found on the way: `telemetry_15min_agg` keeps each bucket's last reading, not its mean, which `o-mcp/readings`' descriptions had wrong (corrected, text only); dev's minute copy holds the solver's quantities only, so a short window of voltage has no readings on dev | `api/aggregate.py`, `plant/aggregate.py`, `web/src/widgets/Value.tsx` |
+| 2026-10-27 | value | a channel's node, and the encoded power factor registers, in Aggregate | not answered; built with the defaults: the channel's node is the first row (a dot marks it), before the chosen nodes; `PF_TOTAL`, `PF_A`..`C` and `DPF_*` stay out, though readings already decodes them to a magnitude (0..1, lead or lag lost), so they could come back as "power factor (magnitude)" | open, §7 |
 
 ## 7. Open questions
 
 - **Client errors.** Should a widget's error be posted to the API and logged there?
+- **Aggregate:**
+  - Confirm the defaults: the channel's node first, before the chosen nodes; the encoded power
+    factor registers out, or back as a magnitude?
+  - Not yet seen on production's data. A year of 15-minute data across many nodes is untimed (dev
+    holds about two days); the statement timeout is 20 s.
+  - The Totals group isn't narrowed by utility: a water total is offered for an electrical board.
+  - No MCP tool for it yet; `plant/aggregate.py` is where one would start.
+- **A dev test that failed once.** `test_accounts_sessions_and_tenants` failed once in a full run
+  (2026-10-27, morning) and has passed since, alone and in every full run; the cause wasn't found.

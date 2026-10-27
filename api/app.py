@@ -30,7 +30,7 @@ from starlette.routing import Route
 
 from plant.errors import PlantError
 
-from . import auth, reads, values
+from . import aggregate, auth, reads, values
 from .cache import Cache
 from .db import Database, one, rows
 from .tenants import TenantError, Tenants
@@ -572,6 +572,14 @@ async def get_values(request, tenant, _s, _body):
     return Json(await request.app.state.cache.get(key, lambda: values.run(tenant, q, ids, w)))
 
 
+@endpoint(plant=True)
+async def get_aggregate(request, tenant, _s, _body):
+    statistic, q, ids, w = aggregate.parse(request.query_params, tenant)
+    key = ("aggregate", tenant.id, q["code"], tuple(ids), values._floor(w.start, values.MINUTE),
+           values._ceil(w.end, values.MINUTE))
+    return Json(await request.app.state.cache.get(key, lambda: aggregate.run(tenant, statistic, q, ids, w)))
+
+
 def _read(read):
     """A plant route answered by one of api/reads.py's reads, through the cache."""
     @endpoint(plant=True)
@@ -661,6 +669,7 @@ def build(config):
         Route("/api/stars", list_stars, methods=["GET"]),
         Route("/api/stars", star, methods=["POST"]),
         Route("/api/values", get_values, methods=["GET"]),
+        Route("/api/aggregate", get_aggregate, methods=["GET"]),
         Route("/api/vocabulary", _read(reads.vocabulary_doc), methods=["GET"]),
         Route("/api/nodes", _read(reads.nodes), methods=["GET"]),
         Route("/api/section", _read(reads.subgraph), methods=["GET"]),

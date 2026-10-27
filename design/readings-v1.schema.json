@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "o-mcp://formats/readings/v1",
   "title": "o-mcp/readings version 1",
-  "description": "What one node's meters read over a window, one series per device and quantity, one point per interval. Returned by meter_readings. Times are site time with their offset; the window is half-open (end excluded). A COUNTER point is consumption over the interval; a SAMPLE point the mean, min and max of its 15-minute values; power factor is decoded to 0..1 first. Unknown fields may appear in later version-1 documents; ignore them.",
+  "description": "What one node's meters read over a window, one series per device and quantity, one point per interval. Returned by meter_readings. Times are site time with their offset; the window is half-open (end excluded). A COUNTER point is consumption over the interval; a SAMPLE point the mean, min, max and 95th percentile of its 15-minute values (each the last reading in its 15 minutes) or minute values; power factor is decoded to 0..1 first. Unknown fields may appear in later version-1 documents; ignore them.",
   "type": "object",
   "required": ["schema", "version", "query", "series", "findings"],
   "properties": {
@@ -53,9 +53,10 @@
               "properties": {
                 "start": {"type": "string", "description": "Start of the interval, site time with offset."},
                 "consumption": {"type": ["number", "null"], "description": "COUNTER only: the register's increase over the interval. Consumption across a gap in readings lands in the first interval after it."},
-                "mean": {"type": ["number", "null"], "description": "SAMPLE only: mean of the 15-minute values."},
-                "min": {"type": ["number", "null"], "description": "SAMPLE only: smallest 15-minute value (a 15-minute mean, not an instantaneous minimum)."},
-                "max": {"type": ["number", "null"], "description": "SAMPLE only: largest 15-minute value."},
+                "mean": {"type": ["number", "null"], "description": "SAMPLE only: mean of the interval's values (15-minute values, or minute values at interval minute)."},
+                "min": {"type": ["number", "null"], "description": "SAMPLE only: smallest value in the interval. A 15-minute value is the last reading in its 15 minutes, so a shorter dip between two of them doesn't show."},
+                "max": {"type": ["number", "null"], "description": "SAMPLE only: largest value in the interval, of the same values as min."},
+                "p95": {"type": ["number", "null"], "description": "SAMPLE only: the 95th percentile (continuous) of the same values as min. Added within version 1: an older document has none."},
                 "samples": {"type": "integer", "description": "Values in the interval: 15-minute values (4 per full hour), or minute values at interval minute."},
                 "rejected": {"type": "integer", "description": "COUNTER only: steps where the register went backwards or jumped implausibly, counted as zero."}
               }

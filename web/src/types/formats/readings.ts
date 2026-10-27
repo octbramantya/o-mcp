@@ -1,7 +1,7 @@
 // Generated from design/readings-v1.schema.json by scripts/gen-types.mjs. Don't edit; run npm run types.
 
 /**
- * What one node's meters read over a window, one series per device and quantity, one point per interval. Returned by meter_readings. Times are site time with their offset; the window is half-open (end excluded). A COUNTER point is consumption over the interval; a SAMPLE point the mean, min and max of its 15-minute values; power factor is decoded to 0..1 first. Unknown fields may appear in later version-1 documents; ignore them.
+ * What one node's meters read over a window, one series per device and quantity, one point per interval. Returned by meter_readings. Times are site time with their offset; the window is half-open (end excluded). A COUNTER point is consumption over the interval; a SAMPLE point the mean, min, max and 95th percentile of its 15-minute values (each the last reading in its 15 minutes) or minute values; power factor is decoded to 0..1 first. Unknown fields may appear in later version-1 documents; ignore them.
  */
 export interface Readings {
   /**
@@ -103,17 +103,21 @@ export interface Readings {
        */
       consumption: number | null;
       /**
-       * SAMPLE only: mean of the 15-minute values.
+       * SAMPLE only: mean of the interval's values (15-minute values, or minute values at interval minute).
        */
       mean: number | null;
       /**
-       * SAMPLE only: smallest 15-minute value (a 15-minute mean, not an instantaneous minimum).
+       * SAMPLE only: smallest value in the interval. A 15-minute value is the last reading in its 15 minutes, so a shorter dip between two of them doesn't show.
        */
       min: number | null;
       /**
-       * SAMPLE only: largest 15-minute value.
+       * SAMPLE only: largest value in the interval, of the same values as min.
        */
       max: number | null;
+      /**
+       * SAMPLE only: the 95th percentile (continuous) of the same values as min. Added within version 1: an older document has none.
+       */
+      p95?: number | null;
       /**
        * Values in the interval: 15-minute values (4 per full hour), or minute values at interval minute.
        */

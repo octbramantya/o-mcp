@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/aggregate/v1",
+  "title": "o-mcp/aggregate version 1",
+  "description": "One quantity across several nodes over a window. A counter (energy, volume) or a derived quantity is one total per node, worked out on the network model as the values format does, metered or not. A sampled quantity (voltage, current, power, THD) is the minimum, mean, 95th percentile and maximum of each meter's readings: a row per meter, since two meters' readings aren't merged. Returned by GET /api/aggregate. Times are site time with their offset; windows are half-open (end excluded). Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "quantity", "statistic", "resolution", "window", "source", "data_until", "pieces", "rows", "findings"],
+  "properties": {
+    "schema": {"const": "o-mcp/aggregate", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "query": {
+      "type": "object",
+      "description": "What was asked for.",
+      "required": ["tenant", "quantity", "nodes", "requested"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "quantity": {"type": "string", "description": "Quantity code."},
+        "nodes": {"type": "array", "items": {"type": "integer"}, "description": "Node ids (graph.node.id), in the order asked, duplicates removed."},
+        "requested": {"$ref": "#/$defs/window", "description": "The window asked for."}
+      }
+    },
+    "quantity": {
+      "type": "object",
+      "description": "The quantity, from the vocabulary.",
+      "required": ["code", "unit", "description", "reading"],
+      "properties": {
+        "code": {"type": "string", "description": "Quantity code."},
+        "unit": {"type": ["string", "null"], "description": "Unit of every figure in rows."},
+        "description": {"type": ["string", "null"], "description": "What the quantity is."},
+        "reading": {"enum": ["COUNTER", "SAMPLE", "DERIVED"], "description": "COUNTER: a running register; SAMPLE: an instantaneous value; DERIVED: computed from two counters (PF_TRUE)."}
+      }
+    },
+    "statistic": {"enum": ["TOTAL", "SPREAD"], "description": "TOTAL: each row's total holds the figure, and min, mean, p95 and max are null. SPREAD: the other way round."},
+    "resolution": {"enum": ["minute", "15min", "day"], "description": "The data the figures come from. minute: minute readings (a window of 6 hours or less within the minute data kept). 15min: 15-minute values; for a SPREAD each is the last reading in its 15 minutes, so a shorter dip or spike between two of them doesn't show. day: the daily summary, for a TOTAL over whole site days."},
+    "window": {"$ref": "#/$defs/window", "description": "The window the figures cover. For a TOTAL, the requested window snapped outwards to its resolution; for a SPREAD, the requested window."},
+    "source": {"type": "string", "description": "The table read: telemetry_data, telemetry_15min_agg or daily_energy_cost_summary, or for a TOTAL that read several, the one whose data stops first."},
+    "data_until": {"type": ["string", "null"], "description": "Where the data read stops, site time with offset; null when there was none. Short of window.end, findings has DATA_INCOMPLETE."},
+    "pieces": {
+      "type": "array",
+      "description": "TOTAL only (empty for a SPREAD): the parts the window was worked out in, each on the network of its own last day. One piece unless the plant changed inside the window (finding PLANT_CHANGED).",
+      "items": {
+        "type": "object",
+        "required": ["start", "end", "as_of"],
+        "properties": {
+          "start": {"type": "string", "description": "Start, site time with offset."},
+          "end": {"type": "string", "description": "End, excluded."},
+          "as_of": {"type": "string", "format": "date", "description": "The network the piece was worked out on."}
+        }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "description": "TOTAL: one per node, in the order asked. SPREAD: one per meter on each node (on the node or its feeder edge, on the window's last day), nodes in the order asked and meters by code; a node with no meter has one row with origin NO_METER. A node not in the plant on the window's last day has no row (finding NOT_IN_PLANT).",
+      "items": {
+        "type": "object",
+        "required": ["node_id", "code", "name", "device_id", "device", "device_name", "total", "origin", "min", "mean", "p95", "max", "samples", "expected", "last_reading"],
+        "properties": {
+          "node_id": {"type": "integer", "description": "Node id."},
+          "code": {"type": "string", "description": "Node code on the window's last day."},
+          "name": {"type": ["string", "null"], "description": "Node name."},
+          "device_id": {"type": ["integer", "null"], "description": "SPREAD: the meter's device id; null for NO_METER and for a TOTAL."},
+          "device": {"type": ["string", "null"], "description": "SPREAD: the meter's device code."},
+          "device_name": {"type": ["string", "null"], "description": "SPREAD: the meter's name."},
+          "total": {"type": ["number", "null"], "description": "TOTAL: the node's total over the window; null when it has none (finding NO_VALUE or NOT_IN_NETWORK), which is not zero."},
+          "origin": {"type": "string", "description": "How the figure was found; new values may appear. MEASURED: from a meter (always so for a SPREAD row with a meter). The others are the solver's, for a TOTAL: ROLLUP and CHILDREN from what the node feeds, IN_EDGES from its feeders, OUT_EDGES from its out-edges, INHERITED its feeder's, DERIVED computed from two quantities, NONE no value. NO_METER: a SPREAD row for a node with no meter."},
+          "min": {"type": ["number", "null"], "description": "SPREAD: the smallest reading; null when the meter had none."},
+          "mean": {"type": ["number", "null"], "description": "SPREAD: the mean of the readings."},
+          "p95": {"type": ["number", "null"], "description": "SPREAD: the 95th percentile of the readings (continuous)."},
+          "max": {"type": ["number", "null"], "description": "SPREAD: the largest reading."},
+          "samples": {"type": ["integer", "null"], "description": "SPREAD: readings the statistics rest on. null for a TOTAL."},
+          "expected": {"type": ["integer", "null"], "description": "SPREAD: readings a meter reporting every minute (resolution minute) or every 15 minutes gives in the window. samples well short of it means gaps."},
+          "last_reading": {"type": ["string", "null"], "description": "SPREAD: start of the meter's last reading in the window, site time with offset."}
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "What the server noticed. Show message as is.",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "description": "NO_VALUE, NOT_IN_NETWORK, PLANT_CHANGED, DATA_INCOMPLETE, NO_METER, NO_READINGS, NOT_IN_PLANT; new codes may appear."},
+          "node_id": {"type": "integer", "description": "The node it is about, when one."},
+          "device": {"type": "string", "description": "The meter it is about, when one."},
+          "message": {"type": "string", "description": "A sentence for the reader."}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"type": "string", "description": "Start, site time with offset."},
+        "end": {"type": "string", "description": "End, excluded."}
+      }
+    }
+  }
+}

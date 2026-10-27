@@ -245,6 +245,7 @@ def account(c, who, role="user"):
     admin's cookie, which it holds again afterwards."""
     admin = c.cookies.get(auth.COOKIE)
     r = post(c, "/api/admin/users", {"email": who, "role": role} | ({"tenant_id": TENANT} if role == "user" else {}))
+    assert r.status_code == 201, (r.status_code, r.text)
     temp = r.json()["temporary_password"]
     login(c, who, temp)
     post(c, "/api/password", {"current_password": temp, "new_password": "a password 2026"})
@@ -459,6 +460,66 @@ def test_plant_reads(env, client):
     for x in t["nodes"]:
         weights[x["node_id"]] = weights.get(x["node_id"], 0) + x["weight"]
     assert all(abs(w - 1) < 1e-3 for w in weights.values())
+
+
+def aggregate(c, nodes, start, end, quantity):
+    return c.get("/api/aggregate", params={"quantity": quantity, "nodes": ",".join(map(str, nodes)),
+                                           "start": start, "end": end})
+
+
+def test_aggregate(env, client):
+    c = client
+    boss = email(env, "boss7")
+    temp = asyncio.run(app.create_super_admin(env[0], boss))
+    login(c, boss, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "boss password 7"})
+    as_(c, account(c, email(env, "gus")))
+    with psycopg.connect(**env[1]) as conn:
+        bare = conn.execute(
+            "SELECT n.id FROM graph.node n WHERE n.tenant_id = %s AND n.node_code = 'FLR_124'"
+            " AND NOT EXISTS (SELECT 1 FROM graph.measurement m WHERE m.node_id = n.id AND m.is_active)",
+            (TENANT,)).fetchone()[0]
+
+    # A sampled quantity: a row per meter, from minute readings in a short window within the minute data
+    # (dev's minute copy holds the solver's quantities only: tools/dev_refresh.sh --raw).
+    r = aggregate(c, [PLN, A5, bare], f"{DAY}T10:00", f"{DAY}T12:00", "THD_VOLTAGE_LN").json()
+    strictly(r, "aggregate-v1.schema.json")
+    assert r["statistic"] == "SPREAD" and r["resolution"] == "minute" and r["quantity"]["reading"] == "SAMPLE"
+    metered = [x for x in r["rows"] if x["device_id"]]
+    assert {x["node_id"] for x in metered} == {PLN, A5}
+    for x in metered:
+        assert x["origin"] == "MEASURED" and x["expected"] == 120 and 0 < x["samples"] <= 120
+        assert x["min"] <= x["mean"] <= x["max"] and x["min"] <= x["p95"] <= x["max"], x
+        assert x["total"] is None
+    assert [x["origin"] for x in r["rows"] if x["node_id"] == bare] == ["NO_METER"]
+    assert "NO_METER" in {f["code"] for f in r["findings"]}
+
+    # Beyond 6 hours, 15-minute values, every sampled quantity a meter reports.
+    day = aggregate(c, [PLN, A5], f"{DAY}T00:00", f"{DAY[:-2]}22T00:00", "VOLTAGE_LN_AVG").json()
+    strictly(day, "aggregate-v1.schema.json")
+    assert day["resolution"] == "15min" and day["source"] == "telemetry_15min_agg"
+    assert all(x["expected"] == 96 and x["samples"] <= 96 for x in day["rows"])
+    assert any(x["samples"] > 0 and x["min"] <= x["p95"] <= x["max"] for x in day["rows"]), day["rows"]
+    old = aggregate(c, [PLN], f"{OLD}T10:00", f"{OLD}T12:00", "VOLTAGE_LN_AVG").json()
+    assert old["resolution"] == "15min"
+
+    # A counter: one total per node, the same as /api/values gives, metered or not.
+    t = aggregate(c, [PLN, A5, bare], DAY, f"{DAY[:-2]}22", "ACTIVE_ENERGY_DELIVERED").json()
+    strictly(t, "aggregate-v1.schema.json")
+    v = values(c, [PLN, A5, bare], DAY, f"{DAY[:-2]}22").json()
+    assert t["statistic"] == "TOTAL" and t["resolution"] == v["resolution"] and t["pieces"] == v["pieces"]
+    assert [(x["node_id"], x["total"], x["origin"]) for x in t["rows"]] == \
+        [(x["node_id"], x["value"], x["origin"]) for x in v["values"]]
+    assert all(x["min"] is None and x["samples"] is None for x in t["rows"])
+    pf = aggregate(c, [PLN], DAY, f"{DAY[:-2]}22", "PF_TRUE").json()
+    assert pf["statistic"] == "TOTAL" and pf["quantity"]["reading"] == "DERIVED"
+
+    # Refused: the encoded power factor, a counter with no rule, more than a year, an unknown node.
+    for q, msg in (("PF_TOTAL", "PF_TRUE"), ("ACTIVE_ENERGY_NET", "no rule"), ("NOPE", "quantity code")):
+        r = aggregate(c, [PLN], DAY, f"{DAY[:-2]}22", q)
+        assert r.status_code == 400 and msg in r.json()["message"], (q, r.json())
+    assert aggregate(c, [PLN], "2025-01-01", "2026-10-22", "VOLTAGE_LN_AVG").status_code == 400
+    assert aggregate(c, [999_999], DAY, f"{DAY[:-2]}22", "VOLTAGE_LN_AVG").status_code == 400
 
 
 def test_now_and_status(env, client):

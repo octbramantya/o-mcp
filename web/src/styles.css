@@ -145,6 +145,8 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .grid-table th { font-weight: 600; color: var(--muted); position: sticky; top: 0; background: var(--panel); }
 .grid-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .grid-table .big { font-size: 15px; font-weight: 600; }
+.grid-table .warn { color: var(--warn); }
+.dot.channel-row { background: var(--accent); margin-left: 0; }
 .grid-table.clickable tbody tr { cursor: pointer; }
 .grid-table.clickable tbody tr:hover, .grid-table tr.selected { background: var(--panel-2); }
 .grid-table.list .actions { text-align: right; white-space: nowrap; }

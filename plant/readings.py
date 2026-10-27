@@ -2,9 +2,11 @@
 server's meter_readings and the API's GET /api/readings.
 
 From telemetry_15min_agg, or for the API's short windows from minute telemetry_data (design/frontend.md
-§3); the caller decides which. The aggregation follows quantity_term.reading, server-side: a COUNTER
-becomes consumption per interval (forward differences, with the guards graph.device_totals uses), a
-SAMPLE its mean, min and max. Power factor is decoded before any statistic (design/mcp-tools.md, gap 4).
+§3); the caller decides which. telemetry_15min_agg keeps the last reading in each 15 minutes, not their
+mean, so a SAMPLE's statistics there are of those readings. The aggregation follows
+quantity_term.reading, server-side: a COUNTER becomes consumption per interval (forward differences,
+with the guards graph.device_totals uses), a SAMPLE its mean, min, max and 95th percentile. Power factor
+is decoded before any statistic (design/mcp-tools.md, gap 4).
 """
 import math
 
@@ -53,7 +55,8 @@ SELECT device_id, quantity_id, slot,
        sum(CASE WHEN d IS NULL OR d < 0 OR d > %(max_interval)s THEN 0 ELSE d END) AS consumption,
        count(*) FILTER (WHERE d < 0 OR d > %(max_interval)s) AS rejected,
        avg(s) AS mean, min(s) AS min, max(s) AS max,
-       count(*) AS samples
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY s) AS p95,
+       count(*) AS samples, max(bucket) AS last
 FROM slot GROUP BY device_id, quantity_id, slot ORDER BY device_id, quantity_id, slot
 """
 
@@ -68,6 +71,16 @@ def points(w, interval, series):
     """How many points a request makes: intervals per series times series."""
     hours = INTERVALS[interval]
     return (1 if hours is None else math.ceil(w.days() * 24 / hours)) * series
+
+
+def params(tenant, tz, devices, terms, v, start, end, interval, source):
+    """The parameters of SQL[source] for these devices (ids) and quantity terms, start and end naive UTC."""
+    return {"tenant": tenant, "devices": sorted(devices), "quantities": [t["quantity_id"] for t in terms],
+            "start": start, "end": end, "interval": interval, "lookback": SOURCES[source][3],
+            "trunc": interval if interval in ("hour", "day") else "hour",
+            "tz": tz.key, "max_interval": MAX_INTERVAL,
+            "counters": [t["quantity_id"] for t in terms if t["reading"] == "COUNTER"],
+            "pf": [v.quantity(c)["quantity_id"] for c in vocab.PF_ENCODED]}
 
 
 async def document(conn, tenant, v, tz, node, as_of, codes, w, interval, max_points, device=None):
@@ -96,13 +109,7 @@ async def document(conn, tenant, v, tz, node, as_of, codes, w, interval, max_poi
     chosen = next(iter(devices.values()))["device_code"] if device is not None else None
     start, end = w.utc()
     source = "minute" if interval == "minute" else "15min"
-    got = await rows(conn, SQL[source], {
-        "tenant": tenant, "devices": sorted(devices), "quantities": [t["quantity_id"] for t in terms],
-        "start": start, "end": end, "interval": interval, "lookback": SOURCES[source][3],
-        "trunc": interval if interval in ("hour", "day") else "hour",
-        "tz": tz.key, "max_interval": MAX_INTERVAL,
-        "counters": [t["quantity_id"] for t in terms if t["reading"] == "COUNTER"],
-        "pf": [v.quantity(c)["quantity_id"] for c in vocab.PF_ENCODED]})
+    got = await rows(conn, SQL[source], params(tenant, tz, devices, terms, v, start, end, interval, source))
 
     series, findings = [], []
     for did, d in sorted(devices.items(), key=lambda kv: kv[1]["device_code"]):
@@ -113,6 +120,7 @@ async def document(conn, tenant, v, tz, node, as_of, codes, w, interval, max_poi
                     "mean": None if counter else _num(r["mean"]),
                     "min": None if counter else _num(r["min"]),
                     "max": None if counter else _num(r["max"]),
+                    "p95": None if counter else _num(r["p95"]),
                     "samples": r["samples"], "rejected": r["rejected"] if counter else 0}
                    for r in got if r["device_id"] == did and r["quantity_id"] == t["quantity_id"]]
             series.append({"device_id": did, "device": d["device_code"], "device_name": d["device_name"],
