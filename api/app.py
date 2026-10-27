@@ -521,6 +521,43 @@ async def copy_dashboard(request, conn, s, body):
     return Json(_shown(c, s, c["document"]), status_code=201)
 
 
+# -- starred nodes --------------------------------------------------------------------------------
+MAX_STARS = 200
+
+
+async def _stars(conn, s, tenant):
+    got = await rows(conn, "SELECT node_id FROM frontend.starred_node WHERE user_id = %s AND tenant_id = %s"
+                           " ORDER BY created_at, node_id", (s["user_id"], tenant.id))
+    return Json({"nodes": [r["node_id"] for r in got]})
+
+
+@endpoint()
+async def list_stars(request, conn, s, _body):
+    """The caller's starred nodes in the session's tenant, in the order starred (the left panel, §5)."""
+    return await _stars(conn, s, request.app.state.tenants.for_session(s))
+
+
+@endpoint()
+async def star(request, conn, s, body):
+    """{node_id, starred}: star or unstar one node; returns the list. Node ids aren't checked against
+    the plant: one not in it today stays listed and the frontend says so, as in a dashboard."""
+    tenant = request.app.state.tenants.for_session(s)
+    node = _id(body.get("node_id"), "node_id")
+    if not isinstance(body.get("starred"), bool):
+        raise ApiError(400, "starred must be true or false.")
+    if body["starred"]:
+        n = await one(conn, "SELECT count(*) AS n FROM frontend.starred_node WHERE user_id = %s AND tenant_id = %s",
+                      (s["user_id"], tenant.id))
+        if n["n"] >= MAX_STARS:
+            raise ApiError(400, f"At most {MAX_STARS} starred nodes.")
+        await conn.execute("INSERT INTO frontend.starred_node (user_id, tenant_id, node_id) VALUES (%s, %s, %s)"
+                           " ON CONFLICT DO NOTHING", (s["user_id"], tenant.id, node))
+    else:
+        await conn.execute("DELETE FROM frontend.starred_node WHERE user_id = %s AND tenant_id = %s AND node_id = %s",
+                           (s["user_id"], tenant.id, node))
+    return await _stars(conn, s, tenant)
+
+
 # -- the plant ------------------------------------------------------------------------------------
 @endpoint(plant=True)
 async def get_values(request, tenant, _s, _body):
@@ -590,6 +627,8 @@ def build(config):
         Route("/api/dashboards/{dashboard_id}/delete", delete_dashboard, methods=["POST"]),
         Route("/api/dashboards/{dashboard_id}/copy", copy_dashboard, methods=["POST"]),
         Route("/api/admin/dashboards", list_users_dashboards, methods=["GET"]),
+        Route("/api/stars", list_stars, methods=["GET"]),
+        Route("/api/stars", star, methods=["POST"]),
         Route("/api/values", get_values, methods=["GET"]),
         Route("/api/vocabulary", _read(reads.vocabulary_doc), methods=["GET"]),
         Route("/api/nodes", _read(reads.nodes), methods=["GET"]),
@@ -598,6 +637,7 @@ def build(config):
         Route("/api/readings", _read(reads.node_readings), methods=["GET"]),
         Route("/api/sankey", _read(reads.sankey), methods=["GET"]),
         Route("/api/diagnostics", _read(reads.diagnostics), methods=["GET"]),
+        Route("/api/categories", _read(reads.categories), methods=["GET"]),
         Route("/api/now", _read(reads.node_now), methods=["GET"]),
         Route("/api/status", _read(reads.data_status), methods=["GET"]),
     ]

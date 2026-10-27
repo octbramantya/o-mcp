@@ -335,6 +335,36 @@ def test_dashboards_owner_only_and_admin_read_only(env, client):
     assert mine["id"] not in [d["id"] for d in c.get("/api/admin/dashboards").json()["dashboards"]]
 
 
+def test_starred_nodes(env, client):
+    c = client
+    boss = email(env, "boss6")
+    temp = asyncio.run(app.create_super_admin(env[0], boss))
+    login(c, boss, temp)
+    post(c, "/api/password", {"current_password": temp, "new_password": "boss password 6"})
+    erin, fay, ida = (account(c, email(env, "erin")), account(c, email(env, "fay")),
+                      account(c, email(env, "ida4"), "admin"))
+
+    # A user's stars: in the order starred, once each, and unstarred.
+    as_(c, erin)
+    assert c.get("/api/stars").json() == {"nodes": []}
+    for n in (75, 61, 75):
+        assert post(c, "/api/stars", {"node_id": n, "starred": True}).status_code == 200
+    assert c.get("/api/stars").json() == {"nodes": [75, 61]}
+    assert post(c, "/api/stars", {"node_id": 75, "starred": False}).json() == {"nodes": [61]}
+    for bad in ({"node_id": "61", "starred": True}, {"node_id": 61}, {"node_id": True, "starred": True}):
+        assert post(c, "/api/stars", bad).status_code == 400
+
+    # Another user's are their own; an admin's are per site, once one is chosen.
+    as_(c, fay)
+    assert c.get("/api/stars").json() == {"nodes": []}
+    as_(c, ida)
+    assert c.get("/api/stars").status_code == 409
+    post(c, "/api/tenant", {"tenant_id": TENANT})
+    assert post(c, "/api/stars", {"node_id": 75, "starred": True}).json() == {"nodes": [75]}
+    as_(c, erin)
+    assert c.get("/api/stars").json() == {"nodes": [61]}
+
+
 def strictly(doc, fmt):
     """doc against its v1 schema with every property required and no other allowed, as the server's tests."""
     schema = strict(copy.deepcopy(json.loads((ROOT / "design" / fmt).read_text())))
@@ -415,6 +445,20 @@ def test_plant_reads(env, client):
     assert {"PLANT_CHANGED", "DATA_INCOMPLETE"} <= {f["code"] for f in s["findings"]}
     assert c.get("/api/sankey", params={"start": "2026-10-20", "end": "2026-10-22",
                                         "quantity": "THD_VOLTAGE_LN"}).status_code == 400
+
+    # The category tree: the sankey's categories and every node of the utility in one or more.
+    t = c.get("/api/categories", params={"as_of": "2026-10-21"}).json()
+    assert t["as_of"] == "2026-10-21" and t["quantity"]["utility"] == "ELECTRICITY"
+    cats = {x["id"]: x for x in t["categories"]}
+    assert {x["code"] for x in t["categories"] if x["parent_id"] is None} == {"SUPPLY"}
+    assert all(x["parent_id"] is None or x["parent_id"] in cats for x in t["categories"])
+    assert all(x["category_id"] in cats or x["how"] == "UNASSIGNED" for x in t["nodes"])
+    a5 = [x for x in t["nodes"] if x["node_id"] == A5]
+    assert a5 and a5[0]["code"] == "LVMDB_A5"
+    weights = {}
+    for x in t["nodes"]:
+        weights[x["node_id"]] = weights.get(x["node_id"], 0) + x["weight"]
+    assert all(abs(w - 1) < 1e-3 for w in weights.values())
 
 
 def test_now_and_status(env, client):

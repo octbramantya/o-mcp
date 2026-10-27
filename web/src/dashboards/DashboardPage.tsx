@@ -16,6 +16,7 @@ import { Canvas } from './Canvas';
 import type { ChannelId } from './document';
 import { CHANNELS, FORMAT_VERSION } from './document';
 import { useDashboard } from './store';
+import { exportFile } from './transfer';
 
 export function DashboardPage() {
   const id = Number(useParams().id);
@@ -32,7 +33,13 @@ export function DashboardPage() {
   useEffect(() => close, [close]);
   if (q.isError) return <div className="error pad">{(q.error as Error).message}</div>;
   if (!loaded) return <div className="muted pad">Loading…</div>;
-  return <Opened tz={tenant.time_zone} tenant={tenant.id} reload={() => q.refetch()} />;
+  // the saved copy, reopened: a refetch that returns what the cache holds keeps the same object, so
+  // the effect above wouldn't run and the edits would stay
+  const reload = async () => {
+    const r = await q.refetch();
+    if (r.data) open(r.data);
+  };
+  return <Opened tz={tenant.time_zone} tenant={tenant.id} reload={reload} />;
 }
 
 function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: () => void }) {
@@ -103,6 +110,7 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
               {save.isPending ? 'Saving…' : s.dirty ? 'Save' : 'Saved'}
             </button>
             {s.dirty && <button type="button" onClick={reload}>Discard</button>}
+            <button type="button" onClick={() => exportFile(s.title, doc, tenant)} title="Download this dashboard, as edited, as a JSON file">Export</button>
           </>
         )}
       </div>

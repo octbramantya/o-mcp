@@ -37,7 +37,7 @@ Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches da
 late without querying faster than data can change.
 
 Later, as Grafana does: exporting a dashboard as JSON and importing it, the only way a dashboard
-passes between users.
+passes between users. (Built in slice 3, §5.)
 
 ## 2. Users, tenants and the admin group
 
@@ -294,7 +294,7 @@ Widgets (`web/src/widgets/`, one file each):
 - **Loading:** while a widget reloads, its previous answer stays on screen, dimmed and marked
   "Loading…", so it is never read as the new one.
 - **Errors:** an error boundary around each widget keeps one failure off the others.
-- **Not yet:** the category tree, the starred list and a drawn single-line diagram.
+- **Not yet (built in slice 3):** the category tree, the starred list and a drawn single-line diagram.
 
 **`web/` slice 2 (2026-10-27):**
 - **Account screen** (`/accounts`, super admin only): create an account, reset its password (the
@@ -310,6 +310,34 @@ Widgets (`web/src/widgets/`, one file each):
   - `tools/web_check.py`, which drives the whole frontend in a headless browser against dev, from
     log-in and an account to a saved dashboard, at desktop and phone widths, and removes what it
     created.
+
+**`web/` slice 3 (2026-10-27):**
+- **The left panel** has three tabs:
+  - **Find:** the text search, as before.
+  - **Categories:** the sankey's category tree for electricity (`GET /api/categories`). Each node
+    is under the category `graph.sankey` puts it in; a node split between categories appears
+    under each, with its share.
+  - **Starred:** the account's starred nodes. A ☆ beside any node in the panel stars it. Stars
+    are kept per account and site in `frontend.starred_node` (064), so they follow the person
+    between browsers (decided 2026-10-27). A starred node that leaves the plant stays listed and
+    says so.
+- **The single-line diagram:** the plant section widget now draws what a node feeds as a
+  single-line diagram (`web/src/widgets/sld.ts`), and keeps the indented list as a setting and
+  for what feeds a node.
+  - It is `tools/sld.py`'s layout and drawing ported line for line. `sld.test.ts` renders
+    ten saved documents from dev with both and requires the same SVG text. These include
+    2026-05-01's stacked Texture busbars.
+  - In the frontend it takes the theme's colours, fits the widget's width or shows actual size,
+    and a click on a node's code puts the node on the channel.
+- **Export and import:** Export downloads the dashboard as edited, as a JSON file: the title,
+  the site and the `o-mcp/dashboard` document, `kind: o-mcp/dashboard-export`. Import on the list
+  page makes it a new dashboard of one's own. The file is refused in another site, since node ids
+  are a site's own. The API checks the document as on every save. Only one's own dashboards are
+  exported: an admin copies a user's, and the copy is audited.
+- **Fixed:**
+  - Discard now reopens the saved copy. Before, a refetch that returned what the cache held kept
+    the same object, so the edits stayed.
+  - The browser check now reports any dialog.
 
 ## 6. Database connections
 
@@ -363,6 +391,7 @@ everything that changes state is a POST with an `application/json` body, which w
 | `GET/POST /api/dashboards` | any session, in its tenant | the caller's own dashboards (no documents); create one from a blank canvas or a template's document, `from_template` naming it |
 | `GET/POST /api/dashboards/{id}`, `POST …/delete`, `…/copy` | the owner; an admin reads | open; save title or document, with the `updated_at` last read (a stale save is 409, checked in the `UPDATE`); delete (`deleted_at`); copy into the caller's own. An admin opens and copies the current tenant's users' dashboards, read-only (403 on save or delete), each audited |
 | `GET /api/admin/dashboards` | admin | the current tenant's users' dashboards, with their owners |
+| `GET/POST /api/stars` | any session, in its tenant | the caller's starred node ids, in the order starred; star or unstar one (`{node_id, starred}`), at most 200. Ids aren't checked against the plant (§1, 19) |
 
 - A session lasts 12 hours, ends after 2 hours idle, and is checked against the account on every
   request; a reset, disable, or role or tenant change revokes it.
@@ -417,6 +446,7 @@ the values are.
 | `GET /api/readings` | `node`, `quantities` (≤ 8), `start`, `end` (≤ 92 days), `interval`, `device` | `o-mcp/readings` v1 on the meters in effect on the window's last day, at most 10,000 points |
 | `GET /api/sankey`, `GET /api/diagnostics` | `start`, `end` (≤ 92 days), `quantity`, `node_detail` | `graph.sankey`'s links; `graph.sankey_diagnostics` with node ids, and `graph.v_property_gaps` |
 | `GET /api/now` | `node`, `at` (default now), `quantities` | each of the node's meters' last minute reading in the 15 minutes before `at`, instantaneous values by default, power factor decoded (`plant/now.py`) |
+| `GET /api/categories` | `as_of`, `quantity` | the sankey's categories (`graph.category`, `FUNCTIONAL`) and the nodes in each on `as_of`, with how each was found and its weight (`graph.sankey_nodes` over that one day). The left panel's tree |
 | `GET /api/status` | `at` (default now) | the latest minute and 15-minute data in the last 24 h, the daily summary's last refresh, and the meters the graph reads that have had no 15-minute data for over 2 hours, apart from those on nodes the site turned off (`plant/status.py`) |
 
 - Topology widgets pass their range's last day as `as_of` (§3, A); readings and the sankey take
@@ -447,6 +477,7 @@ can't reach `frontend`. Both roles are `NOLOGIN` until set by hand, as 044's.
 | `frontend.session` | server-side sessions, so a password reset or a disabled account ends them: the SHA-256 of the cookie's token, the user, the session's current tenant (an admin's is what they switched to), expiry, revoked |
 | `frontend.dashboard` | owner, tenant (a user's must be their own, by trigger), title, the document (JSONB) and its format version, the template it came from, created, updated, deleted |
 | `frontend.audit` | append-only to `frontend_api`: log-ins, failed log-ins, log-outs, tenant switches, account changes, an admin opening or copying a user's dashboard |
+| `frontend.starred_node` | an account's starred nodes per tenant (064, on dev 2026-10-27): user, tenant (a user's own, by trigger), `graph.node.id` with no foreign key, as in a document. Deleted with the account |
 
 **A dashboard belongs to its owner and a tenant.** An admin's dashboards are per tenant, since
 they name that tenant's nodes. The API returns a dashboard to its owner, and read-only to an
@@ -504,11 +535,9 @@ Built 2026-10-26: the plant routes the widget list needs (§7), and `web/` slice
 the dashboards, the canvas, seven widgets and the document format (§8). Checked in a headless
 browser against dev, from log-in to a saved dashboard, at desktop and phone widths. Run it with the
 API on `O_API_BIND` and `cd web && npm run dev` (Vite forwards `/api`; `O_API_URL` names another
-API). Slice 2 (2026-10-27): the account screen, data health, the Now widget, and the checks (§5). Next,
-slice 3:
-- the left panel's category tree and starred nodes;
-- a drawn single-line diagram;
-- export and import as JSON.
+API). Slice 2 (2026-10-27): the account screen, data health, the Now widget, and the checks (§5).
+Slice 3 (2026-10-27): the category tree, starred nodes (064), the drawn single-line diagram, and
+export and import (§5). Next: the full review of slices 1–3. Before production, 063 and 064.
 
 Open: how `web/dist` is served in production. It must be the API's origin (the cookie is
 `SameSite=Strict`): the reverse proxy serving both, or Starlette serving the files. A whole-day range that includes today takes the daily path, which reaches as far as the

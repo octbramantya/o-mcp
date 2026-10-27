@@ -23,7 +23,7 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–063`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–064`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
 | `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, `public.tenant_shift_periods`, `frontend.tenant` (the rest of `frontend` as structure only), the roles' per-database settings, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
@@ -42,10 +42,10 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `design/{vocabulary,nodelist,meters,readings,values}-v1.schema.json` | the output formats of the other five tools, under the same rules as `o-mcp/subgraph` |
 | `server/tests/` | `uv run pytest`; with `O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=START:END` (and `O_MCP_TENANT`, `O_MCP_TZ`) also every tool against dev, each result checked strictly against its schema |
 | `plant/` | the plant queries shared by `server/` and `api/`: time windows, node resolution, the vocabulary, solving a value over a window cut at plant changes, and the finder, section, meters and readings queries (`design/frontend.md` §9) |
-| `api/` | the frontend's HTTP API (`design/frontend.md` §7): log-in, sessions, the tenant switch and the super admin's accounts, against `frontend.*` as `frontend_api`; users' own dashboards, read-only to an admin; a pool per tenant role, `GET /api/values` at minute, 15-minute or daily resolution, the finder, section, meters, readings, sankey and diagnostics routes on the MCP tools' queries, and a node's last readings and the data's status (`api/reads.py`). `uv run python -m api --env-file FILE serve`; the first account: `… create-super-admin EMAIL`. Keys in `.env.example` |
+| `api/` | the frontend's HTTP API (`design/frontend.md` §7): log-in, sessions, the tenant switch and the super admin's accounts, against `frontend.*` as `frontend_api`; users' own dashboards, read-only to an admin; a pool per tenant role, `GET /api/values` at minute, 15-minute or daily resolution, the finder, section, meters, readings, sankey and diagnostics routes on the MCP tools' queries, a node's last readings, the data's status and the sankey's category tree (`api/reads.py`), and each account's starred nodes. `uv run python -m api --env-file FILE serve`; the first account: `… create-super-admin EMAIL`. Keys in `.env.example` |
 | `api/tests/` | `uv run pytest`; with `O_API_TEST_ENV=FILE` (frontend_api's log-in and dev's superuser, which removes the test's accounts) also the log-in, session, tenant, account, dashboard, value and plant-read flows against dev, each plant answer checked strictly against its schema |
-| `web/` | the frontend (React, Vite, TypeScript; `design/frontend.md` §4, §5): log-in, the site switch, the super admin's accounts, users' dashboards on a 24-column grid with one time range and refresh, channels, eight widgets on the API's plant routes, and data health in the bottom bar. `cd web && npm install && npm run dev` with the API on `O_API_BIND`; `npm test` runs the unit tests; `npm run types` regenerates `src/types/formats/` from the `design/*-v1.schema.json` files |
-| `tools/web_check.py` | drives the frontend in a headless browser against dev, from log-in to a saved dashboard, and reports console errors, failed API calls and widget errors: `uv run --with playwright python tools/web_check.py --env-file .env.api` with the API and `npm run dev` running. Creates and removes its own accounts; screenshots in `logs/web-check/` |
+| `web/` | the frontend (React, Vite, TypeScript; `design/frontend.md` §4, §5): log-in, the site switch, the super admin's accounts, users' dashboards on a 24-column grid with one time range and refresh, channels, eight widgets on the API's plant routes, data health in the bottom bar, a left panel to find, browse by category or star nodes, a single-line diagram (`src/widgets/sld.ts`, `tools/sld.py`'s drawing, compared with it by `npm test`), and export and import as JSON. `cd web && npm install && npm run dev` with the API on `O_API_BIND`; `npm test` runs the unit tests; `npm run types` regenerates `src/types/formats/` from the `design/*-v1.schema.json` files |
+| `tools/web_check.py` | drives the frontend in a headless browser against dev, from log-in to a saved dashboard, stars, the category tree, the diagram and an exported and imported dashboard, and reports console errors, failed API calls and widget errors: `uv run --with playwright python tools/web_check.py --env-file .env.api` with the API and `npm run dev` running. Creates and removes its own accounts; screenshots in `logs/web-check/` |
 | `design/dashboard-v1.schema.json` | the saved dashboard's document, `o-mcp/dashboard` v1, checked by the API on every save |
 | `tools/deploy_server.sh`, `deploy/o-mcp.service` | deploys a pushed commit of the server to a tenant's agent instance over SSH-over-SSM (`tools/deploy_server.sh hermes-prs --confirm hermes-prs`): a release per commit under `/opt/o-mcp`, the systemd unit, a `/healthz` check and rollback. Never writes `/etc/o-mcp/env` |
 | `tools/deploy_hermes.sh`, `deploy/hermes-gateway.service`, `deploy/hermes-managed.yaml`, `deploy/hermes-SOUL.md` | installs Hermes Agent's Telegram gateway on the same instance (`tools/deploy_hermes.sh hermes-prs --confirm hermes-prs`): a pinned Hermes release built without its installer, the settings the agent may not change (model, toolsets, allowlist) in Hermes's managed scope, the agent's standing instructions, and a sandboxed unit. Never writes the bot token or `/etc/hermes/.env` (the Telegram user IDs) |
@@ -336,6 +336,15 @@ with every other schema's, a data dump is refused, and `dev_refresh` copies `fro
 rows. Checked on dev as a member of `grafReader`: 0 of the users, the tenant row, and the whole
 schema's structure in the dump. Not yet on production; until it is, a refresh still leaves
 `frontend` out.
+
+## Migration 064 (on dev since 2026-10-27)
+
+Migration 064 adds `frontend.starred_node`, each account's starred nodes per tenant, for the
+frontend's left panel (decided 2026-10-27: per account in the database, not per browser). A user's
+stars are in their own tenant, by trigger as on `frontend.dashboard`; the node is `graph.node.id`
+with no foreign key, as nodes in a dashboard document are; deleting an account deletes its stars.
+`frontend_api` reads, adds and removes them under 063's row-level security; `grafReader` gets the
+structure and no rows. Needs 063 first, so production takes both together.
 
 ## Two rules worth not rediscovering
 

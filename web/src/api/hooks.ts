@@ -1,10 +1,10 @@
 // Queries shared by the frame and the widgets. Plant queries are keyed by tenant under 'plant', so
 // switching tenant drops them all (frame/TopBar.tsx).
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NodeList } from '../types/formats/nodelist';
 import type { Vocabulary } from '../types/formats/vocabulary';
-import { get } from './client';
-import type { Me } from './types';
+import { get, post } from './client';
+import type { Categories, Me } from './types';
 
 export function useMe() {
   return useQuery({ queryKey: ['me'], queryFn: ({ signal }) => get<Me>('/api/me', undefined, signal), retry: false });
@@ -39,4 +39,43 @@ export function useNodes() {
     },
     staleTime: 10 * 60_000,
   });
+}
+
+/** The sankey's categories and the nodes in each, today: the left panel's category tree. */
+export function useCategories() {
+  const t = useTenant();
+  return useQuery({
+    queryKey: ['plant', t.id, 'categories-today'],
+    queryFn: ({ signal }) => get<Categories>('/api/categories', undefined, signal),
+    staleTime: 10 * 60_000,
+  });
+}
+
+type Stars = { nodes: number[] };
+
+/** The account's starred nodes in this site, kept by the API so they follow the person (064). A
+ * toggle shows at once and is put right if the API refuses it. */
+export function useStars() {
+  const t = useTenant();
+  const qc = useQueryClient();
+  const key = ['stars', t.id];
+  const q = useQuery({ queryKey: key, queryFn: ({ signal }) => get<Stars>('/api/stars', undefined, signal), staleTime: Infinity });
+  const m = useMutation({
+    mutationFn: (v: { id: number; starred: boolean }) => post<Stars>('/api/stars', { node_id: v.id, starred: v.starred }),
+    onMutate: ({ id, starred }) => {
+      const before = qc.getQueryData<Stars>(key);
+      const nodes = (before?.nodes ?? []).filter((n) => n !== id);
+      qc.setQueryData<Stars>(key, { nodes: starred ? [...nodes, id] : nodes });
+      return before;
+    },
+    onError: (_e, _v, before) => qc.setQueryData(key, before),
+    onSuccess: (r) => qc.setQueryData(key, r),
+  });
+  const ids = q.data?.nodes ?? [];
+  return {
+    ids,
+    error: m.error ?? q.error,
+    has: (id: number) => ids.includes(id),
+    toggle: (id: number) => m.mutate({ id, starred: !ids.includes(id) }),
+  };
 }

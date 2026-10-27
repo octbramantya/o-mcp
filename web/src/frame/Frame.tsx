@@ -5,13 +5,13 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useMatch, useNavigate } from 'react-router-dom';
 import { post } from '../api/client';
-import { useMe, useNodes } from '../api/hooks';
+import { useMe } from '../api/hooks';
 import type { Me } from '../api/types';
 import { PasswordPage } from '../auth/LoginPage';
-import { CHANNELS } from '../dashboards/document';
 import { useDashboard } from '../dashboards/store';
 import { siteNow } from '../time/range';
 import { DataHealth } from './DataHealth';
+import { LeftPanel } from './LeftPanel';
 
 export function useSwitchTenant() {
   const qc = useQueryClient();
@@ -50,33 +50,6 @@ function TopBar({ onPassword }: { onPassword: () => void }) {
       <button type="button" className="link" onClick={onPassword}>Password</button>
       <button type="button" className="link" onClick={() => logout.mutate()}>Log out</button>
     </header>
-  );
-}
-
-/** Nodes to choose from; a click puts the node on channel A of the open dashboard. */
-function LeftPanel() {
-  const nodes = useNodes().data;
-  const setChannel = useDashboard((s) => s.setChannel);
-  const selected = useDashboard((s) => s.doc?.channels.A);
-  const [text, setText] = useState('');
-  const t = text.trim().toLowerCase();
-  const hits = (nodes?.list ?? []).filter((n) => !t || n.code.toLowerCase().includes(t) || (n.name ?? '').toLowerCase().includes(t));
-  return (
-    <aside className="left">
-      <div className="pad">
-        <input placeholder="Find a node" value={text} onChange={(e) => setText(e.target.value)} />
-        <div className="muted small">A click puts it on channel <span className="dot" style={{ background: CHANNELS[0].color }} /> A</div>
-      </div>
-      <ul className="node-list">
-        {hits.slice(0, 300).map((n) => (
-          <li key={n.id} className={selected?.kind === 'node' && selected.id === n.id ? 'selected' : undefined}>
-            <button type="button" onClick={() => setChannel('A', { kind: 'node', id: n.id })} title={n.name ?? undefined}>
-              <b>{n.code}</b> <span className="muted">{n.name}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </aside>
   );
 }
 

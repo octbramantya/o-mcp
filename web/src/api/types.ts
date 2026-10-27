@@ -102,6 +102,14 @@ export interface Now {
   findings: Finding[];
 }
 
+export interface Categories {
+  tenant: number;
+  as_of: string;
+  quantity: { code: string; utility: string };
+  categories: { id: number; code: string; name: string; parent_id: number | null; color: string | null }[];
+  nodes: { node_id: number; code: string; category_id: number | null; how: string; weight: number }[];
+}
+
 export type Role = 'user' | 'admin' | 'super_admin';
 
 export interface Account {

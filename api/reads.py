@@ -169,13 +169,17 @@ def node_readings(tenant, params):
     return key, compute
 
 
+def _flow_quantity(tenant, params):
+    """A quantity the sankey draws: conserved, summed over the network."""
+    qs = {q["code"]: q for q in tenant.vocab.node_value_quantities()
+          if q["kind"] == "RULE" and q["rule"]["conserved"] and q["rule"]["network_agg"] == "SUM"}
+    return qs[_choice(params, "quantity", sorted(qs), SANKEY_DEFAULT)]
+
+
 def _sankey_params(tenant, params):
     """The quantity, the window as whole site days (first, last included), and the window asked for.
     A window not on midnights draws every day it touches, as the Grafana panel does."""
-    v = tenant.vocab
-    qs = {q["code"]: q for q in v.node_value_quantities()
-          if q["kind"] == "RULE" and q["rule"]["conserved"] and q["rule"]["network_agg"] == "SUM"}
-    q = qs[_choice(params, "quantity", sorted(qs), SANKEY_DEFAULT)]
+    q = _flow_quantity(tenant, params)
     w = timewin.window(params.get("start"), params.get("end"), tenant.tz, SANKEY_MAX_DAYS)
     return q, w.start.date(), _last_day(w), w
 
@@ -262,6 +266,40 @@ def diagnostics(tenant, params):
             r["value"] = _num(r["value"])
         return {**head, "requested": w.as_json(), "diagnostics": diag, "property_gaps": gaps, "findings": findings}
     return ("diagnostics", tenant.id, q["code"], first, last), compute
+
+
+CATEGORIES = """
+SELECT id, category_code AS code, category_name AS name, parent_id, display_color AS color
+FROM graph.category
+WHERE tenant_id = %(tenant)s AND taxonomy_code = 'FUNCTIONAL' AND is_active
+ORDER BY parent_id NULLS FIRST, display_order, category_name
+"""
+
+CATEGORY_NODES = """
+SELECT node_id, node_code AS code, category_id, category_how AS how, weight
+FROM graph.sankey_nodes(%(tenant)s, %(day)s, %(day)s, p_quantity_id => %(quantity)s)
+ORDER BY node_code, category_id
+"""
+
+
+def categories(tenant, params):
+    """The sankey's categories and the nodes in each on as_of, found as graph.sankey finds them
+    (explicit, the type's default, children, inherited, or none), for the left panel's category
+    tree. A node split between categories is in each, with its weight. The assignment doesn't
+    depend on readings; the one-day solve it runs is graph.sankey_nodes' way of walking the graph."""
+    q = _flow_quantity(tenant, params)
+    as_of = _as_of(params, tenant.tz)
+
+    async def compute():
+        async with tenant.tx() as conn:
+            cats = await rows(conn, CATEGORIES, {"tenant": tenant.id})
+            members = await rows(conn, CATEGORY_NODES,
+                                 {"tenant": tenant.id, "day": as_of, "quantity": q["quantity_id"]})
+        for r in members:
+            r["weight"] = _num(r["weight"])
+        return {"tenant": tenant.id, "as_of": as_of, "quantity": {"code": q["code"], "utility": q["utility"]},
+                "categories": cats, "nodes": members}
+    return ("categories", tenant.id, q["code"], as_of), compute
 
 
 def _at(params, tz):

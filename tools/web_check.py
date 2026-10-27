@@ -13,7 +13,9 @@ did, afterwards. It refuses any database whose DB_LABEL isn't dev. Playwright ne
 The flow: log in and change the temporary password; open the accounts page and create a user;
 choose the site; start from tenant 3's template; set a range dev has data for; pick a node so the
 channel's widgets follow; narrow to two hours so readings go to minutes and Now has readings; save,
-reload and find it as saved; look at the bottom bar's data health; then at phone width.
+reload and find it as saved; look at the bottom bar's data health; star a node and find it starred
+after a reload; open the category tree; click a node in the single-line diagram; export the
+dashboard and import the file; then at phone width.
 """
 import argparse
 import asyncio
@@ -95,16 +97,50 @@ def drive(page, url, email, temp, out, problems):
 
     page.click("text=Save")
     page.wait_for_selector("button:has-text('Saved')")
+    first = page.url.rstrip("/").rsplit("/", 1)[-1]
     page.reload()
     page.wait_for_selector(".channel:has-text('LVMDB_A5')")
     settle()
     page.wait_for_selector(".bottombar :text('meters silent')")
+
+    # the left panel: star a node, find it starred after a reload, and the category tree
+    page.fill(".left .pad input", "LVMDB_A5")
+    page.click(".left li:has-text('LVMDB_A5') .star")
+    page.wait_for_selector(".left li:has-text('LVMDB_A5') .star.on")
+    page.reload()
+    page.click(".left .tabs button:has-text('Starred')")
+    page.wait_for_selector(".left li:has-text('LVMDB_A5') .star.on")
+    page.click(".left .tabs button:has-text('Categories')")
+    page.wait_for_selector(".category-tree summary:has-text('Production')")
+    settle()
+
+    # the single-line diagram: a click on a node's code puts it on the channel
+    sld = ".widget:has-text('What it feeds') .sld"
+    page.wait_for_selector(f"{sld} svg")
     page.evaluate("document.querySelector('main').scrollTo(0, 99999)")
     page.screenshot(path=str(out / "4-lower.png"))
+    code = page.get_attribute(f"{sld} [data-node]:not([data-node='LVMDB_A5'])", "data-node")
+    page.click(f"{sld} [data-node='{code}']")
+    page.wait_for_selector(f".channel:has-text('{code}')")
+    settle()
+    page.screenshot(path=str(out / "5-diagram.png"))
+
+    # export, and import the file as a new dashboard
+    page.click("text=Discard")
+    page.wait_for_selector("button:has-text('Saved')")
+    with page.expect_download() as d:
+        page.click("button:has-text('Export')")
+    exported = out / "export.json"
+    d.value.save_as(str(exported))
+    page.click(".brand")
+    page.set_input_files(".file-button input", str(exported))
+    page.wait_for_url(lambda u: "/dashboards/" in u and not u.endswith(f"/{first}"))
+    page.wait_for_selector(".channel:has-text('LVMDB_A5')")
+    settle()
     page.set_viewport_size({"width": 400, "height": 900})
     page.wait_for_timeout(1500)
     wide = page.evaluate("document.documentElement.scrollWidth")
-    page.screenshot(path=str(out / "5-phone.png"))
+    page.screenshot(path=str(out / "6-phone.png"))
     return [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()] + \
         ([f"the page is {wide} px wide at a 400 px screen"] if wide > 400 else [])
 
@@ -112,7 +148,7 @@ def drive(page, url, email, temp, out, problems):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--env-file", required=True)
-    ap.add_argument("--url", default="http://127.0.0.1:5173/")
+    ap.add_argument("--url", default="http://localhost:5173/")
     ap.add_argument("--chromium", help="a Chromium or headless shell to use instead of Playwright's own")
     ap.add_argument("--out", default=str(ROOT / "logs" / "web-check"))
     a = ap.parse_args()
@@ -134,6 +170,7 @@ def main():
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
             page.on("console", lambda m: m.type == "error" and problems.append(f"console: {m.text}"))
             page.on("pageerror", lambda e: problems.append(f"page error: {e}"))
+            page.on("dialog", lambda d: (problems.append(f"dialog: {d.message}"), d.dismiss()))
             page.on("response", lambda r: r.status >= 400 and "/api/" in r.url
                     and problems.append(f"{r.status} {r.request.method} {r.url}"))
             try:

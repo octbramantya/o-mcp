@@ -1,9 +1,14 @@
-// One node and what it feeds, or what feeds it (GET /api/section), drawn on the range's last day
-// (decision 20) as an indented tree. Clicking a node puts it on the widget's channel.
+// One node and what it feeds, or what feeds it (GET /api/section), on the range's last day
+// (decision 20): what it feeds as a single-line diagram (sld.ts, tools/sld.py's drawing) or an
+// indented tree, what feeds it as the tree. Clicking a node puts it on the widget's channel.
 import { useQuery } from '@tanstack/react-query';
+import type { MouseEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { get } from '../api/client';
 import type { Subgraph } from '../types/formats/subgraph';
 import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
+import type { Palette } from './sld';
+import { render } from './sld';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 
@@ -11,6 +16,7 @@ interface S {
   node: number | null;
   depth: number;
   direction: 'down' | 'up';
+  view: 'diagram' | 'tree';
 }
 
 type N = Subgraph['nodes'][number];
@@ -40,6 +46,33 @@ function tree(doc: Subgraph, direction: S['direction']) {
   return out;
 }
 
+function palette(): Palette {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string) => css.getPropertyValue(name).trim();
+  return { ink: v('--text'), muted: v('--muted'), mv: v('--sld-mv'), lv: v('--sld-lv'), warn: v('--warn'), paper: v('--panel') };
+}
+
+/** The drawing at its own size, or fitted to the widget's width; a click on a node's code picks it. */
+function Diagram({ doc, select }: { doc: Subgraph; select: WidgetProps<S>['select'] }) {
+  const [fit, setFit] = useState(true);
+  const svg = useMemo(() => render(doc, { palette: palette(), links: true }), [doc]);
+  const ids = new Map(doc.nodes.map((n) => [n.code, n.id]));
+  const pick = (e: MouseEvent) => {
+    const code = (e.target as Element).closest('[data-node]')?.getAttribute('data-node');
+    const id = code ? ids.get(code) : undefined;
+    if (id !== undefined) select?.({ kind: 'node', id });
+  };
+  return (
+    <>
+      <div className={`scroll sld${fit ? ' fit' : ''}${select ? ' linked' : ''}`} onClick={pick} dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="foot muted">
+        <button type="button" className="link" onClick={() => setFit(!fit)}>{fit ? 'Actual size' : 'Fit to width'}</button>
+        {select && ' · click a node to put it on the channel'}
+      </div>
+    </>
+  );
+}
+
 function View({ settings, entity, select, view }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
   const q = useQuery({
@@ -51,6 +84,18 @@ function View({ settings, entity, select, view }: WidgetProps<S>) {
     placeholderData: (prev) => prev,
   });
   if (node === null) return <Hint>Choose a node in the widget's settings, or follow a channel.</Hint>;
+  if (settings.view === 'diagram' && settings.direction === 'down') {
+    return (
+      <Pending q={q}>
+        {(doc) => (
+          <div className="stack">
+            <Diagram doc={doc} select={select} />
+            <Findings findings={doc.findings.filter((f) => f.code !== 'PROPERTY_GAP').map((f) => ({ code: f.code, message: f.message }))} />
+          </div>
+        )}
+      </Pending>
+    );
+  }
   return (
     <Pending q={q}>
       {(doc) => (
@@ -83,6 +128,12 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         {settings.node !== null && <div><NodeName id={settings.node} /></div>}
         <NodePicker onPick={(node) => setSettings({ ...settings, node })} />
       </Field>
+      <Field label="Drawn as">
+        <select value={settings.view} onChange={(e) => setSettings({ ...settings, view: e.target.value as S['view'] })}>
+          <option value="diagram">A single-line diagram (what it feeds only)</option>
+          <option value="tree">An indented list</option>
+        </select>
+      </Field>
       <Field label="Direction">
         <select value={settings.direction} onChange={(e) => setSettings({ ...settings, direction: e.target.value as S['direction'] })}>
           <option value="down">What it feeds</option>
@@ -99,8 +150,8 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
 
 export const section: WidgetType<S> = {
   type: 'section', label: 'Plant section',
-  description: 'A node and what it feeds, or the path back to its sources, on the range\'s last day.',
+  description: 'A node and what it feeds, as a single-line diagram, or the path back to its sources, on the range\'s last day.',
   minW: 5, minH: 5, w: 8, h: 10,
-  defaults: { node: null, depth: 2, direction: 'down' },
+  defaults: { node: null, depth: 2, direction: 'down', view: 'diagram' },
   View, Settings,
 };

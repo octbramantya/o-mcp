@@ -1,6 +1,7 @@
 // The caller's dashboards in the current site: open, copy, delete, and start a new one from a blank
-// canvas or a template. An admin also sees the site's users' dashboards, to open read-only (§2).
+// canvas, a template or an exported file. An admin also sees the site's users' dashboards, to open read-only (§2).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { get, post } from '../api/client';
 import { useMe, useTenant } from '../api/hooks';
@@ -9,6 +10,7 @@ import { templatesFor } from '../templates';
 import { stamp } from '../time/range';
 import type { Dashboard } from './document';
 import { blank, FORMAT_VERSION } from './document';
+import { parseImport } from './transfer';
 
 export function ListPage() {
   const me = useMe().data!;
@@ -33,7 +35,17 @@ export function ListPage() {
   });
   const copy = useMutation({ mutationFn: (id: number) => post<DashboardFull>(`/api/dashboards/${id}/copy`), onSuccess: done });
   const remove = useMutation({ mutationFn: (id: number) => post(`/api/dashboards/${id}/delete`), onSuccess: done });
-  const failed = create.error ?? copy.error ?? remove.error;
+  const [bad, setBad] = useState<string | null>(null);
+  const failed = bad ?? (create.error ?? copy.error ?? remove.error)?.message;
+  const importFile = async (f: File | undefined) => {
+    if (!f) return;
+    setBad(null);
+    try {
+      create.mutate(parseImport(await f.text(), tenant.id));
+    } catch (e) {
+      setBad((e as Error).message);
+    }
+  };
 
   return (
     <div className="page">
@@ -48,8 +60,12 @@ export function ListPage() {
             New from “{t.title}”
           </button>
         ))}
+        <label className="file-button" title="A dashboard exported from this site, as a JSON file">
+          Import…
+          <input type="file" accept="application/json,.json" onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
       </section>
-      {failed && <div className="error">{(failed as Error).message}</div>}
+      {failed && <div className="error">{failed}</div>}
       <List tz={tenant.time_zone} q={mine.data?.dashboards} empty="No dashboards yet." render={(d) => (
         <>
           <button type="button" className="link" onClick={() => copy.mutate(d.id)}>Copy</button>
