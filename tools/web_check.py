@@ -12,11 +12,11 @@ did, afterwards. It refuses any database whose DB_LABEL isn't dev. Playwright ne
 
 The flow: log in and change the temporary password; open the accounts page and create a user;
 choose the site; start from tenant 3's template; set a range dev has data for; pick a node so the
-channel's widgets follow; narrow to two hours so readings go to minutes and Now has readings; add a
-Stat on channel A and find its figure and line; save, reload and find it as saved; look at the
-bottom bar's data health; star a node and find it starred after a reload; open the category tree;
-click a node in the single-line diagram; export the dashboard and import the file; then at phone
-width.
+channel's widgets follow; narrow to two hours so readings go to minutes and Now has readings; enter
+edit mode from a widget's Edit, add a Stat on channel A and find its figure and line; save, reload
+and find it as saved; look at the bottom bar's data health; star a node and find it starred after a
+reload; open the category tree; click a node in the single-line diagram; export the dashboard and
+import the file; then at phone width.
 """
 import argparse
 import asyncio
@@ -96,8 +96,15 @@ def drive(page, url, email, temp, out, problems):
     page.wait_for_selector(".widget:has-text('Now') td:has-text('PF_TOTAL')")
     page.screenshot(path=str(out / "3-minutes.png"))
 
-    # a Stat on channel A: the node's energy over the two hours as one figure, with its line
-    page.click(".toolbar button:text-is('Edit')")
+    # a Stat on channel A: the node's energy over the two hours as one figure, with its line; edit
+    # mode from a widget's own Edit, shown on hover
+    edit = page.locator(".widget:has-text('Node finder') header .hover-only button")
+    page.mouse.move(0, 0)
+    if edit.is_visible():
+        problems.append("widget: Edit shown without hover")
+    page.hover(".widget:has-text('Node finder') header")
+    edit.click()
+    page.wait_for_selector(".toolbar button:text-is('Done editing')")
     page.locator(".toolbar select").filter(has_text="Add a widget").select_option("stat")
     stat = page.locator(".widget").last
     stat.locator("header select").select_option("A")

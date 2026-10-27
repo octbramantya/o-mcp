@@ -120,6 +120,9 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .widget header .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .widget header .actions { margin-left: auto; display: flex; gap: 4px; }
 .widget header .actions button, .widget header .actions select { padding: 1px 6px; font-size: 12px; }
+.widget header .hover-only { visibility: hidden; }
+.widget:hover header .hover-only, .widget header .hover-only:focus-within { visibility: visible; }
+@media (hover: none) { .widget header .hover-only { visibility: visible; } }
 .widget .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .widget .settings { padding: 8px; display: flex; flex-direction: column; gap: 10px; }
 .scroll { overflow: auto; flex: 1; min-height: 0; }

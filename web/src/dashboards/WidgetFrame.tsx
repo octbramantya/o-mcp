@@ -1,5 +1,6 @@
 // The box around every widget (design/frontend.md §4): header with the drag handle, the channel and,
-// while editing, settings and remove; an error boundary, so one widget failing never blanks the canvas.
+// while editing, settings and remove, and otherwise an Edit shown on hover that puts the whole dashboard
+// in edit mode; an error boundary, so one widget failing never blanks the canvas.
 import { useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { byType } from '../widgets/registry';
@@ -15,6 +16,7 @@ export function WidgetFrame({ widget, view }: { widget: Widget; view: View }) {
   const updateWidget = useDashboard((s) => s.updateWidget);
   const removeWidget = useDashboard((s) => s.removeWidget);
   const setChannel = useDashboard((s) => s.setChannel);
+  const setEditing = useDashboard((s) => s.setEditing);
   const [showSettings, setShowSettings] = useState(false);
   const type = byType.get(widget.type);
   const channel = CHANNELS.find((c) => c.id === widget.channel);
@@ -41,6 +43,11 @@ export function WidgetFrame({ widget, view }: { widget: Widget; view: View }) {
             </select>
             {type?.Settings && <button type="button" onClick={() => setShowSettings(!showSettings)}>{showSettings ? 'Done' : 'Settings'}</button>}
             <button type="button" onClick={() => removeWidget(widget.id)}>Remove</button>
+          </span>
+        )}
+        {!editing && !readOnly && (
+          <span className="actions hover-only">
+            <button type="button" title="Edit the dashboard" onClick={() => setEditing(true)}>Edit</button>
           </span>
         )}
       </header>
