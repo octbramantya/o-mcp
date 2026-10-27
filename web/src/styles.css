@@ -81,6 +81,15 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .category-tree details { padding-left: 10px; }
 .category-tree summary { cursor: pointer; padding: 2px 4px; white-space: nowrap; }
 .category-tree .node-list .pick { padding-left: 14px; }
+.find-filters { display: flex; flex-direction: column; gap: 6px; }
+.find-filters .utilities { display: flex; flex-wrap: wrap; gap: 4px; }
+.find-filters .utilities button { padding: 1px 8px; border-radius: 10px; font-size: 11px; background: none; }
+.find-filters .utilities button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.find-filters .row { display: flex; align-items: center; gap: 8px; }
+.find-filters .row select { flex: 1; min-width: 0; }
+.find-filters label input { width: auto; }
+.metered { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); margin-right: 6px; vertical-align: middle; }
+.metered.on { background: var(--accent); border-color: var(--accent); }
 main { grid-area: main; overflow: auto; min-width: 0; }
 .bottombar { grid-area: bottom; display: flex; gap: 12px; padding: 4px 12px; background: var(--panel); border-top: 1px solid var(--border); font-size: 12px; }
 @media (max-width: 767px) {

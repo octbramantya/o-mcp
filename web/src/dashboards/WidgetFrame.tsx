@@ -3,7 +3,7 @@
 // in edit mode; an error boundary, so one widget failing never blanks the canvas.
 import { useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { byType } from '../widgets/registry';
+import { byType, retired } from '../widgets/registry';
 import type { View } from '../widgets/contract';
 import type { ChannelId, Widget } from './document';
 import { CHANNELS } from './document';
@@ -53,7 +53,7 @@ export function WidgetFrame({ widget, view }: { widget: Widget; view: View }) {
       </header>
       <div className="body">
         {!type ? (
-          <div className="muted pad">This dashboard has a "{widget.type}" widget, which this version of the frontend doesn't know.</div>
+          <div className="muted pad">{retired.get(widget.type) ?? `This dashboard has a "${widget.type}" widget, which this version of the frontend doesn't know.`}</div>
         ) : showSettings && editing && type.Settings ? (
           <div className="settings scroll"><type.Settings settings={settings} setSettings={setSettings} /></div>
         ) : (

@@ -35,6 +35,7 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 21 | **The Value widget becomes Aggregate: one quantity across several nodes over the range.** A counter shows its total, a sampled quantity its minimum, average, 95th percentile and maximum per meter, on 1-minute data up to 6 hours and 15-minute data beyond, said in the widget (§5, "Aggregate"). Decided 2026-10-27 | — |
 | 22 | **A Stat widget: one quantity at one node as a single figure, with its line underneath.** The figure is Aggregate's (§5, "Stat"); the line is Readings' at the automatic interval. Decided 2026-10-27 | the stat panel |
 | 23 | **Figures show 2 decimals, thousands separated**, in every widget and chart tooltip, unless a widget says otherwise (`fmt` in `web/src/widgets/common.tsx`). Decided 2026-10-27 | a panel's decimals |
+| 24 | **Finding a node is the left panel's job, not a widget's.** The node finder widget is retired; its filters (utility, type with its subtypes, metered) are in the Find tab, which groups today's nodes by type, so the type needs no column. A saved finder is drawn as a placeholder saying where it went (§5). Decided 2026-10-27 | — |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.
@@ -344,7 +345,7 @@ Widgets (`web/src/widgets/`, one file each):
 | stat | `/api/aggregate`, `/api/readings` |
 | readings | `/api/readings` |
 | now (slice 2) | `/api/now` |
-| node finder | `/api/nodes` |
+| node finder (retired 2026-10-27, §1 24) | `/api/nodes` |
 | plant section | `/api/section`, an indented tree, not yet a drawn single-line diagram |
 | meters | `/api/meters` |
 | sankey | `/api/sankey`, drawn as the Grafana panel draws it |
@@ -374,7 +375,11 @@ Widgets (`web/src/widgets/`, one file each):
 
 **`web/` slice 3 (2026-10-27):**
 - **The left panel** has three tabs:
-  - **Find:** the text search, as before.
+  - **Find:** the text search, as before. Since 2026-10-27 (§1, 24) also the retired finder
+    widget's filters: utility (only those with a node), type (its subtypes included) and metered
+    only. Results are grouped by type, folded until a search or a type narrows them; a dot marks
+    a metered node. It lists today's plant, filtered in the browser on the list the panel already
+    holds, where the widget read `/api/nodes` as of the range's last day.
   - **Categories:** the sankey's category tree for electricity (`GET /api/categories`). Each node
     is under the category `graph.sankey` puts it in; a node split between categories appears
     under each, with its share.
@@ -571,7 +576,8 @@ read. A type the frontend doesn't know is drawn as a placeholder, never dropped.
 **Templates are static documents shipped with the frontend**, per tenant where they name nodes.
 Starting from one copies it into `frontend.dashboard` as the user's own; changing a template later
 doesn't touch the copies. Built: `web/src/templates/`, so far tenant 3's "Energy overview" (sankey,
-finder, and value, now, readings, section, meters and diagnostics on channel A).
+and value, now, readings, section, meters and diagnostics on channel A; the finder left it on
+2026-10-27).
 
 Migrations for `frontend` go in `migrations/`, in the one numbering sequence, through
 `tools/migrate.sh`.

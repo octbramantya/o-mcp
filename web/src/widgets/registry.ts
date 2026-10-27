@@ -2,7 +2,6 @@
 // here is drawn as a placeholder, never dropped.
 import type { WidgetType } from './contract';
 import { diagnostics } from './Diagnostics';
-import { finder } from './Finder';
 import { meters } from './Meters';
 import { now } from './Now';
 import { readings } from './Readings';
@@ -11,6 +10,11 @@ import { section } from './Section';
 import { stat } from './Stat';
 import { value } from './Value';
 
-export const WIDGETS: WidgetType<any>[] = [value, stat, readings, now, finder, section, meters, sankey, diagnostics];
+export const WIDGETS: WidgetType<any>[] = [value, stat, readings, now, section, meters, sankey, diagnostics];
 
 export const byType = new Map(WIDGETS.map((w) => [w.type, w]));
+
+/** Types that were retired, with what replaces them, for the placeholder a saved dashboard still shows. */
+export const retired = new Map<string, string>([
+  ['finder', "The node finder moved to the left panel's Find tab. Remove this widget in edit mode."],
+]);

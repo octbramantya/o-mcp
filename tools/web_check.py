@@ -88,7 +88,12 @@ def drive(page, url, email, temp, out, problems):
     settle()
     page.screenshot(path=str(out / "2-template.png"))
 
-    page.click(".widget:has-text('Node finder') tr:has-text('LVMDB_A5')")
+    # the left panel's Find: type groups, the utility and metered filters, a click sets channel A
+    page.fill(".left .find-filters input[placeholder='Find a node']", "LVMDB_A")
+    page.click(".left .find-filters .utilities button:has-text('Electricity')")
+    page.check(".left .find-filters input[type=checkbox]")
+    page.wait_for_selector(".left details[open] summary:has-text('MAIN_LV_BOARD')")
+    page.click(".left li:has-text('LVMDB_A5') .pick")
     page.wait_for_selector(".channel:has-text('LVMDB_A5')")
     time_range(f"{DAY}T10:00", f"{DAY}T12:00")
     settle()
@@ -98,11 +103,11 @@ def drive(page, url, email, temp, out, problems):
 
     # a Stat on channel A: the node's energy over the two hours as one figure, with its line; edit
     # mode from a widget's own Edit, shown on hover
-    edit = page.locator(".widget:has-text('Node finder') header .hover-only button")
+    edit = page.locator(".widget:has-text('Energy flow') header .hover-only button")
     page.mouse.move(0, 0)
     if edit.is_visible():
         problems.append("widget: Edit shown without hover")
-    page.hover(".widget:has-text('Node finder') header")
+    page.hover(".widget:has-text('Energy flow') header")
     edit.click()
     page.wait_for_selector(".toolbar button:text-is('Done editing')")
     page.locator(".toolbar select").filter(has_text="Add a widget").select_option("stat")
@@ -126,7 +131,7 @@ def drive(page, url, email, temp, out, problems):
     page.wait_for_selector(".bottombar :text('meters silent')")
 
     # the left panel: star a node, find it starred after a reload, and the category tree
-    page.fill(".left .pad input", "LVMDB_A5")
+    page.fill(".left .find-filters input[placeholder='Find a node']", "LVMDB_A5")
     page.click(".left li:has-text('LVMDB_A5') .star")
     page.wait_for_selector(".left li:has-text('LVMDB_A5') .star.on")
     page.reload()

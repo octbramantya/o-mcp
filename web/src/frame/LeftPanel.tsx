@@ -1,8 +1,9 @@
-// The left panel (design/frontend.md §5): ways to choose a node, by text, by the sankey's category
+// The left panel (design/frontend.md §5): ways to choose a node, by text and filters, by the sankey's category
 // tree, or from the account's starred list. A click puts the node on the channel chosen at the top
 // (A unless changed) of the open dashboard; the star keeps it in the starred list, on every browser.
 import { useState } from 'react';
-import { useCategories, useNodes, useStars } from '../api/hooks';
+import { useCategories, useNodes, useStars, useVocabulary } from '../api/hooks';
+import type { PlantNode } from '../api/hooks';
 import type { Categories } from '../api/types';
 import type { ChannelId } from '../dashboards/document';
 import { CHANNELS } from '../dashboards/document';
@@ -13,7 +14,7 @@ const TABS: [Tab, string][] = [['find', 'Find'], ['categories', 'Categories'], [
 
 type Stars = ReturnType<typeof useStars>;
 
-function NodeRow({ id, stars, target, note }: { id: number; stars: Stars; target: ChannelId; note?: string }) {
+function NodeRow({ id, stars, target, note, showMetered }: { id: number; stars: Stars; target: ChannelId; note?: string; showMetered?: boolean }) {
   const n = useNodes().data?.byId.get(id);
   const setChannel = useDashboard((s) => s.setChannel);
   const selected = useDashboard((s) => s.doc?.channels[target]);
@@ -22,6 +23,7 @@ function NodeRow({ id, stars, target, note }: { id: number; stars: Stars; target
     <li className={selected?.kind === 'node' && selected.id === id ? 'selected' : undefined}>
       {n ? (
         <button type="button" className="pick" onClick={() => setChannel(target, { kind: 'node', id })} title={n.name ?? undefined}>
+          {showMetered && <span className={`metered${n.metered ? ' on' : ''}`} title={n.metered ? 'Metered' : 'Not metered: solved from its neighbours'} />}
           <b>{n.code}</b> <span className="muted">{n.name}{note && ` · ${note}`}</span>
         </button>
       ) : (
@@ -35,15 +37,65 @@ function NodeRow({ id, stars, target, note }: { id: number; stars: Stars; target
   );
 }
 
+interface Filters { type: string; utility: string; metered: boolean }
+
+/** Today's nodes by code or name, utility (those with a node), type (its subtypes too) and metered, grouped by type: the
+ * group heading carries the type, which a 240 px panel has no room for as a column. Filtered here,
+ * on the list the panel already holds. */
 function Find({ stars, target }: { stars: Stars; target: ChannelId }) {
   const nodes = useNodes().data;
+  const vocab = useVocabulary().data;
   const [text, setText] = useState('');
+  const [f, setF] = useState<Filters>({ type: '', utility: '', metered: false });
+  const parent = new Map((vocab?.node_types ?? []).map((t) => [t.code, t.parent]));
+  const isA = (type: string | null, want: string) => {
+    for (let x = type; x; x = parent.get(x) ?? null) if (x === want) return true;
+    return false;
+  };
+  const list = nodes?.list ?? [];
+  const used = new Set(list.flatMap((n) => {
+    const up: string[] = [];
+    for (let x = n.type; x; x = parent.get(x) ?? null) up.push(x);
+    return up;
+  }));
+  const utilities = new Set(list.flatMap((n) => n.utilities));
   const t = text.trim().toLowerCase();
-  const hits = (nodes?.list ?? []).filter((n) => !t || n.code.toLowerCase().includes(t) || (n.name ?? '').toLowerCase().includes(t));
+  const hits = list.filter((n) => (!t || n.code.toLowerCase().includes(t) || (n.name ?? '').toLowerCase().includes(t))
+    && (!f.utility || n.utilities.includes(f.utility))
+    && (!f.type || isA(n.type, f.type))
+    && (!f.metered || n.metered));
+  const groups = new Map<string, PlantNode[]>();
+  for (const n of hits) groups.set(n.type ?? 'Untyped', [...(groups.get(n.type ?? 'Untyped') ?? []), n]);
+  const open = t !== '' || f.type !== '' || groups.size === 1;
   return (
     <>
-      <div className="pad"><input placeholder="Find a node" value={text} onChange={(e) => setText(e.target.value)} /></div>
-      <ul className="node-list">{hits.slice(0, 300).map((n) => <NodeRow key={n.id} id={n.id} stars={stars} target={target} />)}</ul>
+      <div className="pad find-filters">
+        <input placeholder="Find a node" value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="utilities" role="group" aria-label="Utility">
+          {vocab?.utilities.filter((u) => utilities.has(u.code)).map((u) => (
+            <button key={u.code} type="button" aria-pressed={f.utility === u.code} className={f.utility === u.code ? 'on' : undefined}
+                    title={u.name} onClick={() => setF({ ...f, utility: f.utility === u.code ? '' : u.code })}>
+              {u.name}
+            </button>
+          ))}
+        </div>
+        <div className="row">
+          <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} aria-label="Type">
+            <option value="">Any type</option>
+            {vocab?.node_types.filter((x) => used.has(x.code)).map((x) => <option key={x.code} value={x.code}>{x.code}</option>)}
+          </select>
+          <label className="small"><input type="checkbox" checked={f.metered} onChange={(e) => setF({ ...f, metered: e.target.checked })} /> metered</label>
+        </div>
+      </div>
+      <div className="category-tree">
+        {[...groups.keys()].sort().map((g) => (
+          <details key={g} open={open}>
+            <summary>{g} <span className="muted">{groups.get(g)!.length}</span></summary>
+            <ul className="node-list">{groups.get(g)!.map((n) => <NodeRow key={n.id} id={n.id} stars={stars} target={target} showMetered />)}</ul>
+          </details>
+        ))}
+        {nodes && hits.length === 0 && <div className="muted pad">No node matches.</div>}
+      </div>
     </>
   );
 }

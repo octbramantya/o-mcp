@@ -29,6 +29,11 @@ The commit after that holds the Stat widget (§6), `web/src/widgets/Stat.tsx`, a
 everywhere (`fmt` in `web/src/widgets/common.tsx`, tested in `common.test.ts`). `web_check` adds a
 Stat to its dashboard. Frontend only: no API, format or migration change.
 
+The commit after that retires the node finder widget (§6): its filters move to the left panel's Find
+tab, grouped by type (`web/src/frame/LeftPanel.tsx`); `Finder.tsx` is gone, a saved finder shows a
+placeholder (`retired` in `web/src/widgets/registry.ts`), the template drops it, and `web_check` sets
+channel A from the Find tab. Frontend only.
+
 **Database.** Migrations 059–065 are on dev and production. 063 (row-level security on `frontend`)
 and 064 (`frontend.starred_node`) went to production on 2026-10-27; backup first,
 `logs/prod/frontend_backup_pre063.20261027-113611.dump`. Their checks passed there, and as
@@ -87,7 +92,7 @@ and query, status, milliseconds, user, site).
 Run them against dev after any change. Each passed on 2026-10-27 with the Aggregate widget
 (§1): 47 unit tests, 33 API tests against dev, 22 vitest tests, the MCP server's tests
 against dev, and `web_check`. With the Stat widget: 25 vitest tests, the build, and `web_check`
-(the API and `plant/` didn't change).
+(the API and `plant/` didn't change). With the finder retired: the same.
 
 ```bash
 uvx ruff check .
@@ -119,9 +124,9 @@ O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=2026-10-20:2026-10-22 O_MCP_TENANT=3 O_MCP
 
 | area | files |
 |---|---|
-| frame | `web/src/frame/Frame.tsx` (top bar, site switch), `LeftPanel.tsx` (Find, Categories, Starred), `DataHealth.tsx` (bottom bar) |
+| frame | `web/src/frame/Frame.tsx` (top bar, site switch), `LeftPanel.tsx` (Find with its filters, Categories, Starred), `DataHealth.tsx` (bottom bar) |
 | dashboards | `web/src/dashboards/`: `ListPage`, `DashboardPage` (edit, save, discard, export), `Canvas` (24-column grid), `WidgetFrame`, `store.ts` (zustand), `document.ts` (format, channels A–D), `transfer.ts` (export and import) |
-| widgets | `web/src/widgets/`: one file each (Value, shown as Aggregate; Stat, Readings, Now, Finder, Section, Meters, Sankey, Diagnostics); `registry.ts` (minimum sizes, settings); `common.tsx` (`fmt`, pickers, the chart host); `sld.ts` |
+| widgets | `web/src/widgets/`: one file each (Value, shown as Aggregate; Stat, Readings, Now, Section, Meters, Sankey, Diagnostics); `registry.ts` (minimum sizes, settings, retired types); `common.tsx` (`fmt`, pickers, the chart host); `sld.ts` |
 | time | `web/src/time/`: `range.ts` (parsing, resolution), `TimePicker.tsx` |
 | data | `web/src/api/`: `client.ts`, `hooks.ts` (TanStack Query keys per site), `types.ts`; `web/src/types/formats/` generated |
 | accounts | `web/src/admin/AccountsPage.tsx`, `web/src/auth/LoginPage.tsx` |
@@ -167,6 +172,7 @@ newest last. Keep open questions in §7 until they are answered.
 | 2026-10-27 | stat | a Stat widget: one metered node, one quantity, as Grafana's, with a small line inside | built: the figure is Aggregate's (`/api/aggregate`): a counter's total, or one meter's last, average, minimum, P95 or maximum (default last); a node with several meters picks one; the line is Readings' at the automatic interval, a counter's summed over the node's meters, and can be turned off; quantities as Aggregate's. Checked on dev: `LVMDB_A5`'s energy over 2 hours of minute data, `LVMDB_A4`'s `VOLTAGE_AN` P95 and last over 2 days, both meters | `design/frontend.md` §1, 22 and §5 "Stat"; `web/src/widgets/Stat.tsx` |
 | 2026-10-27 | figures | the Value widget's numbers aren't formatted | `fmt` showed up to 1 decimal under 100 and none above, and widgets asked for 0 or 3. Decided: 2 decimals, thousands separated, everywhere, including the Readings tooltip and the Sankey's tooltip and share of supply. `sld.ts` keeps `tools/sld.py`'s six significant digits (the parity test) | `design/frontend.md` §1, 23; `web/src/widgets/common.tsx` |
 | 2026-10-27 | dashboard | editing a widget means finding Edit in the toolbar first | each widget's header shows an Edit on hover (always on touch screens), which puts the whole dashboard in edit mode, as the toolbar's does; not on a read-only dashboard. `web_check` enters edit mode through it | `WidgetFrame.tsx`, `styles.css` |
+| 2026-10-27 | finder | the node finder isn't useful as a widget; finding belongs in the left panel's Find tab, but its Type column won't fit 240 px | decided: the widget is retired. Find gains its filters (utility buttons, a type select with subtypes, metered only) and groups results by type, folded until a search or type narrows them, so the type is the heading; a dot marks metered nodes. Today's plant, as the panel already lists (the widget used the range's last day). A saved finder is a placeholder pointing at the Find tab, removed by hand; the template loses it and the sankey takes the full width | `design/frontend.md` §1, 24; `LeftPanel.tsx`, `registry.ts`, `WidgetFrame.tsx`, the template, `web_check` |
 
 ## 7. Open questions
 
