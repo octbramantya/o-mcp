@@ -16,10 +16,13 @@ channel's widgets follow; narrow to two hours so readings go to minutes and Now 
 edit mode from a widget's Edit, add a Stat on channel A and find its figure and line; save, reload
 and find it as saved; look at the bottom bar's data health; star a node and find it starred after a
 reload; open the category tree; click a node in the single-line diagram; export the dashboard and
-import the file; then at phone width.
+import the file; then at phone width. Last, three Readings widgets of other nodes, quantities and
+intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
 """
 import argparse
 import asyncio
+import datetime
+import json
 import pathlib
 import sys
 import uuid
@@ -34,6 +37,7 @@ from server.config import parse_env_file  # noqa: E402
 
 PASSWORD = "web check password 2026"
 DAY = "2026-10-21"       # a site day with minute data, 15-minute buckets and the daily summary on dev
+TOOLTIP_NODES = ("AJL1", "COMP_ELITE")    # metered, with current and power in 15-minute buckets on dev
 
 
 def remove(su, pattern):
@@ -49,7 +53,79 @@ def remove(su, pattern):
     return len(ids)
 
 
-def drive(page, url, email, temp, out, problems):
+def node_ids(su, codes):
+    """Today's node id of each code."""
+    with psycopg.connect(**su) as conn:
+        rows = conn.execute("""SELECT node_code, id FROM graph.node
+            WHERE tenant_id = 3 AND node_code = ANY(%s) AND is_active AND effective_from <= CURRENT_DATE
+              AND (effective_to IS NULL OR effective_to >= CURRENT_DATE)""", (list(codes),)).fetchall()
+    ids = dict(rows)
+    missing = set(codes) - ids.keys()
+    if missing:
+        sys.exit(f"web_check: no node {', '.join(sorted(missing))} in effect on dev")
+    return ids
+
+
+def shared_tooltip(page, out, nodes):
+    """Three Readings widgets: one node's three currents hourly, another's power at 15 minutes, and the
+    same power narrower. A tooltip shows in every chart at the hovered time, each at its own nearest
+    point, whatever the hovered chart's series or point count."""
+    def widget(wid, title, x, y, w, node, quantities, interval):
+        return {"id": wid, "type": "readings", "title": title, "x": x, "y": y, "w": w, "h": 9, "channel": None,
+                "settings": {"node": node, "quantities": quantities, "interval": interval}}
+    a, b = (nodes[c] for c in TOOLTIP_NODES)
+    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None, "channels": {}, "widgets": [
+        widget("current", "Currents, hourly", 0, 0, 12, a, ["CURRENT_A", "CURRENT_B", "CURRENT_C"], "hour"),
+        widget("power", "Power, 15 minutes", 12, 0, 12, b, ["ACTIVE_POWER"], "15min"),
+        widget("narrow", "Power, narrow", 0, 9, 7, b, ["ACTIVE_POWER"], "auto")]}
+    f = out / "shared-tooltip.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-27T00:00:00Z",
+                             "title": "Shared tooltip", "format_version": 1, "document": doc}))
+    page.click(".brand")
+    page.wait_for_selector("text=Dashboards · PRS")
+    page.set_input_files(".file-button input", str(f))
+    page.wait_for_url(lambda u: "/dashboards/" in u)
+    page.wait_for_function("() => document.querySelectorAll('.widget .chart canvas').length === 3", timeout=180_000)
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
+    page.wait_for_timeout(1500)
+
+    def tips():
+        """Each chart's visible tooltip time, or None."""
+        return page.evaluate("""() => [...document.querySelectorAll('.widget .chart')].map(c => {
+            const t = c.children[1];
+            if (!t) return null;
+            const s = getComputedStyle(t);
+            const hidden = s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0';
+            return hidden || !t.innerText.trim() ? null : t.innerText.split('\\n')[0];
+        })""")
+
+    def hover(i, frac, name):
+        box = page.locator(".widget .chart").nth(i).bounding_box()
+        page.mouse.move(box["x"] + box["width"] * frac, box["y"] + box["height"] / 2, steps=5)
+        page.wait_for_timeout(600)
+        page.screenshot(path=str(out / f"7-tooltip-{name}.png"))
+        return tips()
+
+    found = []
+    t = hover(0, 0.35, "hourly")
+    if None in t or len(set(t)) != 1:
+        found.append(f"shared tooltip: hovering the hourly chart shows {t}")
+    t = hover(1, 0.62, "15min")
+    if None in t or t[1] != t[2]:
+        found.append(f"shared tooltip: hovering the 15-minute chart shows {t}")
+    else:
+        hourly, quarter = (datetime.datetime.fromisoformat(v) for v in t[:2])
+        if hourly.minute or abs(hourly - quarter) > datetime.timedelta(minutes=30):
+            found.append(f"shared tooltip: the hourly chart shows {t[0]} for {t[1]}")
+    page.mouse.move(5, 5)
+    page.wait_for_timeout(600)
+    page.screenshot(path=str(out / "7-tooltip-left.png"))
+    if any(tips()):
+        found.append(f"shared tooltip: still shown after leaving: {tips()}")
+    return found
+
+
+def drive(page, url, email, temp, out, problems, nodes):
     def settle():
         page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
         page.wait_for_timeout(1500)       # chart animations
@@ -168,8 +244,12 @@ def drive(page, url, email, temp, out, problems):
     page.wait_for_timeout(1500)
     wide = page.evaluate("document.documentElement.scrollWidth")
     page.screenshot(path=str(out / "6-phone.png"))
-    return [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()] + \
+    found = [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()] + \
         ([f"the page is {wide} px wide at a 400 px screen"] if wide > 400 else [])
+
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    found += shared_tooltip(page, out, nodes)
+    return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 
 def main():
@@ -185,6 +265,7 @@ def main():
     raw = parse_env_file(a.env_file)
     su = dict(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, user=raw["DB_USER"],
               password=raw["DB_PASSWORD"], sslmode=cfg.db_sslmode)
+    nodes = node_ids(su, TOOLTIP_NODES)
     run = uuid.uuid4().hex[:8]
     email = f"web-check+{run}@example.com"
     out = pathlib.Path(a.out)
@@ -201,7 +282,7 @@ def main():
             page.on("response", lambda r: r.status >= 400 and "/api/" in r.url
                     and problems.append(f"{r.status} {r.request.method} {r.url}"))
             try:
-                problems += drive(page, a.url, email, temp, out, problems)
+                problems += drive(page, a.url, email, temp, out, problems, nodes)
             except Exception as e:
                 problems.append(f"stopped: {e}".splitlines()[0])
                 page.screenshot(path=str(out / "failed.png"))
