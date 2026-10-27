@@ -12,9 +12,10 @@ import type { Finding } from '../api/types';
 
 echarts.use([BarChart, LineChart, SankeyChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
-export function fmt(v: number | null | undefined, digits = 1): string {
-  if (v === null || v === undefined) return '—';
-  return v.toLocaleString('en-US', { maximumFractionDigits: Math.abs(v) >= 100 ? 0 : digits });
+/** A figure as shown everywhere: thousands separated, 2 decimals unless a widget asks otherwise. */
+export function fmt(v: number | null | undefined, digits = 2): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  return v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 /** A stored node id as its current code and name; a node not in the plant today says so (decision 19). */
@@ -135,6 +136,10 @@ export function EChart({ option, onClick }: { option: echarts.EChartsCoreOption;
 
 export function textColor(): string {
   return getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#ddd';
+}
+
+export function accentColor(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#4f8ff0';
 }
 
 export function mutedColor(): string {

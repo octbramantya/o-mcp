@@ -25,6 +25,10 @@ The commit after `c0d088b` holds the Aggregate widget (§6, "built"): `api/aggre
 `design/readings-v1.schema.json`, `web/src/widgets/Value.tsx`, the generated types, the dev test
 `test_aggregate`, and the docs. Every check in §3 passed on it.
 
+The commit after that holds the Stat widget (§6), `web/src/widgets/Stat.tsx`, and figures at 2 decimals
+everywhere (`fmt` in `web/src/widgets/common.tsx`, tested in `common.test.ts`). `web_check` adds a
+Stat to its dashboard. Frontend only: no API, format or migration change.
+
 **Database.** Migrations 059–065 are on dev and production. 063 (row-level security on `frontend`)
 and 064 (`frontend.starred_node`) went to production on 2026-10-27; backup first,
 `logs/prod/frontend_backup_pre063.20261027-113611.dump`. Their checks passed there, and as
@@ -82,13 +86,14 @@ and query, status, milliseconds, user, site).
 
 Run them against dev after any change. Each passed on 2026-10-27 with the Aggregate widget
 (§1): 47 unit tests, 33 API tests against dev, 22 vitest tests, the MCP server's tests
-against dev, and `web_check`.
+against dev, and `web_check`. With the Stat widget: 25 vitest tests, the build, and `web_check`
+(the API and `plant/` didn't change).
 
 ```bash
 uvx ruff check .
 uv run pytest                                                   # unit tests, server and api
 O_API_TEST_ENV=.env.api-dev uv run pytest api/tests             # the API against dev (3–8 min, API stopped)
-cd web && npx tsc -b && npm test && npm run build               # types, vitest (22 tests), build
+cd web && npx tsc -b && npm test && npm run build               # types, vitest (25 tests), build
 uv run --with playwright python tools/web_check.py --env-file .env.api-dev   # API on .env.api-dev and Vite running
 O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=2026-10-20:2026-10-22 O_MCP_TENANT=3 O_MCP_TZ=Asia/Jakarta uv run pytest server/tests   # after a change in plant/
 ```
@@ -116,7 +121,7 @@ O_MCP_TEST_ENV=.env O_MCP_TEST_WINDOW=2026-10-20:2026-10-22 O_MCP_TENANT=3 O_MCP
 |---|---|
 | frame | `web/src/frame/Frame.tsx` (top bar, site switch), `LeftPanel.tsx` (Find, Categories, Starred), `DataHealth.tsx` (bottom bar) |
 | dashboards | `web/src/dashboards/`: `ListPage`, `DashboardPage` (edit, save, discard, export), `Canvas` (24-column grid), `WidgetFrame`, `store.ts` (zustand), `document.ts` (format, channels A–D), `transfer.ts` (export and import) |
-| widgets | `web/src/widgets/`: one file each (Value, shown as Aggregate; Readings, Now, Finder, Section, Meters, Sankey, Diagnostics); `registry.ts` (minimum sizes, settings); `sld.ts` |
+| widgets | `web/src/widgets/`: one file each (Value, shown as Aggregate; Stat, Readings, Now, Finder, Section, Meters, Sankey, Diagnostics); `registry.ts` (minimum sizes, settings); `common.tsx` (`fmt`, pickers, the chart host); `sld.ts` |
 | time | `web/src/time/`: `range.ts` (parsing, resolution), `TimePicker.tsx` |
 | data | `web/src/api/`: `client.ts`, `hooks.ts` (TanStack Query keys per site), `types.ts`; `web/src/types/formats/` generated |
 | accounts | `web/src/admin/AccountsPage.tsx`, `web/src/auth/LoginPage.tsx` |
@@ -159,10 +164,17 @@ newest last. Keep open questions in §7 until they are answered.
 | 2026-10-27 | value | rename to Aggregate, with min, max and P95 for instantaneous values | decided: one quantity across several nodes; counters a total through the solver, sampled quantities minimum, average, 95th percentile and maximum per meter; 1-minute data up to 6 hours, 15-minute beyond, said in words; encoded power factor out; unmetered nodes left out for sampled quantities. Then: unmetered counters keep the solved total, `PF_TRUE` one figure, counters without a rule out, nodes by hand or channel, a year at most | `design/frontend.md` §1, 21 and §5 "Aggregate" |
 | 2026-10-27 | value | built | `/api/aggregate`, `o-mcp/aggregate` v1, the widget shown as Aggregate (type still `value`). A channel's node comes first, before the chosen nodes. The quantity picker is grouped, its sampled quantities narrowed to what the chosen nodes' meters reported in the last week. Found on the way: `telemetry_15min_agg` keeps each bucket's last reading, not its mean, which `o-mcp/readings`' descriptions had wrong (corrected, text only); dev's minute copy holds the solver's quantities only, so a short window of voltage has no readings on dev | `api/aggregate.py`, `plant/aggregate.py`, `web/src/widgets/Value.tsx` |
 | 2026-10-27 | value | a channel's node, and the encoded power factor registers, in Aggregate | not answered; built with the defaults: the channel's node is the first row (a dot marks it), before the chosen nodes; `PF_TOTAL`, `PF_A`..`C` and `DPF_*` stay out, though readings already decodes them to a magnitude (0..1, lead or lag lost), so they could come back as "power factor (magnitude)" | open, §7 |
+| 2026-10-27 | stat | a Stat widget: one metered node, one quantity, as Grafana's, with a small line inside | built: the figure is Aggregate's (`/api/aggregate`): a counter's total, or one meter's last, average, minimum, P95 or maximum (default last); a node with several meters picks one; the line is Readings' at the automatic interval, a counter's summed over the node's meters, and can be turned off; quantities as Aggregate's. Checked on dev: `LVMDB_A5`'s energy over 2 hours of minute data, `LVMDB_A4`'s `VOLTAGE_AN` P95 and last over 2 days, both meters | `design/frontend.md` §1, 22 and §5 "Stat"; `web/src/widgets/Stat.tsx` |
+| 2026-10-27 | figures | the Value widget's numbers aren't formatted | `fmt` showed up to 1 decimal under 100 and none above, and widgets asked for 0 or 3. Decided: 2 decimals, thousands separated, everywhere, including the Readings tooltip and the Sankey's tooltip and share of supply. `sld.ts` keeps `tools/sld.py`'s six significant digits (the parity test) | `design/frontend.md` §1, 23; `web/src/widgets/common.tsx` |
 
 ## 7. Open questions
 
 - **Client errors.** Should a widget's error be posted to the API and logged there?
+- **Stat:**
+  - Thresholds and colours (Grafana colours the figure by threshold): wanted?
+  - On a node whose measurement rows weight a meter (`LVMDB_A4`), a counter's line is the raw
+    registers' sum, so its area isn't the figure. Draw the line from the solver per interval instead?
+  - Small figures (THD, power factor) at 2 decimals lose precision: a per-widget decimals setting?
 - **Aggregate:**
   - Confirm the defaults: the channel's node first, before the chosen nodes; the encoded power
     factor registers out, or back as a magnitude?

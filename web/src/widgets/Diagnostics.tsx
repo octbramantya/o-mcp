@@ -29,7 +29,7 @@ function View({ settings, select, view }: WidgetProps<S>) {
               {r.diagnostics.map((d, i) => (
                 <tr key={i} onClick={() => pick(d.node_id)}>
                   <td className={`kind ${d.kind}`}>{d.kind}</td><td><b>{d.node_code}</b></td>
-                  <td className="num">{fmt(d.value, 0)}</td><td className="muted">{d.detail}</td>
+                  <td className="num">{fmt(d.value)}</td><td className="muted">{d.detail}</td>
                 </tr>
               ))}
             </tbody>

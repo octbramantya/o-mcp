@@ -63,7 +63,7 @@ function View({ settings, entity, view }: WidgetProps<S>) {
                     {r.rows.map((x) => (
                       <tr key={x.node_id}>
                         {node(x)}
-                        <td className="num big">{fmt(x.total, 3)}</td>
+                        <td className="num big">{fmt(x.total)}</td>
                         <td className="muted">{ORIGIN[x.origin] ?? x.origin}</td>
                       </tr>
                     ))}
@@ -87,10 +87,10 @@ function View({ settings, entity, view }: WidgetProps<S>) {
                         ) : (
                           <>
                             <td title={x.device_name ?? undefined}>{x.device}</td>
-                            <td className="num">{fmt(x.min, 3)}</td>
-                            <td className="num">{fmt(x.mean, 3)}</td>
-                            <td className="num big">{fmt(x.p95, 3)}</td>
-                            <td className="num">{fmt(x.max, 3)}</td>
+                            <td className="num">{fmt(x.min)}</td>
+                            <td className="num">{fmt(x.mean)}</td>
+                            <td className="num big">{fmt(x.p95)}</td>
+                            <td className="num">{fmt(x.max)}</td>
                             <td className={`num${(x.samples ?? 0) < 0.9 * (x.expected ?? 0) ? ' warn' : ' muted'}`}>
                               {x.samples} of {x.expected}
                             </td>
@@ -130,7 +130,7 @@ const GROUPS = ['Totals', 'Voltage', 'Current', 'Power', 'Frequency', 'Harmonics
 /** What the widget offers: counters with a solver rule and PF_TRUE (totals), and every sampled
  * quantity but the encoded power factor; sampled ones narrowed to what the chosen nodes' meters
  * reported in the last week, once there are chosen nodes. */
-function useOffered(nodes: number[], keep: string) {
+export function useOffered(nodes: number[], keep: string) {
   const v = useVocabulary().data;
   const tenant = useTenant().id;
   const meters = useQueries({
@@ -153,19 +153,26 @@ function useOffered(nodes: number[], keep: string) {
   return GROUPS.map((g) => [g, all.filter((q) => group(q) === g)] as const).filter(([, qs]) => qs.length);
 }
 
+/** The quantity picker of Aggregate and Stat, grouped, narrowed to what the nodes' meters reported. */
+export function OfferedSelect({ nodes, value, onChange }: { nodes: number[]; value: string; onChange: (q: string) => void }) {
+  const groups = useOffered(nodes, value);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {!groups.length && <option value={value}>Loading quantities…</option>}
+      {groups.map(([g, qs]) => (
+        <optgroup key={g} label={g}>
+          {qs.map((q) => <option key={q.code} value={q.code}>{q.code}{q.unit ? ` (${q.unit})` : ''}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
 function Settings({ settings, setSettings }: SettingsProps<S>) {
-  const groups = useOffered(settings.nodes, settings.quantity);
   return (
     <>
       <Field label="Quantity">
-        <select value={settings.quantity} onChange={(e) => setSettings({ ...settings, quantity: e.target.value })}>
-          {!groups.length && <option value={settings.quantity}>Loading quantities…</option>}
-          {groups.map(([g, qs]) => (
-            <optgroup key={g} label={g}>
-              {qs.map((q) => <option key={q.code} value={q.code}>{q.code}{q.unit ? ` (${q.unit})` : ''}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <OfferedSelect nodes={settings.nodes} value={settings.quantity} onChange={(quantity) => setSettings({ ...settings, quantity })} />
       </Field>
       <Field label="Nodes (a channel's node comes first)">
         <NodeList ids={settings.nodes} max={50} onChange={(nodes) => setSettings({ ...settings, nodes })} />

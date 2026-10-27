@@ -12,10 +12,11 @@ did, afterwards. It refuses any database whose DB_LABEL isn't dev. Playwright ne
 
 The flow: log in and change the temporary password; open the accounts page and create a user;
 choose the site; start from tenant 3's template; set a range dev has data for; pick a node so the
-channel's widgets follow; narrow to two hours so readings go to minutes and Now has readings; save,
-reload and find it as saved; look at the bottom bar's data health; star a node and find it starred
-after a reload; open the category tree; click a node in the single-line diagram; export the
-dashboard and import the file; then at phone width.
+channel's widgets follow; narrow to two hours so readings go to minutes and Now has readings; add a
+Stat on channel A and find its figure and line; save, reload and find it as saved; look at the
+bottom bar's data health; star a node and find it starred after a reload; open the category tree;
+click a node in the single-line diagram; export the dashboard and import the file; then at phone
+width.
 """
 import argparse
 import asyncio
@@ -94,6 +95,20 @@ def drive(page, url, email, temp, out, problems):
     page.wait_for_selector("text=minute points")
     page.wait_for_selector(".widget:has-text('Now') td:has-text('PF_TOTAL')")
     page.screenshot(path=str(out / "3-minutes.png"))
+
+    # a Stat on channel A: the node's energy over the two hours as one figure, with its line
+    page.click(".toolbar button:text-is('Edit')")
+    page.locator(".toolbar select").filter(has_text="Add a widget").select_option("stat")
+    stat = page.locator(".widget").last
+    stat.locator("header select").select_option("A")
+    page.click(".toolbar button:text-is('Done editing')")
+    page.wait_for_selector(".widget:has-text('ACTIVE_ENERGY_DELIVERED · total') .stat .chart canvas")
+    settle()
+    figure = stat.locator(".stat-figure").inner_text()
+    if not any(ch.isdigit() for ch in figure):
+        problems.append(f"stat: no figure ({figure!r})")
+    stat.scroll_into_view_if_needed()
+    page.screenshot(path=str(out / "3b-stat.png"))
 
     page.click("text=Save")
     page.wait_for_selector("button:has-text('Saved')")

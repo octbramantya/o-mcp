@@ -33,6 +33,8 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 19 | **Saved dashboards store a node's id and show its code.** The id (`graph.node.id`, the primary key) never changes; the code can | a variable's `__value` and `__text` |
 | 20 | **`as_of` over a range: value widgets split the range at plant changes (C), topology widgets draw the plant on the range's last day (A)** (§3) | — |
 | 21 | **The Value widget becomes Aggregate: one quantity across several nodes over the range.** A counter shows its total, a sampled quantity its minimum, average, 95th percentile and maximum per meter, on 1-minute data up to 6 hours and 15-minute data beyond, said in the widget (§5, "Aggregate"). Decided 2026-10-27 | — |
+| 22 | **A Stat widget: one quantity at one node as a single figure, with its line underneath.** The figure is Aggregate's (§5, "Stat"); the line is Readings' at the automatic interval. Decided 2026-10-27 | the stat panel |
+| 23 | **Figures show 2 decimals, thousands separated**, in every widget and chart tooltip, unless a widget says otherwise (`fmt` in `web/src/widgets/common.tsx`). Decided 2026-10-27 | a panel's decimals |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.
@@ -257,6 +259,7 @@ A first widget list, from what the MCP server and the database already answer:
 | Meters | the devices reading a node, what each reports, last reading, status | `node_meters` |
 | Readings | several nodes' quantities over the range, on one chart or stacked | `meter_readings`, at the resolution of §3 |
 | Aggregate (was Value) | one quantity across several nodes over the range: a counter's total, a sampled quantity's minimum, average, 95th percentile and maximum per meter (below) | `node_value` for counters; a new read for sampled quantities |
+| Stat | one quantity at one node as one figure over the range, with its line (below) | `/api/aggregate` and `/api/readings` |
 
 **Aggregate (decided and built 2026-10-27).** The Value widget, renamed (§1, 21). Its use: one
 quantity, voltage say, across a board and the boards it feeds (`INCOMING_PLN` and its direct
@@ -296,6 +299,23 @@ children), to see how that quantity behaved over the range at each of them.
   found; `PF_TRUE` is one figure for the range (a spread per interval later); counters without a
   solver rule are left out; nodes are picked by hand or come from a channel, with no "and its
   children" set; the range is at most one year.
+
+**Stat (decided and built 2026-10-27).** Grafana's stat panel: one node, from the settings or a
+channel, one quantity, one figure, and a line under it.
+
+- **The figure** is the Aggregate widget's, from `/api/aggregate`, so the two never disagree: a
+  counter's total (through the solver, so `LVMDB_A4`'s ⅓ of PV and `LVMDB_A5`'s feeder meter
+  apply), or for a sampled quantity one meter's average, minimum, 95th percentile or maximum. The
+  default is **last**: the line's last point, which is the last reading at 1-minute and 15-minute
+  points, and an hour's or a day's average on longer ranges; the caption says which.
+- **The meter.** A sampled quantity is one meter's, the first listed unless the settings choose
+  another; a node with several says which in the caption.
+- **The line** is `/api/readings` at the automatic interval (§3): the chosen meter's values, or a
+  counter's consumption added over the node's meters. That sum is the raw registers, so on a node
+  whose measurement rows weight a meter (`LVMDB_A4`) the line's shape is right but its area isn't
+  the figure. `PF_TRUE` and unmetered nodes have no line. It can be turned off.
+- **Quantities offered** are Aggregate's.
+- **No thresholds or colours yet.** The figure's size follows the box.
 | Now | the last reading of a node's meters | `telemetry_data`, latest row per device |
 | Sankey | where energy, water or air goes, by category | `graph.sankey` |
 | Diagnostics | silent meters, negative residuals, missing required properties | `graph.sankey_diagnostics`, `graph.v_property_gaps` |
@@ -321,6 +341,7 @@ Widgets (`web/src/widgets/`, one file each):
 | widget | route |
 |---|---|
 | value (Aggregate) | `/api/aggregate` |
+| stat | `/api/aggregate`, `/api/readings` |
 | readings | `/api/readings` |
 | now (slice 2) | `/api/now` |
 | node finder | `/api/nodes` |

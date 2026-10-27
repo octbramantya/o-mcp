@@ -126,6 +126,13 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .stack { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .chart { flex: 1; min-height: 80px; }
 .foot { padding: 2px 8px; font-size: 11px; }
+.stat { container-type: size; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.stat-head { padding: 4px 8px 0; text-align: center; }
+.stat-figure { font-size: clamp(16px, min(24cqh, 13cqw), 72px); font-weight: 600; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stat-unit { font-size: 0.45em; font-weight: 400; color: var(--muted); margin-left: 4px; }
+.stat-caption { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-caption .warn { color: var(--warn); }
+.stat .chart { min-height: 24px; }
 .filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; }
 .filters input { flex: 1; min-width: 100px; }
 .field { display: flex; flex-direction: column; gap: 4px; }

@@ -40,10 +40,10 @@ function option(r: S_) {
       trigger: 'item', confine: true,
       formatter: (p: { dataType: string; data: { source: string; target: string; value: number; ambiguous?: boolean }; name: string; value: number }) =>
         p.dataType === 'edge'
-          ? `<b>${p.data.source} → ${p.data.target}</b><br/>${fmt(p.data.value, 0)} ${unit}`
-            + (supply > 0 ? ` (${(100 * p.data.value / supply).toFixed(1)}% of supply)` : '')
+          ? `<b>${p.data.source} → ${p.data.target}</b><br/>${fmt(p.data.value)} ${unit}`
+            + (supply > 0 ? ` (${fmt(100 * p.data.value / supply)}% of supply)` : '')
             + (p.data.ambiguous ? '<br/>solved, not metered' : '')
-          : `<b>${p.name}</b><br/>${fmt(p.value, 0)} ${unit}`,
+          : `<b>${p.name}</b><br/>${fmt(p.value)} ${unit}`,
     },
     series: [{
       type: 'sankey', left: 8, right: 120, top: 8, bottom: 8, nodeAlign: 'left', layoutIterations: 0,

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Readings as R } from '../types/formats/readings';
 import { show } from '../time/range';
-import { EChart, Field, Findings, Hint, mutedColor, NodeName, NodePicker, Pending, textColor, useQuantities } from './common';
+import { EChart, Field, Findings, fmt, Hint, mutedColor, NodeName, NodePicker, Pending, textColor, useQuantities } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 
@@ -19,7 +19,7 @@ function option(r: R) {
   return {
     backgroundColor: 'transparent',
     animation: false,
-    tooltip: { trigger: 'axis', confine: true },
+    tooltip: { trigger: 'axis', confine: true, valueFormatter: (v: unknown) => fmt(typeof v === 'number' ? v : null) },
     legend: { type: 'scroll', top: 0, textStyle: { color: textColor() } },
     grid: { left: 56, right: 16, top: 30, bottom: 28 },
     xAxis: { type: 'time', axisLabel: { color: mutedColor() } },

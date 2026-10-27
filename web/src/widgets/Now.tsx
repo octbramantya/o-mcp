@@ -36,7 +36,7 @@ function View({ settings, entity, view }: WidgetProps<S>) {
                     {d.readings.map((x) => (
                       <tr key={x.quantity}>
                         <td>{x.quantity}</td>
-                        <td className="num big">{fmt(x.value, 3)}</td>
+                        <td className="num big">{fmt(x.value)}</td>
                         <td className="muted">{x.unit}</td>
                         <td className="muted">{x.at.slice(11, 16)}</td>
                       </tr>

@@ -8,8 +8,9 @@ import { now } from './Now';
 import { readings } from './Readings';
 import { sankey } from './Sankey';
 import { section } from './Section';
+import { stat } from './Stat';
 import { value } from './Value';
 
-export const WIDGETS: WidgetType<any>[] = [value, readings, now, finder, section, meters, sankey, diagnostics];
+export const WIDGETS: WidgetType<any>[] = [value, stat, readings, now, finder, section, meters, sankey, diagnostics];
 
 export const byType = new Map(WIDGETS.map((w) => [w.type, w]));
