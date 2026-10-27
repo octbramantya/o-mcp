@@ -36,6 +36,7 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 22 | **A Stat widget: one quantity at one node as a single figure, with its line underneath.** The figure is Aggregate's (§5, "Stat"); the line is Readings' at the automatic interval. Decided 2026-10-27 | the stat panel |
 | 23 | **Figures show 2 decimals, thousands separated**, in every widget and chart tooltip, unless a widget says otherwise (`fmt` in `web/src/widgets/common.tsx`). Decided 2026-10-27 | a panel's decimals |
 | 24 | **Finding a node is the left panel's job, not a widget's.** The node finder widget is retired; its filters (utility, type with its subtypes, metered) are in the Find tab, which groups today's nodes by type, so the type needs no column. A saved finder is drawn as a placeholder saying where it went (§5). Decided 2026-10-27 | — |
+| 25 | **Readings widgets share their tooltip.** Hovering one shows every Readings chart's tooltip and pointer line at the same time, each chart snapping to its own nearest point, whatever its node, quantities or interval. Matched by time, not by `echarts.connect`, which places the others by the hovered chart's series and point index. On always; dashboard settings to turn it off come later. Stat's line doesn't join. Decided 2026-10-27 | shared tooltip (graph tooltip) |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.

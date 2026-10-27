@@ -1,5 +1,6 @@
 // What a node's meters read over the range (GET /api/readings), one line per device and quantity.
 // The API chooses minutes for short ranges (design/frontend.md §3); the chart says which it drew.
+// Every Readings chart on the dashboard shares its tooltip with the others, matched by time.
 import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Readings as R } from '../types/formats/readings';
@@ -49,7 +50,7 @@ function View({ settings, entity, view }: WidgetProps<S>) {
     <Pending q={q}>
       {(r) => (
         <div className="stack">
-          <EChart option={option(r)} />
+          <EChart option={option(r)} group="readings" />
           <div className="foot muted"><NodeName id={node} /> · {r.query.interval} points from {show(r.query.window.start)}</div>
           <Findings findings={r.findings} />
         </div>

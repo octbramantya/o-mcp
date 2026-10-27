@@ -116,8 +116,50 @@ export function Hint({ children }: { children: ReactNode }) {
   return <div className="muted pad">{children}</div>;
 }
 
-/** An ECharts chart filling its box, resized with it and disposed with the component. */
-export function EChart({ option, onClick }: { option: echarts.EChartsCoreOption; onClick?: (p: echarts.ECElementEvent) => void }) {
+// Shared tooltip: the charts of a group show their tooltips at the time under the mouse in any one of
+// them. Matched by time only, so meters with gaps or other intervals still line up; echarts.connect
+// places the others' tooltips by the hovered chart's series and point index, and links legends too.
+// One dashboard is on screen at a time, so a group needs no dashboard in its name.
+const groups = new Map<string, Set<echarts.ECharts>>();
+let hovered: echarts.ECharts | null = null;
+
+function join(group: string, c: echarts.ECharts): () => void {
+  const members = groups.get(group) ?? new Set<echarts.ECharts>();
+  groups.set(group, members);
+  members.add(c);
+  const others = () => [...members].filter((o) => o !== c);
+  // As if the mouse left them: hides the pointer line with the tooltip, which hideTip leaves drawn.
+  const hide = () => others().forEach((o) => o.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' }));
+  const zr = c.getZr();
+  const enter = () => { hovered = c; };
+  const leave = () => { if (hovered === c) hovered = null; hide(); };
+  zr.on('mousemove', enter);
+  zr.on('globalout', leave);
+  // Only the chart under the mouse relays: the tooltips it shows elsewhere fire this event too.
+  c.on('updateAxisPointer', (e) => {
+    if (hovered !== c) return;
+    const x = (e as { axesInfo?: { axisDim: string; value: number }[] }).axesInfo?.find((a) => a.axisDim === 'x');
+    if (!x) { hide(); return; }
+    for (const o of others()) {
+      const px = o.convertToPixel({ xAxisIndex: 0 }, x.value);
+      if (Number.isFinite(px)) o.dispatchAction({ type: 'showTip', x: px, y: o.getHeight() / 2 });
+      else o.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' });
+    }
+  });
+  return () => {
+    zr.off('mousemove', enter);
+    zr.off('globalout', leave);
+    if (hovered === c) hovered = null;
+    members.delete(c);
+    if (!members.size) groups.delete(group);
+  };
+}
+
+/** An ECharts chart filling its box, resized with it and disposed with the component. Charts given
+ *  the same `group` share their tooltip. */
+export function EChart({ option, onClick, group }: {
+  option: echarts.EChartsCoreOption; onClick?: (p: echarts.ECElementEvent) => void; group?: string;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
   const click = useRef(onClick);
@@ -126,10 +168,11 @@ export function EChart({ option, onClick }: { option: echarts.EChartsCoreOption;
     const c = echarts.init(box.current!, undefined, { renderer: 'canvas' });
     chart.current = c;
     c.on('click', (p) => click.current?.(p));
+    const leave = group ? join(group, c) : null;
     const ro = new ResizeObserver(() => c.resize());
     ro.observe(box.current!);
-    return () => { ro.disconnect(); c.dispose(); chart.current = null; };
-  }, []);
+    return () => { ro.disconnect(); leave?.(); c.dispose(); chart.current = null; };
+  }, [group]);
   useEffect(() => { chart.current?.setOption(option, true); }, [option]);
   return <div ref={box} className="chart" />;
 }
