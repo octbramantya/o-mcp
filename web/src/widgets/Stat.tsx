@@ -13,6 +13,7 @@ import { show } from '../time/range';
 import { accentColor, EChart, Field, fmt, Hint, NodeName, NodePicker, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
+import { useHeldView } from './fresh';
 import { OfferedSelect } from './Value';
 
 type Statistic = 'last' | 'mean' | 'min' | 'p95' | 'max';
@@ -69,8 +70,9 @@ function option(points: Point[], total: boolean) {
   };
 }
 
-function View({ settings, entity, view }: WidgetProps<S>) {
+function View({ settings, entity, view: live }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
+  const [view, track] = useHeldView(live, [settings, node]);
   const kind = useKind(settings.quantity);
   const agg = useQuery({
     queryKey: ['plant', view.tenant, 'aggregate', settings.quantity, [node], view.start, view.end, view.tick],
@@ -89,6 +91,7 @@ function View({ settings, entity, view }: WidgetProps<S>) {
     enabled: node !== null && kind.known && kind.readable && (settings.sparkline || last),
     placeholderData: (prev) => prev,
   });
+  track(agg.data, rd.data);
   if (node === null) return <Hint>Choose a node in the widget's settings, or follow a channel.</Hint>;
   return (
     <Pending q={agg}>

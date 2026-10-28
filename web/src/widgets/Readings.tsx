@@ -8,6 +8,7 @@ import { show } from '../time/range';
 import { EChart, Field, Findings, fmt, Hint, mutedColor, NodeName, NodePicker, Pending, textColor, useQuantities } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
+import { useHeldView } from './fresh';
 
 interface S {
   node: number | null;
@@ -34,8 +35,9 @@ function option(r: R) {
   };
 }
 
-function View({ settings, entity, view }: WidgetProps<S>) {
+function View({ settings, entity, view: live }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
+  const [view, track] = useHeldView(live, [settings, node]);
   const q = useQuery({
     queryKey: ['plant', view.tenant, 'readings', node, settings.quantities, settings.interval, view.start, view.end, view.tick],
     queryFn: ({ signal }) => get<R>('/api/readings', {
@@ -44,6 +46,7 @@ function View({ settings, entity, view }: WidgetProps<S>) {
     enabled: node !== null && settings.quantities.length > 0,
     placeholderData: (prev) => prev,
   });
+  track(q.data);
   if (node === null) return <Hint>Choose a node in the widget's settings, or follow a channel.</Hint>;
   if (!settings.quantities.length) return <Hint>Choose quantities in the widget's settings.</Hint>;
   return (

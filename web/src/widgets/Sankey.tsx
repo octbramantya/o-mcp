@@ -7,6 +7,7 @@ import type { Sankey as S_ } from '../api/types';
 import { show } from '../time/range';
 import { EChart, Field, Findings, fmt, Pending, QuantitySelect, textColor } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
+import { useHeldView } from './fresh';
 
 interface S {
   quantity: string;
@@ -63,7 +64,8 @@ function option(r: S_) {
   };
 }
 
-function View({ settings, view }: WidgetProps<S>) {
+function View({ settings, view: live }: WidgetProps<S>) {
+  const [view, track] = useHeldView(live, settings);
   const q = useQuery({
     queryKey: ['plant', view.tenant, 'sankey', settings, view.start, view.end, view.tick],
     queryFn: ({ signal }) => get<S_>('/api/sankey', {
@@ -71,6 +73,7 @@ function View({ settings, view }: WidgetProps<S>) {
     }, signal),
     placeholderData: (prev) => prev,
   });
+  track(q.data);
   return (
     <Pending q={q}>
       {(r) => (

@@ -196,10 +196,10 @@ Pieces combine by the quantity's `raw_time_agg` (dev, 2026-10-22):
 A new rule added to `graph.quantity_rule` must say how it combines before C uses it; until then it
 falls back to A, like `P95`.
 
-**Refresh.** Off by default; 30 s, 1 min, 5 min… when on. Widgets poll with the dashboard's
-interval (TanStack Query's `refetchInterval`), and polling pauses while the browser tab is
-hidden. **The 30 s minimum is enforced by the server, not the UI** (§6): a browser can ask for
-anything.
+**Refresh.** Off by default; 30 s, 1 min, 5 min… when on. Each tick of the dashboard's interval
+resolves the range again, and ticks pause while the browser tab is hidden. A widget skips a tick
+while its data can't have moved (§6, "Caching"); the Refresh button reloads every widget. **The
+30 s minimum is enforced by the server, not the UI** (§6): a browser can ask for anything.
 
 **Window limits.** The MCP tools cap windows for a model's sake (`meter_readings` 31 days and 500
 points, `node_value` 92 days). Engineers will want a year. The frontend's API sets its own
@@ -447,15 +447,93 @@ viewers × widgets ÷ refresh interval**: ten operators on a 12-widget dashboard
 queries a second, and a cold solver call takes seconds. So the API, which open-source Grafana
 does not do:
 
-- **caches results** by tenant, query and window, for the shortest refresh interval (30 s). This
-  is also what enforces the minimum: a faster refresh gets the cached answer;
+- **caches results** by tenant, query and window, **until the data they read moves** (below); an
+  answer from the graph alone for the shortest refresh interval (30 s). This is also what enforces
+  the minimum: a faster refresh gets the cached answer;
 - **rounds relative ranges to the minute**, so `last 24 h` from ten viewers is one cache key;
 - **runs identical in-flight requests once** and gives every caller the answer;
+- **tells the browser when the data can next move**, and the widget doesn't ask before then;
+- gzips its answers;
 - optionally takes **one request per dashboard refresh** instead of one per widget.
 
 Users' own dashboards make identical requests rarer than on shared Grafana dashboards, so the
 cache matters most where several people open the same template. The tenant 4 refresh
 dashboards are the first load test.
+
+### Caching (decided and built 2026-10-28)
+
+**Measured first, on production** (2026-10-28, as `grafReader` through the tunnel, the API's own
+read functions; the harness stayed out of the repository):
+
+- **How often each source moves.** Minute data (`telemetry_data`) lands within about 40 s of each
+  minute. `telemetry_15min_agg` is a continuous aggregate, **materialized only**, refreshed every
+  5 minutes (job 1004, `end_offset` 5 minutes) and only for whole buckets: it changes once per
+  15 minutes and trails real time by 15 to 30. The daily summary is refreshed every 30 minutes
+  (pgAgent job 4).
+- **What a read costs the database.** Readings: 1 to 60 ms of planning and execution, from an hour
+  of minutes to 30 days hourly. Through the tunnel the same requests took 190 to 990 ms: 6 to 8 round trips
+  at about 23 ms each, and moving the rows (2,884 rows took about 500 ms). The solver behind Values
+  and Aggregate's totals is the real cost: 180 ms for 5 boards over a day, 830 ms over 7 days,
+  540 ms over 6 hours of minutes, 4.6 s once cold.
+- **What one viewer's refresh did.** Six widgets (four Readings, one Aggregate, one Now) at 30 s for
+  20 minutes, through the 30 s cache: the minute rounding made every other tick a hit, and each
+  widget ran 21 queries. For the widgets on 15-minute data, 20 of those 21 returned what the one
+  before had (the Aggregate total 17 of 21). Now's changed every time.
+
+**Decided:**
+
+- **A, an answer is kept until its source moves.** Each answer reads one or more sources (minute data,
+  the 15-minute aggregate, the daily summary) and is valid while they stay where they were when it
+  was computed. Readings over 6 hours, every Aggregate or Value over 6 hours, the sankey and
+  the meters then run once per aggregate refresh instead of every other tick; windows of 6 hours or
+  less still run once a minute, since their data does move every minute, and they are the cheap ones.
+- **The browser waits.** Each answer from telemetry carries `X-Fresh-Until`, the earliest time its
+  sources can move; a widget on a refresh tick before then keeps its window, so its queries aren't
+  asked again.
+- **No per-widget refresh limit for Values and Aggregate.** Over 6 hours A already gives them the
+  data's own pace, about every 15 minutes, and recomputes as soon as new data lands; 6 hours or less,
+  the value moves every minute, which is why someone picks such a window. One viewer's minute solve
+  is 0.5 to 1 s a minute per widget, about 1 to 2% of one connection. Watch many viewers on different
+  minute windows.
+- **Not now, B (caching the past apart from the live end, server side) and C (the browser asking
+  for what's new only).** They save transfer, and the API will run on the database's host; the
+  Readings queries themselves are milliseconds. Gzip covers the browser's leg. Time a cold year
+  across many nodes there before deciding B (§7 Aggregate, "not yet seen on production").
+- **Not rounding long windows' keys to their interval.** For one viewer the browser's wait already
+  keeps the window, and a shared answer would carry another request's `requested` window.
+
+**Built** (`api/fresh.py`, `api/cache.py`, `web/src/widgets/fresh.ts`):
+
+- **The marks.** Per tenant, at most every 15 s and only while requests come in, one query reads the newest
+  minute, the newest bucket and the daily summary's last refresh, and (once, at the first read) looks
+  up the aggregate's refresh policy in `timescaledb_information`. When the policy is visible, the
+  15-minute version is its last successful run, so a late reading that lands in an
+  older bucket is seen too, and the next change is its `next_start`. Without TimescaleDB (dev) or
+  the policy, it is the newest bucket and no next change is known. If the aggregate isn't
+  materialized only, it follows the minute data. The query costs about 51 ms on production (49 ms of
+  it planning across chunks); the log says which version the 15-minute data uses.
+- **The cache** keeps each answer with the version of the sources it read, taken before it was
+  computed, so it is never newer than its data says; at most 15 minutes, as the graph may change under
+  it. A request at a newer version doesn't share a computation started at an older one. Each read
+  declares its sources from the request alone (`api/reads.py` `readings_sources`,
+  `api/values.py` `fresh_sources`): a window of 6 hours or less is minute and 15-minute data (minutes
+  when kept), whole days the daily summary for electricity energy, the rest 15-minute data; Now
+  reads minutes, the meters 15-minute data, the status all three. The vocabulary, the finder, a section and the
+  categories read the graph alone and keep the 30 s TTL.
+- **`X-Fresh-Until`** (UTC): the soonest next change among the answer's sources, never before now,
+  at most 5 minutes ahead. Minute data: a minute after the newest, so usually now; the aggregate: its
+  `next_start`; the summary: the next hour or half hour. Unknown means now.
+- **The browser** (`useHeldView`): a widget whose queries move with the refresh tick keeps its last
+  window while its answers' time hasn't come, unless the range, the widget's settings, the
+  tenant or a press of Refresh changed. The time is kept by answer, so two widgets sharing a
+  query (Node information and Meters) both see it. An answer that doesn't say holds nothing.
+- **Gzip** for anything over 1 KB (Starlette's `GZipMiddleware`).
+
+Checked on dev: the API's unit and dev tests, header and gzip included, and `tools/web_check.py`. Dev has
+neither TimescaleDB nor live data, so nothing is held there; `api/fresh.py` was read on production
+as `grafReader`: it found job 1004, and its next change was the job's `next_start`. The API on
+production's data as `prs_frontend` sees the policy too (2026-10-28: "tenant 3: the 15-minute data's
+version is its refresh job 1004").
 
 ## 7. The API
 
@@ -522,9 +600,9 @@ snapped outwards to its resolution. The answer carries `resolution`, the snapped
 whole tenant, or for the daily summary the earlier of its last day's end and the quarter
 before that day's `last_refreshed` (the run's start, when that quarter hasn't all arrived). Short of the window's end the answer carries
 `DATA_INCOMPLETE`, so a range running to now, a stalled feed or a day not yet summarised is
-labelled, not shown as a drop. A single silent meter isn't caught here. Answers are cached for
-30 s by tenant, quantity, nodes and the window rounded to the minute, and identical requests in
-flight run once (`api/cache.py`, one process).
+labelled, not shown as a drop. A single silent meter isn't caught here. Answers are cached by
+tenant, quantity, nodes and the window rounded to the minute until the data they read moves, and
+identical requests in flight run once (`api/cache.py`, `api/fresh.py`, one process; §6, "Caching").
 
 **The other plant reads (2026-10-26), on dev** (`api/reads.py`). Each runs the MCP tool's own query,
 moved into `plant/` (`find`, `section`, `meters`, `readings`, and the vocabulary document), so the

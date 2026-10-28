@@ -16,6 +16,8 @@ interface State {
   editing: boolean;
   /** When the range was last resolved: relative ranges move on with it. */
   tick: number;
+  /** Counts forced refreshes (the Refresh button), which no widget may skip. */
+  forced: number;
   open: (d: DashboardFull) => void;
   saved: (d: DashboardFull) => void;
   close: () => void;
@@ -27,12 +29,12 @@ interface State {
   addWidget: (type: string, w: number, h: number, settings: object) => void;
   updateWidget: (id: string, patch: Partial<Widget>) => void;
   removeWidget: (id: string) => void;
-  refresh: () => void;
+  refresh: (force?: boolean) => void;
 }
 
 export const useDashboard = create<State>((set) => ({
   id: null, title: '', updatedAt: '', readOnly: false, owner: null, doc: null, dirty: false, editing: false,
-  tick: Date.now(),
+  tick: Date.now(), forced: 0,
   open: (d) => set({
     id: d.id, title: d.title, updatedAt: d.updated_at, readOnly: d.read_only, owner: d.owner,
     doc: migrate(d.document, d.format_version), dirty: false, editing: false, tick: Date.now(),
@@ -59,5 +61,5 @@ export const useDashboard = create<State>((set) => ({
   removeWidget: (id) => set((s) => s.doc ? {
     dirty: true, doc: { ...s.doc, widgets: s.doc.widgets.filter((w) => w.id !== id) },
   } : {}),
-  refresh: () => set({ tick: Date.now() }),
+  refresh: (force) => set((s) => ({ tick: Date.now(), forced: s.forced + (force ? 1 : 0) })),
 }));

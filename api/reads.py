@@ -8,8 +8,9 @@ Nodes are given by graph.node.id and looked up on the network of as_of. Topology
 day (decision 20, A): the frontend passes its range's last day as as_of; readings and the sankey
 take the window and use its last day themselves. A node retired by then is refused by name.
 
-Each read returns (cache key, compute): the key is built from the parsed request, so a bad request
-fails before the cache, and every answer is cached as /api/values' are (api/cache.py).
+Each read returns (cache key, compute, sources): the key is built from the parsed request, so a bad
+request fails before the cache; sources are the telemetry it reads (api/fresh.py), empty for the
+graph alone. Every answer is cached as /api/values' are (api/cache.py).
 """
 import datetime as dt
 
@@ -89,7 +90,7 @@ async def node_on(conn, tenant, nid, as_of):
 def vocabulary_doc(tenant, _params):
     async def compute():
         return vocabulary.document(tenant.vocab)
-    return ("vocabulary", tenant.id), compute
+    return ("vocabulary", tenant.id), compute, ()
 
 
 def nodes(tenant, params):
@@ -106,7 +107,7 @@ def nodes(tenant, params):
     async def compute():
         async with tenant.tx() as conn:
             return await find.nodelist(conn, tenant.id, v, as_of, f, limit)
-    return ("nodes", tenant.id, as_of, limit, *f.items()), compute
+    return ("nodes", tenant.id, as_of, limit, *f.items()), compute, ()
 
 
 def subgraph(tenant, params):
@@ -119,7 +120,7 @@ def subgraph(tenant, params):
         async with tenant.tx() as conn:
             node = await node_on(conn, tenant.id, nid, as_of)
             return await section.subgraph(conn, tenant.id, node["code"], as_of, depth, direction, utility)
-    return ("section", tenant.id, nid, as_of, depth, direction, utility), compute
+    return ("section", tenant.id, nid, as_of, depth, direction, utility), compute, ()
 
 
 def node_meters(tenant, params):
@@ -129,7 +130,7 @@ def node_meters(tenant, params):
         async with tenant.tx() as conn:
             node = await node_on(conn, tenant.id, nid, as_of)
             return await meters.document(conn, tenant.id, tenant.vocab, tenant.tz, node, as_of)
-    return ("meters", tenant.id, nid, as_of), compute
+    return ("meters", tenant.id, nid, as_of), compute, ("quarter",)
 
 
 def auto_interval(w, minutes_kept):
@@ -139,6 +140,14 @@ def auto_interval(w, minutes_kept):
     if span <= values.MINUTE_MAX and minutes_kept:
         return "minute"
     return "15min" if span <= dt.timedelta(days=2) else "hour" if span <= dt.timedelta(days=31) else "day"
+
+
+def readings_sources(w, interval):
+    """What a readings answer reads, from the request alone: auto takes minutes for a short window
+    within the minute data kept, 15-minute buckets otherwise."""
+    if interval == "auto" and w.end - w.start <= values.MINUTE_MAX:
+        return ("minute", "quarter")
+    return ("quarter",)
 
 
 def node_readings(tenant, params):
@@ -166,7 +175,7 @@ def node_readings(tenant, params):
                                            READINGS_MAX_POINTS, device or None)
     key = ("readings", tenant.id, nid, tuple(codes), interval, device,
            values._floor(w.start, values.MINUTE), values._ceil(w.end, values.MINUTE))
-    return key, compute
+    return key, compute, readings_sources(w, interval)
 
 
 def _flow_quantity(tenant, params):
@@ -182,6 +191,11 @@ def _sankey_params(tenant, params):
     q = _flow_quantity(tenant, params)
     w = timewin.window(params.get("start"), params.get("end"), tenant.tz, SANKEY_MAX_DAYS)
     return q, w.start.date(), _last_day(w), w
+
+
+def _day_sources(tenant, q):
+    """Whole days: electricity energy from the daily summary, the rest from 15-minute buckets."""
+    return ("summary",) if daily(q, tenant.vocab) else ("quarter",)
 
 
 def _days(first, last, tz):
@@ -227,7 +241,7 @@ def sankey(tenant, params):
         for r in links:
             r["value"] = _num(r["value"])
         return {**head, "requested": w.as_json(), "node_detail": detail, "links": links, "findings": findings}
-    return ("sankey", tenant.id, q["code"], first, last, detail), compute
+    return ("sankey", tenant.id, q["code"], first, last, detail), compute, _day_sources(tenant, q)
 
 
 DIAGNOSTICS = """
@@ -265,7 +279,7 @@ def diagnostics(tenant, params):
         for r in diag:
             r["value"] = _num(r["value"])
         return {**head, "requested": w.as_json(), "diagnostics": diag, "property_gaps": gaps, "findings": findings}
-    return ("diagnostics", tenant.id, q["code"], first, last), compute
+    return ("diagnostics", tenant.id, q["code"], first, last), compute, _day_sources(tenant, q)
 
 
 CATEGORIES = """
@@ -299,7 +313,7 @@ def categories(tenant, params):
             r["weight"] = _num(r["weight"])
         return {"tenant": tenant.id, "as_of": as_of, "quantity": {"code": q["code"], "utility": q["utility"]},
                 "categories": cats, "nodes": members}
-    return ("categories", tenant.id, q["code"], as_of), compute
+    return ("categories", tenant.id, q["code"], as_of), compute, ()
 
 
 def _at(params, tz):
@@ -322,7 +336,7 @@ def node_now(tenant, params):
         async with tenant.tx() as conn:
             node = await node_on(conn, tenant.id, nid, at.date().isoformat())
             return await now.document(conn, tenant.id, v, tenant.tz, node, at, codes)
-    return ("now", tenant.id, nid, tuple(codes), at), compute
+    return ("now", tenant.id, nid, tuple(codes), at), compute, ("minute",)
 
 
 def data_status(tenant, params):
@@ -332,4 +346,4 @@ def data_status(tenant, params):
     async def compute():
         async with tenant.tx() as conn:
             return await status.document(conn, tenant.id, tenant.tz, at)
-    return ("status", tenant.id, at), compute
+    return ("status", tenant.id, at), compute, ("minute", "quarter", "summary")

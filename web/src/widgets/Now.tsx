@@ -8,20 +8,23 @@ import { show } from '../time/range';
 import { Field, Findings, fmt, Hint, NodeName, NodePicker, Pending, useQuantities } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
+import { useHeldView } from './fresh';
 
 interface S {
   node: number | null;
   quantities: string[];
 }
 
-function View({ settings, entity, view }: WidgetProps<S>) {
+function View({ settings, entity, view: live }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
+  const [view, track] = useHeldView(live, [settings, node]);
   const q = useQuery({
     queryKey: ['plant', view.tenant, 'now', node, settings.quantities, view.end, view.tick],
     queryFn: ({ signal }) => get<N>('/api/now', { node, at: view.end, quantities: settings.quantities.join(',') }, signal),
     enabled: node !== null,
     placeholderData: (prev) => prev,
   });
+  track(q.data);
   if (node === null) return <Hint>Choose a node in the widget's settings, or follow a channel.</Hint>;
   return (
     <Pending q={q}>

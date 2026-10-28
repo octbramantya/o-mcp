@@ -68,6 +68,14 @@ def sources(resolution, is_daily, rules):
             for r in rules}
 
 
+def fresh_sources(w, q, v):
+    """The sources (api/fresh.py) a solve over w reads, from the window alone, as run() chooses them: a
+    short window reads minutes, or 15-minute buckets when older than the minute data kept."""
+    if _midnight(w.start) and _midnight(w.end):
+        return ("summary",) if daily(q, v) else ("quarter",)
+    return ("minute", "quarter") if w.end - w.start <= MINUTE_MAX + MINUTE else ("quarter",)
+
+
 def summary_until(day, refreshed, tz):
     """Where a daily summary row stops: its day's end, or for a day still filling the quarter before its
     last refresh. pgAgent runs the refresh every 30 minutes and stamps the run's start, when the quarter

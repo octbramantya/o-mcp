@@ -6,17 +6,20 @@ import { get } from '../api/client';
 import type { Diagnostics as D } from '../api/types';
 import { Field, Findings, fmt, Pending, QuantitySelect } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
+import { useHeldView } from './fresh';
 
 interface S {
   quantity: string;
 }
 
-function View({ settings, select, view }: WidgetProps<S>) {
+function View({ settings, select, view: live }: WidgetProps<S>) {
+  const [view, track] = useHeldView(live, settings);
   const q = useQuery({
     queryKey: ['plant', view.tenant, 'diagnostics', settings.quantity, view.start, view.end, view.tick],
     queryFn: ({ signal }) => get<D>('/api/diagnostics', { quantity: settings.quantity, start: view.start, end: view.end }, signal),
     placeholderData: (prev) => prev,
   });
+  track(q.data);
   const pick = (id: number | null) => id !== null && select?.({ kind: 'node', id });
   return (
     <Pending q={q}>

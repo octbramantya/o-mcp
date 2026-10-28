@@ -4,8 +4,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from api import auth, cache, config, tenants, values
-from plant import value
+from api import auth, cache, config, fresh, reads, tenants, values
+from plant import timewin, value
 
 
 def test_token_hash_is_sha256_of_the_token():
@@ -154,3 +154,63 @@ def test_cache_runs_identical_requests_once_and_keeps_no_errors():
                 await c.get("e", failing)
         assert "e" not in c.done
     asyncio.run(main())
+
+
+def test_cache_keeps_an_answer_while_its_version_holds():
+    calls = []
+
+    async def compute():
+        calls.append(1)
+        return len(calls)
+
+    async def main():
+        c = cache.Cache(ttl=0)
+        assert await c.get("k", compute, ("v1",)) == 1
+        assert await c.get("k", compute, ("v1",)) == 1          # past the TTL, the version still holds
+        assert await c.get("k", compute, ("v2",)) == 2          # the source moved
+        assert await c.get("g", compute) == 3 and await c.get("g", compute) == 4   # no version: TTL only
+    asyncio.run(main())
+
+
+def test_cache_doesnt_share_a_computation_started_at_an_older_version():
+    async def slow():
+        await asyncio.sleep(0.02)
+        return "old"
+
+    async def fast():
+        return "new"
+
+    async def main():
+        c = cache.Cache()
+        first = asyncio.ensure_future(c.get("k", slow, ("v1",)))
+        await asyncio.sleep(0)
+        assert await c.get("k", fast, ("v2",)) == "new"
+        assert await first == "old"
+    asyncio.run(main())
+
+
+UTC = dt.UTC
+
+
+def test_fresh_until_takes_the_soonest_source_within_bounds():
+    now = dt.datetime(2026, 10, 28, 2, 22, 30, tzinfo=UTC)
+    m = fresh.Marks(minute=dt.datetime(2026, 10, 28, 2, 22, tzinfo=UTC), quarter="job run",
+                    summary="refresh", quarter_next=dt.datetime(2026, 10, 28, 2, 27, 19, tzinfo=UTC), at=now)
+    assert m.fresh_until(["quarter"], now) == dt.datetime(2026, 10, 28, 2, 27, 19, tzinfo=UTC)
+    assert m.fresh_until(["minute", "quarter"], now) == dt.datetime(2026, 10, 28, 2, 23, tzinfo=UTC)
+    assert m.fresh_until(["summary"], now) == now + fresh.HOLD_MAX          # 02:30, capped at 5 minutes
+    late = now + dt.timedelta(minutes=3)                                     # the minute feed is behind
+    assert m.fresh_until(["minute"], late) == late
+    unknown = fresh.Marks(None, None, None, None, now)                       # dev: no job, no data
+    assert unknown.fresh_until(["quarter"], now) == now and unknown.fresh_until(["minute"], now) == now
+    assert m.version(["quarter", "minute"]) == (dt.datetime(2026, 10, 28, 2, 22, tzinfo=UTC), "job run")
+
+
+@pytest.mark.parametrize("start, end, interval, want", [
+    ("2026-10-28T03:00", "2026-10-28T09:00", "auto", ("minute", "quarter")),
+    ("2026-10-27T09:00", "2026-10-28T09:00", "auto", ("quarter",)),
+    ("2026-10-28T03:00", "2026-10-28T09:00", "15min", ("quarter",)),
+])
+def test_readings_sources_follow_auto_interval(start, end, interval, want):
+    w = timewin.window(start, end, ZoneInfo("Asia/Jakarta"), 92)
+    assert reads.readings_sources(w, interval) == want

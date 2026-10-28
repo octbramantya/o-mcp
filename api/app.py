@@ -25,6 +25,7 @@ import jsonschema
 import psycopg
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 
@@ -33,6 +34,7 @@ from plant.errors import PlantError
 from . import aggregate, auth, reads, values
 from .cache import Cache
 from .db import Database, one, rows
+from .fresh import Freshness
 from .tenants import TenantError, Tenants
 
 log = logging.getLogger("o-mcp-api")
@@ -42,6 +44,8 @@ ROLES = ("user", "admin", "super_admin")
 ADMINS = ("admin", "super_admin")
 USER_COLUMNS = ("id, email, display_name, role, tenant_id, must_change_password, created_at, password_changed_at,"
                 " last_login_at, disabled_at")
+FRESH_HEADER = "X-Fresh-Until"   # when a plant answer's data can next move, UTC (api/fresh.py)
+GZIP_MIN = 1024                 # bytes; plant answers run to hundreds of KB of JSON
 
 
 class ApiError(Exception):
@@ -569,7 +573,8 @@ async def get_values(request, tenant, _s, _body):
     # relative ranges from many viewers differ by seconds: one key per minute (design/frontend.md §6)
     key = ("values", tenant.id, q["code"], tuple(ids), values._floor(w.start, values.MINUTE),
            values._ceil(w.end, values.MINUTE))
-    return Json(await request.app.state.cache.get(key, lambda: values.run(tenant, q, ids, w)))
+    return await _cached(request, tenant, key, lambda: values.run(tenant, q, ids, w),
+                         values.fresh_sources(w, q, tenant.vocab))
 
 
 @endpoint(plant=True)
@@ -577,16 +582,29 @@ async def get_aggregate(request, tenant, _s, _body):
     statistic, q, ids, w = aggregate.parse(request.query_params, tenant)
     key = ("aggregate", tenant.id, q["code"], tuple(ids), values._floor(w.start, values.MINUTE),
            values._ceil(w.end, values.MINUTE))
-    return Json(await request.app.state.cache.get(key, lambda: aggregate.run(tenant, statistic, q, ids, w)))
+    sources = values.fresh_sources(w, q, tenant.vocab) if statistic == "TOTAL" else reads.readings_sources(w, "auto")
+    return await _cached(request, tenant, key, lambda: aggregate.run(tenant, statistic, q, ids, w), sources)
 
 
 def _read(read):
     """A plant route answered by one of api/reads.py's reads, through the cache."""
     @endpoint(plant=True)
     async def handler(request, tenant, _s, _body):
-        key, compute = read(tenant, request.query_params)
-        return Json(await request.app.state.cache.get(key, compute))
+        return await _cached(request, tenant, *read(tenant, request.query_params))
     return handler
+
+
+async def _cached(request, tenant, key, compute, sources):
+    """The answer through the cache (api/cache.py). One read from telemetry is kept while its sources
+    haven't moved, and says in FRESH_HEADER when they next can (api/fresh.py): the browser doesn't ask
+    again before then. One from the graph alone carries no header."""
+    state = request.app.state
+    if not sources:
+        return Json(await state.cache.get(key, compute))
+    marks = await state.fresh.marks(tenant)
+    doc = await state.cache.get(key, compute, marks.version(sources))
+    until = marks.fresh_until(sources).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return Json(doc, headers={FRESH_HEADER: until})
 
 
 # -- the app --------------------------------------------------------------------------------------
@@ -681,8 +699,9 @@ def build(config):
         Route("/api/now", _read(reads.node_now), methods=["GET"]),
         Route("/api/status", _read(reads.data_status), methods=["GET"]),
     ]
-    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(AccessLog)])
-    app.state.db, app.state.tenants, app.state.cache = db, tenants, Cache()
+    app = Starlette(routes=routes, lifespan=lifespan,
+                    middleware=[Middleware(AccessLog), Middleware(GZipMiddleware, minimum_size=GZIP_MIN)])
+    app.state.db, app.state.tenants, app.state.cache, app.state.fresh = db, tenants, Cache(), Freshness()
     return app
 
 

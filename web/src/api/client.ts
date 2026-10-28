@@ -18,7 +18,18 @@ async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown, 
   if (!res.ok) {
     throw new ApiError(res.status, data?.error ?? 'failed', data?.message ?? `The request failed (${res.status}).`);
   }
+  const until = Date.parse(res.headers.get('x-fresh-until') ?? '');
+  if (data !== null && typeof data === 'object' && !Number.isNaN(until)) fresh.set(data, until);
   return data as T;
+}
+
+// When each plant answer's data can next change, from its X-Fresh-Until (api/fresh.py), by answer:
+// two widgets sharing a query share the answer, and with it the time.
+const fresh = new WeakMap<object, number>();
+
+/** When an answer's data can next change (ms since the epoch), or null when the answer doesn't say. */
+export function freshUntil(answer: unknown): number | null {
+  return answer !== null && typeof answer === 'object' ? fresh.get(answer) ?? null : null;
 }
 
 type Params = Record<string, string | number | boolean | null | undefined>;

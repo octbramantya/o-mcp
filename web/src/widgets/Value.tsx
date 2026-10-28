@@ -12,6 +12,7 @@ import { show } from '../time/range';
 import { Field, Findings, fmt, Hint, NodeList, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
+import { useHeldView } from './fresh';
 
 interface S {
   quantity: string;
@@ -31,9 +32,10 @@ const DATA: Record<string, Record<string, string>> = {
   SPREAD: { minute: 'from 1-minute readings', '15min': 'from 15-minute readings (the last reading in each 15 minutes)' },
 };
 
-function View({ settings, entity, view }: WidgetProps<S>) {
+function View({ settings, entity, view: live }: WidgetProps<S>) {
   const linked = nodeOf(entity, null);
   const nodes = [...new Set(linked !== null ? [linked, ...settings.nodes] : settings.nodes)];
+  const [view, track] = useHeldView(live, [settings, nodes]);
   const q = useQuery({
     queryKey: ['plant', view.tenant, 'aggregate', settings.quantity, nodes, view.start, view.end, view.tick],
     queryFn: ({ signal }) => get<Aggregate>('/api/aggregate', {
@@ -42,6 +44,7 @@ function View({ settings, entity, view }: WidgetProps<S>) {
     enabled: nodes.length > 0,
     placeholderData: (prev) => prev,
   });
+  track(q.data);
   if (!nodes.length) return <Hint>Choose nodes in the widget's settings, or follow a channel.</Hint>;
   return (
     <Pending q={q}>

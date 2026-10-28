@@ -11,6 +11,10 @@ export interface View {
   /** The range's last day: topology is drawn on it (decision 20). */
   asOf: string;
   tick: number;
+  /** The range as the dashboard holds it (`from`, `to`): a tick that leaves it alone only moves it on. */
+  range: string;
+  /** Counts the Refresh button's presses: a press reloads every widget, whatever its data says. */
+  forced: number;
   tz: string;
   tenant: number;
 }

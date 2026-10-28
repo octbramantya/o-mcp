@@ -415,6 +415,11 @@ def test_plant_reads(env, client):
     short = c.get("/api/readings", params=q).json()
     strictly(short, "readings-v1.schema.json")
     assert short["query"]["interval"] == "minute" and short["query"]["node_id"] == A5
+    # An answer read from telemetry says when its data can next move (api/fresh.py), one from the graph
+    # alone doesn't; anything over a KB is gzipped.
+    r = c.get("/api/readings", params=q)
+    assert r.json() == short and r.headers["x-fresh-until"].endswith("Z") and r.headers["content-encoding"] == "gzip"
+    assert "x-fresh-until" not in c.get("/api/vocabulary").headers
     whole = c.get("/api/readings", params=q | {"interval": "window"}).json()
     assert whole["query"]["interval"] == "window"
     for s, w in zip(short["series"], whole["series"], strict=True):

@@ -59,8 +59,10 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', back); };
   }, [doc.refresh, refresh]);
 
-  const view: View = useMemo(() => ({ ...resolveRange(doc.time, tz, new Date(s.tick)), tick: s.tick, tz, tenant }),
-    [doc.time, tz, s.tick, tenant]);
+  const view: View = useMemo(() => ({
+    ...resolveRange(doc.time, tz, new Date(s.tick)), tick: s.tick, range: `${doc.time.from} ${doc.time.to}`,
+    forced: s.forced, tz, tenant,
+  }), [doc.time, tz, s.tick, s.forced, tenant]);
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => s.dirty && currentLocation.pathname !== nextLocation.pathname);
   useEffect(() => {
@@ -99,7 +101,7 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
         <Channels />
         <TimePicker value={doc.time} onChange={(time) => s.change((d) => ({ ...d, time }))} />
         <RefreshPicker value={doc.refresh} onChange={(refresh) => s.change((d) => ({ ...d, refresh }))} />
-        <button type="button" onClick={refresh} title="Resolve the range again and reload every widget">Refresh</button>
+        <button type="button" onClick={() => refresh(true)} title="Resolve the range again and reload every widget">Refresh</button>
         {s.readOnly ? (
           <button type="button" onClick={() => copy.mutate()}>Copy to my dashboards</button>
         ) : (

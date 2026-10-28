@@ -10,6 +10,7 @@ import type { Subgraph } from '../types/formats/subgraph';
 import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
+import { useHeldView } from './fresh';
 
 interface S {
   node: number | null;
@@ -105,8 +106,9 @@ function Devices({ devices, edges }: { devices: Device[]; edges: Edge[] }) {
   );
 }
 
-function View({ settings, entity, select, view }: WidgetProps<S>) {
+function View({ settings, entity, select, view: live }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
+  const [view, track] = useHeldView(live, [settings, node]);
   // The same keys as the Plant section and Meters widgets, so a dashboard with both asks once.
   const s = useQuery({
     queryKey: ['plant', view.tenant, 'section', node, 1, 'down', view.asOf],
@@ -120,6 +122,7 @@ function View({ settings, entity, select, view }: WidgetProps<S>) {
     enabled: node !== null,
     placeholderData: (prev) => prev,
   });
+  track(m.data);
   if (node === null) return <Hint>Choose a node in the widget's settings, or follow a channel.</Hint>;
   return (
     <Pending q={s}>
