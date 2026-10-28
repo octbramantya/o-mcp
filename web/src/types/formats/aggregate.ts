@@ -50,6 +50,10 @@ export interface Aggregate {
      * COUNTER: a running register; SAMPLE: an instantaneous value; DERIVED: computed from two counters (PF_TRUE).
      */
     reading: "COUNTER" | "SAMPLE" | "DERIVED";
+    /**
+     * True for a meter's power factor register (PF_TOTAL, PF_A..C, DPF_*): each reading was decoded to 0..1 before any statistic, whatever the meter model's encoding (Schneider's quadrant code on -2..2, a signed -1..1, an unsigned 0..1), so leading and lagging are no longer told apart. A reading of -2, Schneider's no load, is left out.
+     */
+    decoded: boolean;
   };
   /**
    * TOTAL: each row's total holds the figure, and min, mean, p95 and max are null. SPREAD: the other way round.

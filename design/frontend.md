@@ -37,6 +37,8 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 23 | **Figures show 2 decimals, thousands separated**, in every widget and chart tooltip, unless a widget says otherwise (`fmt` in `web/src/widgets/common.tsx`). Decided 2026-10-27 | a panel's decimals |
 | 24 | **Finding a node is the left panel's job, not a widget's.** The node finder widget is retired; its filters (utility, type with its subtypes, metered) are in the Find tab, which groups today's nodes by type, so the type needs no column. A saved finder is drawn as a placeholder saying where it went (§5). Decided 2026-10-27 | — |
 | 25 | **Readings widgets share their tooltip.** Hovering one shows every Readings chart's tooltip and pointer line at the same time, each chart snapping to its own nearest point, whatever its node, quantities or interval. Matched by time, not by `echarts.connect`, which places the others by the hovered chart's series and point index. On always; dashboard settings to turn it off come later. Stat's line doesn't join. Decided 2026-10-27 | shared tooltip (graph tooltip) |
+| 26 | **A Compare widget: one quantity at several nodes as lines over the range**, Readings turned round, as a widget type of its own. Counters are added over a node's meters, sampled quantities a line per meter, `PF_TRUE` Stat's formula per interval; unmetered nodes are listed as "no meter"; at most 10 nodes; no stacking for now (§5, "Compare"). Decided 2026-10-28 | — |
+| 27 | **Readings draws each unit on a scale of its own**: one axis for one unit, a dual axis (left and right) for two, and from three units one panel per unit, stacked on one time axis. A setting draws panels for two units too (§5, "Readings' units"). Decided 2026-10-28 | a series override's axis placement; a panel per unit |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.
@@ -262,6 +264,11 @@ A first widget list, from what the MCP server and the database already answer:
 | Readings | several nodes' quantities over the range, on one chart or stacked | `meter_readings`, at the resolution of §3 |
 | Aggregate (was Value) | one quantity across several nodes over the range: a counter's total, a sampled quantity's minimum, average, 95th percentile and maximum per meter (below) | `node_value` for counters; a new read for sampled quantities |
 | Stat | one quantity at one node as one figure over the range, with its line (below) | `/api/aggregate` and `/api/readings` |
+| Compare | one quantity at several nodes over the range, a line per node or meter (below) | `/api/readings`, one call per node |
+| Now | the last reading of a node's meters | `telemetry_data`, latest row per device |
+| Node information | what feeds a node and what it feeds; its devices' brand, model, type, gateway and Modbus slave address, on the node or an edge (below) | `/api/section` (one level), `/api/meters` |
+| Sankey | where energy, water or air goes, by category | `graph.sankey` |
+| Diagnostics | silent meters, negative residuals, missing required properties | `graph.sankey_diagnostics`, `graph.v_property_gaps` |
 
 **Aggregate (decided and built 2026-10-27).** The Value widget, renamed (§1, 21). Its use: one
 quantity, voltage say, across a board and the boards it feeds (`INCOMING_PLN` and its direct
@@ -286,10 +293,12 @@ children), to see how that quantity behaved over the range at each of them.
 - **How much a figure rests on.** Each row shows its reading count against those expected for the
   range, and the data's end, as Value's footer does now.
 - **Quantities offered**: those the selected nodes' meters report, grouped (voltage, current,
-  power, harmonics, energy), less the eight quadrant-encoded power factor registers (`PF_TOTAL`,
-  `PF_A`..`PF_C`, `DPF_TOTAL`, `DPF_A`..`DPF_C`), whose minimum or maximum is wrong until they are
-  decoded (`design/mcp-tools.md`, gap 4). `PF_TRUE`, worked out from the active and reactive
-  energy, is safe.
+  power factor, power, harmonics, energy). The eight power factor registers (`PF_TOTAL`,
+  `PF_A`..`PF_C`, `DPF_TOTAL`, `DPF_A`..`DPF_C`) are offered since 2026-10-28 as "decoded, 0..1":
+  each reading is decoded to its magnitude before any statistic, as Readings decodes it
+  (`design/mcp-tools.md`, gap 4), so leading and lagging are not told apart, and the answer says so
+  (`quantity.decoded`). `PF_TRUE`, worked out from the active and reactive energy, sits beside them:
+  the power factor of the range's energy, where the registers give the meter's own readings.
 - **Unmetered nodes are left out for now** for sampled quantities: the only one the solver can
   give them is `THD_VOLTAGE_LN`, their feeder's.
 - **Unchanged underneath.** The widget's type stays `value` in saved dashboards (the document
@@ -315,7 +324,9 @@ channel, one quantity, one figure, and a line under it.
 - **The line** is `/api/readings` at the automatic interval (§3): the chosen meter's values, or a
   counter's consumption added over the node's meters. That sum is the raw registers, so on a node
   whose measurement rows weight a meter (`LVMDB_A4`) the line's shape is right but its area isn't
-  the figure. `PF_TRUE` and unmetered nodes have no line. It can be turned off.
+  the figure. `PF_TRUE`'s line (since 2026-10-28) is its formula per interval, P / sqrt(P² + Q²) of
+  the active and reactive energy each added over the node's meters, so the figure is the range's
+  and the line each interval's. Unmetered nodes have no line. It can be turned off.
 - **Quantities offered** are Aggregate's.
 - **No thresholds or colours yet.** The figure's size follows the box.
 
@@ -336,10 +347,63 @@ worksheet: one node, from the settings or a channel, on the range's last day.
   address: `data_concentrator.number` is a leftover of an earlier design that nothing reads, and
   is left out.
 - An edge out of the node shows no meter: a child's feeder meter is in the child's own answer.
-| Now | the last reading of a node's meters | `telemetry_data`, latest row per device |
-| Node information | what feeds a node and what it feeds; its devices' brand, model, type, gateway and Modbus slave address, on the node or an edge (below) | `/api/section` (one level), `/api/meters` |
-| Sankey | where energy, water or air goes, by category | `graph.sankey` |
-| Diagnostics | silent meters, negative residuals, missing required properties | `graph.sankey_diagnostics`, `graph.v_property_gaps` |
+
+**Readings' units (decided and built 2026-10-28).** Readings takes up to 8 quantities, and the
+vocabulary has 14 units (V, A, kW, kVA, kVAr, kWh, %, Hz, °C, decoded power factor and more), but
+the chart has drawn every line on one y-axis, so current flattens voltage and THD flattens
+everything else. Each unit gets a scale of its own (§1, 27):
+
+- **One unit**: one axis, as before.
+- **Two units**: a **dual axis**. The first unit in the quantity list is on the left, the second on the right;
+  each axis is named by its unit, and the legend marks the right axis's lines "(right)".
+- **Three units or more**: **one panel per unit**, stacked in the widget on one shared time axis,
+  labelled only under the last panel. Each panel is titled by its unit and holds every line of that
+  unit, so two voltages still share one scale. More axes on one chart are not offered: past two,
+  which line reads on which axis can't be told at a glance.
+- **A setting, "Axes": Automatic (the above) or One panel per unit**, which draws panels for two
+  units as well.
+- **What counts as a unit**: the quantity term's `unit`; decoded power factor (0..1, no unit) is one
+  unit of its own, and every `%` quantity (THD, harmonics, unbalance) shares one.
+- **Scales** stay as they are per axis or panel: counters' bars start at zero, sampled quantities'
+  lines fit their data.
+- **The shared tooltip** (§1, 25) keeps working: the panels of one widget share one pointer line
+  (ECharts' `axisPointer.link`) and one tooltip, the time once and every line at it in the legend's
+  order, and a tooltip relayed from another chart is placed inside the first panel, not at the
+  widget's mid-height, which can fall between two panels.
+- **Every time axis spans the range**, not the data's extent, so panels line up and a meter that
+  stopped reading shows where it stopped.
+- Panels need height: a widget showing several is drawn taller by its user, not resized for them.
+- Not chosen: a third or fourth y-axis, values normalised to each line's maximum (hides the values
+  engineers read), and limiting Readings to one unit. Drawing a counter as its average rate per
+  interval (kWh in an hour as kW), so energy and power share an axis, is left for later as a setting
+  of its own.
+
+**Compare (decided and built 2026-10-28).** The other way round from Readings: one quantity,
+several nodes, a line each over the range. Aggregate's figures drawn over time, under its own type
+`compare`, since Readings keeps one node and several quantities and each setting would otherwise
+mean two things (§1, 26).
+
+- **Settings** are Aggregate's (the quantity, offered and grouped as there, and the nodes, a
+  channel's node first) plus Readings' interval. **At most 10 nodes**: past that a line chart
+  stops being readable.
+- **Counters**: one line per node, the consumption **added over the node's meters**, as Stat's
+  line. That sum is the raw registers, so a node whose measurement rows weight a meter
+  (`LVMDB_A4`, 048) or meter it on its feeder edge (`LVMDB_A5`, 046) has the right shape but not
+  the solver's area.
+- **Sampled quantities**: **one line per meter**, as Aggregate's rows: two meters' voltages aren't
+  merged. The legend names the node, and the meter only where a node has more than one.
+- **`PF_TRUE`**: Stat's formula per interval, P / sqrt(P² + Q²) of the active and reactive energy
+  each added over the node's meters.
+- **Unmetered nodes** have no line; they are listed under the chart as "no meter", as Aggregate
+  lists them. Which they are comes from `GET /api/meters` on the range's last day (the devices
+  readings would read, shared with the Meters widget's cache), so no readings call is made for them.
+- **No stacking for now.** Stacked bars of energy per board would count a board and its own
+  children twice; it waits until the widget can tell when one chosen node feeds another.
+- **Data**: `GET /api/readings` once per node with the one quantity, so a Stat on the same node
+  shares the cached answer, and the 10,000-point limit holds per node. A `nodes=` route over one
+  query comes only if that proves slow; it would need a format of its own, since `o-mcp/readings`
+  v1 has one `query.node`.
+- It joins the Readings charts' shared tooltip (§1, 25).
 
 Diagnosed meter faults are shown, never hidden by the frontend. The analysis tools still to come
 (power factor, harmonics, board loading; `design/mcp-catalogue.md` §2, layer 4) become widgets

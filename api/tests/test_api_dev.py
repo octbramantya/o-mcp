@@ -517,10 +517,16 @@ def test_aggregate(env, client):
         [(x["node_id"], x["value"], x["origin"]) for x in v["values"]]
     assert all(x["min"] is None and x["samples"] is None for x in t["rows"])
     pf = aggregate(c, [PLN], DAY, f"{DAY[:-2]}22", "PF_TRUE").json()
-    assert pf["statistic"] == "TOTAL" and pf["quantity"]["reading"] == "DERIVED"
+    assert pf["statistic"] == "TOTAL" and pf["quantity"]["reading"] == "DERIVED" and not pf["quantity"]["decoded"]
+    # The meter's power factor: a spread of readings decoded to 0..1.
+    m = aggregate(c, [PLN, A5], f"{DAY}T00:00", f"{DAY[:-2]}22T00:00", "PF_TOTAL").json()
+    strictly(m, "aggregate-v1.schema.json")
+    assert m["statistic"] == "SPREAD" and m["quantity"]["decoded"]
+    assert any(x["samples"] for x in m["rows"]), m["rows"]
+    assert all(0 <= x[k] <= 1 for x in m["rows"] if x["samples"] for k in ("min", "mean", "p95", "max")), m["rows"]
 
-    # Refused: the encoded power factor, a counter with no rule, more than a year, an unknown node.
-    for q, msg in (("PF_TOTAL", "PF_TRUE"), ("ACTIVE_ENERGY_NET", "no rule"), ("NOPE", "quantity code")):
+    # Refused: a counter with no rule, more than a year, an unknown node.
+    for q, msg in (("ACTIVE_ENERGY_NET", "no rule"), ("NOPE", "quantity code")):
         r = aggregate(c, [PLN], DAY, f"{DAY[:-2]}22", q)
         assert r.status_code == 400 and msg in r.json()["message"], (q, r.json())
     assert aggregate(c, [PLN], "2025-01-01", "2026-10-22", "VOLTAGE_LN_AVG").status_code == 400

@@ -24,8 +24,13 @@ const ORIGIN: Record<string, string> = {
   CHILDREN: 'from its children', INHERITED: "its feeder's", DERIVED: 'derived', NONE: 'no value', NO_METER: 'no meter',
 };
 
-// quadrant-encoded power factor registers: not offered (api/aggregate.py); PF_TRUE is a total
-const PF_ENCODED = new Set(['PF_TOTAL', 'PF_A', 'PF_B', 'PF_C', 'DPF_TOTAL', 'DPF_A', 'DPF_B', 'DPF_C']);
+// the meters' power factor registers, decoded to 0..1 by the API (plant/vocab.py); PF_TRUE is a total
+export const PF_ENCODED = new Set(['PF_TOTAL', 'PF_A', 'PF_B', 'PF_C', 'DPF_TOTAL', 'DPF_A', 'DPF_B', 'DPF_C']);
+
+/** What the picker shows for a code: a power factor register says it is decoded. */
+export function quantityLabel(code: string, unit: string | null): string {
+  return `${code}${PF_ENCODED.has(code) ? ' (decoded, 0..1)' : unit ? ` (${unit})` : ''}`;
+}
 
 const DATA: Record<string, Record<string, string>> = {
   TOTAL: { minute: 'from 1-minute readings', '15min': 'from 15-minute data', day: 'from the daily summary' },
@@ -107,6 +112,7 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
             </table>
             <div className="foot muted">
               {r.quantity.code}, {DATA[r.statistic][r.resolution] ?? r.resolution}, {show(r.window.start)} to {show(r.window.end)}
+              {r.quantity.decoded && ' · decoded to 0..1, leading and lagging alike'}
               {r.data_until && ` · data until ${show(r.data_until)}`}
             </div>
             <Findings findings={r.findings} />
@@ -119,6 +125,7 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
 
 /** The kind of quantity, for grouping the picker. */
 function group(q: { code: string; unit: string | null; total: boolean }): string {
+  if (q.code === 'PF_TRUE' || PF_ENCODED.has(q.code)) return 'Power factor';
   if (q.total) return 'Totals';
   if (q.unit === 'V') return 'Voltage';
   if (q.unit === 'A') return 'Current';
@@ -128,10 +135,10 @@ function group(q: { code: string; unit: string | null; total: boolean }): string
   if (q.code.startsWith('THD_') || /^H\d+_/.test(q.code)) return 'Harmonics';
   return 'Other';
 }
-const GROUPS = ['Totals', 'Voltage', 'Current', 'Power', 'Frequency', 'Harmonics', 'Unbalance', 'Other'];
+const GROUPS = ['Totals', 'Power factor', 'Voltage', 'Current', 'Power', 'Frequency', 'Harmonics', 'Unbalance', 'Other'];
 
 /** What the widget offers: counters with a solver rule and PF_TRUE (totals), and every sampled
- * quantity but the encoded power factor; sampled ones narrowed to what the chosen nodes' meters
+ * quantity, the power factor registers decoded; sampled ones narrowed to what the chosen nodes' meters
  * reported in the last week, once there are chosen nodes. */
 export function useOffered(nodes: number[], keep: string) {
   const v = useVocabulary().data;
@@ -149,8 +156,7 @@ export function useOffered(nodes: number[], keep: string) {
   const all = [
     ...v.quantities.filter((q) => q.node_value && q.reading === 'COUNTER').map((q) => ({ code: q.code, unit: q.unit, total: true })),
     ...v.derived_quantities.map((d) => ({ code: d.code, unit: d.unit, total: true })),
-    ...v.quantities.filter((q) => q.reading === 'SAMPLE' && !PF_ENCODED.has(q.code)
-                               && (!narrow || reported.has(q.code) || q.code === keep))
+    ...v.quantities.filter((q) => q.reading === 'SAMPLE' && (!narrow || reported.has(q.code) || q.code === keep))
       .map((q) => ({ code: q.code, unit: q.unit, total: false })),
   ];
   return GROUPS.map((g) => [g, all.filter((q) => group(q) === g)] as const).filter(([, qs]) => qs.length);
@@ -164,7 +170,7 @@ export function OfferedSelect({ nodes, value, onChange }: { nodes: number[]; val
       {!groups.length && <option value={value}>Loading quantities…</option>}
       {groups.map(([g, qs]) => (
         <optgroup key={g} label={g}>
-          {qs.map((q) => <option key={q.code} value={q.code}>{q.code}{q.unit ? ` (${q.unit})` : ''}</option>)}
+          {qs.map((q) => <option key={q.code} value={q.code}>{quantityLabel(q.code, q.unit)}</option>)}
         </optgroup>
       ))}
     </select>

@@ -8,8 +8,9 @@ for the Aggregate widget (design/frontend.md §1 decision 21, §5 "Aggregate").
 
 A spread reads minute telemetry_data for a window of 6 hours or less within the minute data kept,
 and 15-minute data otherwise, as Readings does; a total takes /api/values' resolution. The answer
-says which. The window is at most a year. The eight quadrant-encoded power factor registers are
-refused, decided 2026-10-27; PF_TRUE is a total.
+says which. The window is at most a year. The eight power factor registers (PF_TOTAL, PF_A..C,
+DPF_*) are a SPREAD of readings decoded to 0..1 first, as readings decodes them (design/mcp-tools.md,
+gap 4): refused until 2026-10-28, when the decode was put in front of them. PF_TRUE is a total.
 """
 from plant import aggregate, timewin
 from plant import vocab as vocabulary
@@ -28,9 +29,6 @@ def quantity(v, code):
              if q["kind"] == "DERIVED" or v.quantity(q["code"])["reading"] == "COUNTER"}
     if code in total:
         return "TOTAL", total[code]
-    if code in vocabulary.PF_ENCODED:
-        raise PlantError(f"{code} is a quadrant-encoded power factor register, not offered here; PF_TRUE is the "
-                         f"node's power factor.")
     t = v.quantity(code) if code else None
     if t and t["reading"] == "SAMPLE":
         return "SPREAD", t
@@ -86,5 +84,5 @@ async def run(tenant, statistic, q, ids, w):
     return {"schema": "o-mcp/aggregate", "version": 1,
             "query": {"tenant": tenant.id, "quantity": q["code"], "nodes": ids, "requested": w.as_json()},
             "quantity": {"code": q["code"], "unit": q["unit"], "description": q["description"],
-                         "reading": reading},
+                         "reading": reading, "decoded": q["code"] in vocabulary.PF_ENCODED},
             "statistic": statistic, **body}

@@ -20,6 +20,9 @@ import the file; then at phone width. Last, three Readings widgets of other node
 intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
 Then a Node information widget: a board's feeders and loads, its meter on both the board and its
 feeder edge, with gateway and slave address, and a click on a load moving the channel there.
+Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
+and two Compare widgets, power across two loads and energy across boards with an unmetered panel
+listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
 """
 import argparse
 import asyncio
@@ -40,6 +43,7 @@ from server.config import parse_env_file  # noqa: E402
 PASSWORD = "web check password 2026"
 DAY = "2026-10-21"       # a site day with minute data, 15-minute buckets and the daily summary on dev
 TOOLTIP_NODES = ("AJL1", "COMP_ELITE")    # metered, with current and power in 15-minute buckets on dev
+UNMETERED = "FLR_124"    # an unmetered panel on LVMDP_SPINNING_1 (056)
 INFO_NODE = "LVMDB_A5"   # its meter LVA5 is on its feeder edge from FACTORY_AB (energy) and on the board (THD)
 
 
@@ -160,6 +164,58 @@ def node_info(page, out, nodes):
     page.wait_for_selector(".channel:has-text('COMP_300HP')")
     page.wait_for_selector(".widget .pad:has-text('COMP_300HP')", timeout=180_000)
     page.screenshot(path=str(out / "8b-node-info-followed.png"))
+    return found
+
+
+def units_and_compare(page, out, nodes):
+    """Readings of two units (current and power: a dual axis) and of three (with THD: one panel per
+    unit), and Compare: ACTIVE_POWER at two loads, ACTIVE_ENERGY_DELIVERED at two boards and an
+    unmetered panel, which is listed as having no meter. Each chart draws, none errs, and the panel
+    chart shows its tooltip when the dual-axis one is hovered."""
+    a, b = (nodes[c] for c in TOOLTIP_NODES)
+    def readings(wid, x, quantities):
+        return {"id": wid, "type": "readings", "title": wid, "x": x, "y": 0, "w": 12, "h": 9, "channel": None,
+                "settings": {"node": a, "quantities": quantities, "interval": "15min", "axes": "auto"}}
+    def compare(wid, x, quantity, ids):
+        return {"id": wid, "type": "compare", "title": wid, "x": x, "y": 9, "w": 12, "h": 9, "channel": None,
+                "settings": {"quantity": quantity, "nodes": ids, "interval": "auto"}}
+    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None, "channels": {}, "widgets": [
+        readings("Two units", 0, ["CURRENT_A", "ACTIVE_POWER"]),
+        readings("Three units", 12, ["CURRENT_A", "ACTIVE_POWER", "THD_VOLTAGE_LN"]),
+        compare("Power at two loads", 0, "ACTIVE_POWER", [a, b]),
+        compare("Energy at boards", 12, "ACTIVE_ENERGY_DELIVERED",
+                [nodes["LVMDP_SPINNING_1"], nodes["LVMDB_A1"], nodes[UNMETERED]])]}
+    f = out / "units-compare.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-28T00:00:00Z",
+                             "title": "Units and Compare", "format_version": 1, "document": doc}))
+    discard = page.locator(".toolbar button:has-text('Discard')")
+    if discard.count():                   # node_info's click left the channel changed
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.wait_for_selector("text=Dashboards · PRS")
+    page.set_input_files(".file-button input", str(f))
+    page.wait_for_url(lambda u: "/dashboards/" in u)
+    page.wait_for_function("() => document.querySelectorAll('.widget .chart canvas').length === 4", timeout=180_000)
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
+    page.wait_for_timeout(1500)
+    page.screenshot(path=str(out / "9-units-compare.png"))
+    found = []
+    energy = page.locator(".widget").nth(3).inner_text()
+    if f"no meter: {UNMETERED}" not in energy:
+        found.append(f"compare: {UNMETERED} isn't listed as having no meter: {energy!r}")
+    box = page.locator(".widget .chart").nth(0).bounding_box()
+    page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] / 2, steps=5)
+    page.wait_for_timeout(600)
+    page.screenshot(path=str(out / "9b-units-tooltip.png"))
+    shown = page.evaluate("""() => [...document.querySelectorAll('.widget .chart')].map(c => {
+        const t = c.children[1];
+        const s = t && getComputedStyle(t);
+        return !!t && s.display !== 'none' && s.opacity !== '0' && !!t.innerText.trim();
+    })""")
+    if not all(shown):
+        found.append(f"units: hovering the dual-axis chart doesn't show every chart's tooltip: {shown}")
+    page.mouse.move(5, 5)
     return found
 
 
@@ -288,6 +344,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.set_viewport_size({"width": 1600, "height": 1000})
     found += shared_tooltip(page, out, nodes)
     found += node_info(page, out, nodes)
+    found += units_and_compare(page, out, nodes)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 
@@ -304,7 +361,7 @@ def main():
     raw = parse_env_file(a.env_file)
     su = dict(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, user=raw["DB_USER"],
               password=raw["DB_PASSWORD"], sslmode=cfg.db_sslmode)
-    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE,))
+    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE, UNMETERED, "LVMDP_SPINNING_1", "LVMDB_A1"))
     run = uuid.uuid4().hex[:8]
     email = f"web-check+{run}@example.com"
     out = pathlib.Path(a.out)

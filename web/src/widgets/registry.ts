@@ -1,5 +1,6 @@
 // Every widget type, by the key a dashboard stores (design/frontend.md §5). A stored type missing
 // here is drawn as a placeholder, never dropped.
+import { compare } from './Compare';
 import type { WidgetType } from './contract';
 import { diagnostics } from './Diagnostics';
 import { meters } from './Meters';
@@ -11,7 +12,7 @@ import { section } from './Section';
 import { stat } from './Stat';
 import { value } from './Value';
 
-export const WIDGETS: WidgetType<any>[] = [value, stat, readings, now, section, meters, nodeinfo, sankey, diagnostics];
+export const WIDGETS: WidgetType<any>[] = [value, stat, readings, compare, now, section, meters, nodeinfo, sankey, diagnostics];
 
 export const byType = new Map(WIDGETS.map((w) => [w.type, w]));
 

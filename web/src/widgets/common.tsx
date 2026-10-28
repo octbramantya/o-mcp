@@ -123,6 +123,16 @@ export function Hint({ children }: { children: ReactNode }) {
 const groups = new Map<string, Set<echarts.ECharts>>();
 let hovered: echarts.ECharts | null = null;
 
+/** Where a relayed tooltip goes: the middle of the first grid when its place is given in percent (a
+ * chart of panels, chart.ts), else the middle of the chart, which in a panel chart can fall between two. */
+function tipY(c: echarts.ECharts): number {
+  const g = (c.getOption().grid as { top?: unknown; height?: unknown }[] | undefined)?.[0];
+  const pct = (v: unknown) => (typeof v === 'string' && v.endsWith('%') ? parseFloat(v) / 100 : null);
+  const top = pct(g?.top);
+  const height = pct(g?.height);
+  return top !== null && height !== null ? c.getHeight() * (top + height / 2) : c.getHeight() / 2;
+}
+
 function join(group: string, c: echarts.ECharts): () => void {
   const members = groups.get(group) ?? new Set<echarts.ECharts>();
   groups.set(group, members);
@@ -142,7 +152,7 @@ function join(group: string, c: echarts.ECharts): () => void {
     if (!x) { hide(); return; }
     for (const o of others()) {
       const px = o.convertToPixel({ xAxisIndex: 0 }, x.value);
-      if (Number.isFinite(px)) o.dispatchAction({ type: 'showTip', x: px, y: o.getHeight() / 2 });
+      if (Number.isFinite(px)) o.dispatchAction({ type: 'showTip', x: px, y: tipY(o) });
       else o.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' });
     }
   });
