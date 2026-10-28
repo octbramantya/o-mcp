@@ -318,7 +318,26 @@ channel, one quantity, one figure, and a line under it.
   the figure. `PF_TRUE` and unmetered nodes have no line. It can be turned off.
 - **Quantities offered** are Aggregate's.
 - **No thresholds or colours yet.** The figure's size follows the box.
+
+**Node information (built 2026-10-28).** For an operator checking a device without the site's
+worksheet: one node, from the settings or a channel, on the range's last day.
+
+- **Fed by** and **Feeds**: the node's edges in and out, each with the node at the other end, its
+  type, the edge type and utility, and "no flow" on a capacitor bank's edge. A click on a node puts
+  it on the channel. It is the plant section one level down, which lists every edge into the node.
+- **Devices**: each device on the node or its feeder edges, with where the model reads it (node,
+  edge from X, or both, as `LVA5` on `LVMDB_A5` since 046: energy on the transformer edge, voltage
+  THD on the board), brand and model, device type, the gateway's IP address and port, the Modbus
+  slave address, and whether it reports.
+- The device details are `public.devices.metadata` as recorded (`device_info`,
+  `data_concentrator`, `communication`), given in `o-mcp/meters` v1 since 2026-10-28 (`brand`,
+  `model`, `protocol`, `gateway`, `slave_id`, and each `graph_quantities` entry's `attached_to` and
+  `edge`), so the agent's `node_meters` has them too (agreed 2026-10-28). A gateway is its IP
+  address: `data_concentrator.number` is a leftover of an earlier design that nothing reads, and
+  is left out.
+- An edge out of the node shows no meter: a child's feeder meter is in the child's own answer.
 | Now | the last reading of a node's meters | `telemetry_data`, latest row per device |
+| Node information | what feeds a node and what it feeds; its devices' brand, model, type, gateway and Modbus slave address, on the node or an edge (below) | `/api/section` (one level), `/api/meters` |
 | Sankey | where energy, water or air goes, by category | `graph.sankey` |
 | Diagnostics | silent meters, negative residuals, missing required properties | `graph.sankey_diagnostics`, `graph.v_property_gaps` |
 
@@ -349,6 +368,7 @@ Widgets (`web/src/widgets/`, one file each):
 | node finder (retired 2026-10-27, §1 24) | `/api/nodes` |
 | plant section | `/api/section`, an indented tree, not yet a drawn single-line diagram |
 | meters | `/api/meters` |
+| node information (2026-10-28) | `/api/section`, `/api/meters` |
 | sankey | `/api/sankey`, drawn as the Grafana panel draws it |
 | diagnostics | `/api/diagnostics` |
 

@@ -99,7 +99,36 @@ export interface Meters {
      */
     declared_status: string | null;
     /**
-     * NODE: the meter reads the node. FEEDER: it sits on the edge into the node, from feeder_from.
+     * Manufacturer, as the device register records it (Schneider, Lovato; Generic when unknown). Null if not recorded.
+     */
+    brand: string | null;
+    /**
+     * Model, as recorded, such as PM5560 or DMG610. Null if not recorded.
+     */
+    model: string | null;
+    /**
+     * How the device is read, as recorded, such as Modbus TCP. Null if not recorded.
+     */
+    protocol: string | null;
+    /**
+     * The gateway (data concentrator) the device is polled through, identified by its address, as recorded; null if none is.
+     */
+    gateway: {
+      /**
+       * The gateway's IP address on the plant network.
+       */
+      ip_address: string;
+      /**
+       * The gateway's TCP port.
+       */
+      port: number | null;
+    } | null;
+    /**
+     * The device's Modbus slave address behind its gateway, as recorded. Null if not recorded.
+     */
+    slave_id: number | null;
+    /**
+     * NODE: the meter reads the node. FEEDER: it sits on the edge into the node, from feeder_from. A device the model reads on both gives its first quantity's place here; graph_quantities[].attached_to gives each quantity's.
      */
     attached_to: "NODE" | "FEEDER";
     /**
@@ -130,6 +159,14 @@ export interface Meters {
        * Factor applied to the reading (a CT ratio, a sign).
        */
       multiplier: number;
+      /**
+       * Where the model reads this quantity from the device: NODE, or FEEDER, the edge given in edge. One device can be on both, such as a board's meter whose energy is on its feeder and whose voltage THD is on the board.
+       */
+      attached_to: "NODE" | "FEEDER";
+      /**
+       * Id of the edge, for FEEDER.
+       */
+      edge: number | null;
     }[];
     /**
      * Its latest reading at or before observed_at, within 90 days; null if none.

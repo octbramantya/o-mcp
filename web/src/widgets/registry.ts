@@ -3,6 +3,7 @@
 import type { WidgetType } from './contract';
 import { diagnostics } from './Diagnostics';
 import { meters } from './Meters';
+import { nodeinfo } from './NodeInfo';
 import { now } from './Now';
 import { readings } from './Readings';
 import { sankey } from './Sankey';
@@ -10,7 +11,7 @@ import { section } from './Section';
 import { stat } from './Stat';
 import { value } from './Value';
 
-export const WIDGETS: WidgetType<any>[] = [value, stat, readings, now, section, meters, sankey, diagnostics];
+export const WIDGETS: WidgetType<any>[] = [value, stat, readings, now, section, meters, nodeinfo, sankey, diagnostics];
 
 export const byType = new Map(WIDGETS.map((w) => [w.type, w]));
 

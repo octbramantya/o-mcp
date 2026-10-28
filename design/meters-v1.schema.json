@@ -40,14 +40,27 @@
       "description": "Every device on the node or on an edge into it, by code.",
       "items": {
         "type": "object",
-        "required": ["device_id", "code", "name", "type", "declared_status", "attached_to", "edge", "feeder_from", "graph_quantities", "last_reading", "observed", "reported"],
+        "required": ["device_id", "code", "name", "type", "declared_status", "brand", "model", "protocol", "gateway", "slave_id", "attached_to", "edge", "feeder_from", "graph_quantities", "last_reading", "observed", "reported"],
         "properties": {
           "device_id": {"type": "integer", "description": "The device's database id."},
           "code": {"type": "string", "description": "Device code; meter_readings takes it as device."},
           "name": {"type": ["string", "null"], "description": "Device name."},
           "type": {"type": ["string", "null"], "description": "Device type, such as Power Meter or Flow Meter."},
           "declared_status": {"type": ["string", "null"], "description": "The device register's status. It is not maintained: a silent device can still read ONLINE. Judge by observed."},
-          "attached_to": {"enum": ["NODE", "FEEDER"], "description": "NODE: the meter reads the node. FEEDER: it sits on the edge into the node, from feeder_from."},
+          "brand": {"type": ["string", "null"], "description": "Manufacturer, as the device register records it (Schneider, Lovato; Generic when unknown). Null if not recorded."},
+          "model": {"type": ["string", "null"], "description": "Model, as recorded, such as PM5560 or DMG610. Null if not recorded."},
+          "protocol": {"type": ["string", "null"], "description": "How the device is read, as recorded, such as Modbus TCP. Null if not recorded."},
+          "gateway": {
+            "type": ["object", "null"],
+            "description": "The gateway (data concentrator) the device is polled through, identified by its address, as recorded; null if none is.",
+            "required": ["ip_address", "port"],
+            "properties": {
+              "ip_address": {"type": "string", "description": "The gateway's IP address on the plant network."},
+              "port": {"type": ["integer", "null"], "description": "The gateway's TCP port."}
+            }
+          },
+          "slave_id": {"type": ["integer", "null"], "description": "The device's Modbus slave address behind its gateway, as recorded. Null if not recorded."},
+          "attached_to": {"enum": ["NODE", "FEEDER"], "description": "NODE: the meter reads the node. FEEDER: it sits on the edge into the node, from feeder_from. A device the model reads on both gives its first quantity's place here; graph_quantities[].attached_to gives each quantity's."},
           "edge": {"type": ["integer", "null"], "description": "Id of the edge it sits on, for FEEDER."},
           "feeder_from": {"type": ["string", "null"], "description": "Code of the node at the other end of that edge, for FEEDER."},
           "graph_quantities": {
@@ -55,12 +68,14 @@
             "description": "The quantities the network model reads from this device for this node.",
             "items": {
               "type": "object",
-              "required": ["code", "quantity_id", "role", "multiplier"],
+              "required": ["code", "quantity_id", "role", "multiplier", "attached_to", "edge"],
               "properties": {
                 "code": {"type": ["string", "null"], "description": "Quantity code."},
                 "quantity_id": {"type": "integer", "description": "Quantity id."},
                 "role": {"type": "string", "description": "TOTAL, SUBMETER or CHECK."},
-                "multiplier": {"type": "number", "description": "Factor applied to the reading (a CT ratio, a sign)."}
+                "multiplier": {"type": "number", "description": "Factor applied to the reading (a CT ratio, a sign)."},
+                "attached_to": {"enum": ["NODE", "FEEDER"], "description": "Where the model reads this quantity from the device: NODE, or FEEDER, the edge given in edge. One device can be on both, such as a board's meter whose energy is on its feeder and whose voltage THD is on the board."},
+                "edge": {"type": ["integer", "null"], "description": "Id of the edge, for FEEDER."}
               }
             }
           },

@@ -14,6 +14,7 @@ TITLE = "Meters on a node"
 FORMAT = "meters-v1.schema.json"
 DESCRIPTION = """\
 What is measured at one node, as of a date. Lists each device (meter) on the node or on its feeder: \
+its brand and model, the gateway and Modbus slave address it is polled through, \
 the quantities the network model reads from it, everything it actually reported in the last 7 days \
 before `as_of` ends, and when it last reported, next to the status the site declared. Also lists the \
 quantities node_value can give for this node and how: MEASURED here, INFERRED from neighbouring \

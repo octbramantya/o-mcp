@@ -29,7 +29,7 @@ WITH live_n AS (
     AND (e.effective_to IS NULL OR e.effective_to >= %(as_of)s)
 )
 SELECT m.device_id, m.quantity_id, m.role, m.multiplier, m.utility_code AS utility,
-       m.edge_id, fe.from_code, d.device_code, d.device_name, d.device_type, d.status
+       m.edge_id, fe.from_code, d.device_code, d.device_name, d.device_type, d.status, d.metadata
 FROM graph.measurement m
 JOIN devices d ON d.id = m.device_id
 LEFT JOIN feeders fe ON fe.id = m.edge_id
@@ -64,6 +64,31 @@ FROM telemetry_15min_agg
 WHERE tenant_id = %(tenant)s AND device_id = ANY (%(devices)s) AND bucket >= %(since)s AND bucket < %(until)s
 GROUP BY device_id
 """
+
+
+def hardware(metadata):
+    """What the device register says about the instrument and how it is polled, as recorded: brand
+    and model, protocol, and the gateway (data concentrator) by its address, with the Modbus slave
+    address. The gateway's number is left out: it is a leftover nothing reads, and the address is what
+    identifies a gateway. Three devices hold the protocol under the misspelled key communiction, so
+    both are read."""
+    md = metadata or {}
+    info, dc = md.get("device_info") or {}, md.get("data_concentrator") or {}
+    comm = md.get("communication") or md.get("communiction") or {}
+
+    def text(v):
+        return None if v is None or v == "" else str(v)
+
+    def whole(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+    gateway = None
+    if dc.get("ip_address"):
+        gateway = {"ip_address": text(dc.get("ip_address")), "port": whole(dc.get("port"))}
+    return {"brand": text(info.get("manufacturer")), "model": text(info.get("model")),
+            "protocol": text(comm.get("protocol")), "gateway": gateway, "slave_id": whole(dc.get("slave_id"))}
 
 
 def observed_at(as_of, tz):
@@ -138,11 +163,14 @@ async def document(conn, tenant, v, tz, node, as_of):
         devices.append({
             "device_id": did, "code": d["device_code"], "name": d["device_name"], "type": d["device_type"],
             "declared_status": d["status"],
+            **hardware(d["metadata"]),
             "attached_to": "FEEDER" if d["edge_id"] else "NODE",
             "edge": d["edge_id"], "feeder_from": d["from_code"],
             "graph_quantities": [{"code": (v.quantity_by_id(m["quantity_id"]) or {}).get("code"),
                                   "quantity_id": m["quantity_id"], "role": m["role"],
-                                  "multiplier": float(m["multiplier"])} for m in ms],
+                                  "multiplier": float(m["multiplier"]),
+                                  "attached_to": "FEEDER" if m["edge_id"] else "NODE", "edge": m["edge_id"]}
+                                 for m in ms],
             "last_reading": timewin.local_iso(last, tz),
             "observed": observed,
             "reported": [{"code": (v.quantity_by_id(r["quantity_id"]) or {}).get("code"),

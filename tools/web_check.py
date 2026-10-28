@@ -18,6 +18,8 @@ and find it as saved; look at the bottom bar's data health; star a node and find
 reload; open the category tree; click a node in the single-line diagram; export the dashboard and
 import the file; then at phone width. Last, three Readings widgets of other nodes, quantities and
 intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
+Then a Node information widget: a board's feeders and loads, its meter on both the board and its
+feeder edge, with gateway and slave address, and a click on a load moving the channel there.
 """
 import argparse
 import asyncio
@@ -38,6 +40,7 @@ from server.config import parse_env_file  # noqa: E402
 PASSWORD = "web check password 2026"
 DAY = "2026-10-21"       # a site day with minute data, 15-minute buckets and the daily summary on dev
 TOOLTIP_NODES = ("AJL1", "COMP_ELITE")    # metered, with current and power in 15-minute buckets on dev
+INFO_NODE = "LVMDB_A5"   # its meter LVA5 is on its feeder edge from FACTORY_AB (energy) and on the board (THD)
 
 
 def remove(su, pattern):
@@ -122,6 +125,41 @@ def shared_tooltip(page, out, nodes):
     page.screenshot(path=str(out / "7-tooltip-left.png"))
     if any(tips()):
         found.append(f"shared tooltip: still shown after leaving: {tips()}")
+    return found
+
+
+def node_info(page, out, nodes):
+    """A Node information widget on channel A, holding LVMDB_A5: what feeds it, with LVA5 on the
+    transformer edge; LVA5 on both the node and the edge, with its gateway and slave address; a click
+    on a node it feeds moves the channel there."""
+    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None,
+           "channels": {"A": {"kind": "node", "id": nodes[INFO_NODE]}},
+           "widgets": [{"id": "info", "type": "nodeinfo", "title": "Node information", "x": 0, "y": 0, "w": 16,
+                        "h": 12, "channel": "A", "settings": {"node": None}}]}
+    f = out / "node-info.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-28T00:00:00Z",
+                             "title": "Node information", "format_version": 1, "document": doc}))
+    page.click(".brand")
+    page.wait_for_selector("text=Dashboards · PRS")
+    page.set_input_files(".file-button input", str(f))
+    page.wait_for_url(lambda u: "/dashboards/" in u)
+    page.wait_for_selector(".widget h4:has-text('Devices')", timeout=180_000)
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
+    page.screenshot(path=str(out / "8-node-info.png"))
+    found = []
+    tables = page.locator(".widget .grid-table")
+    fed, feeds, devices = (tables.nth(i).inner_text() for i in range(3))
+    if "FACTORY_AB" not in fed or "LVA5" not in fed:
+        found.append(f"node information: Fed by doesn't show LVA5 on the edge from FACTORY_AB: {fed!r}")
+    if "COMP_300HP" not in feeds:
+        found.append(f"node information: Feeds doesn't list COMP_300HP: {feeds!r}")
+    for want in ("LVA5", "node", "edge from FACTORY_AB", "192.168.20.13:502", "28"):
+        if want not in devices:
+            found.append(f"node information: Devices doesn't show {want!r}: {devices!r}")
+    tables.nth(1).locator("button:has-text('COMP_300HP')").click()
+    page.wait_for_selector(".channel:has-text('COMP_300HP')")
+    page.wait_for_selector(".widget .pad:has-text('COMP_300HP')", timeout=180_000)
+    page.screenshot(path=str(out / "8b-node-info-followed.png"))
     return found
 
 
@@ -249,6 +287,7 @@ def drive(page, url, email, temp, out, problems, nodes):
 
     page.set_viewport_size({"width": 1600, "height": 1000})
     found += shared_tooltip(page, out, nodes)
+    found += node_info(page, out, nodes)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 
@@ -265,7 +304,7 @@ def main():
     raw = parse_env_file(a.env_file)
     su = dict(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, user=raw["DB_USER"],
               password=raw["DB_PASSWORD"], sslmode=cfg.db_sslmode)
-    nodes = node_ids(su, TOOLTIP_NODES)
+    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE,))
     run = uuid.uuid4().hex[:8]
     email = f"web-check+{run}@example.com"
     out = pathlib.Path(a.out)
