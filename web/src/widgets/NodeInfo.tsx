@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Meters as M } from '../types/formats/meters';
 import type { Subgraph } from '../types/formats/subgraph';
-import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
+import { Field, Findings, gateway, Hint, NodeName, NodePicker, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
@@ -34,12 +34,6 @@ function places(d: Device, edges: Edge[]) {
   return [...at].map(([where, qs]) => (
     <div key={where} title={qs.join(', ')}>{where}{at.size > 1 && <span className="muted"> ({qs.length})</span>}</div>
   ));
-}
-
-function gateway(d: Device) {
-  const g = d.gateway;
-  if (!g) return <span className="muted">not recorded</span>;
-  return <>{g.ip_address}{g.port !== null && `:${g.port}`}</>;
 }
 
 function Neighbours({ title, edges, doc, far, devices, select }: {

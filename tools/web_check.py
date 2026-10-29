@@ -20,8 +20,9 @@ import the file; then at phone width. Last, three Readings widgets of other node
 intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
 Then a Node information widget: a board's feeders and loads, its meter on both the board and its
 feeder edge, with gateway and slave address, and a click on a load moving the channel there.
-Then a Meters widget on LVMDB_A4: both its devices, PLTSC opened to its own quantities with their
-last readings as DD/MM/YY - HH:MM, and the values the node can be given, apart from the meters.
+Then a Meters widget on LVMDB_A4: both its devices with their brand, gateway and slave address,
+PLTSC opened to its own quantities with no reading times, and the values the node can be given,
+apart from the meters.
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
@@ -172,9 +173,9 @@ def node_info(page, out, nodes):
 
 
 def meters(page, out, nodes):
-    """A Meters widget on channel A, holding LVMDB_A4: LVA4 and PLTSC under Meters; PLTSC opened lists
-    what it reported, ACTIVE_ENERGY_DELIVERED among them with its last reading as DD/MM/YY - HH:MM; and Values at this
-    node, a table of its own, has active energy measured."""
+    """A Meters widget on channel A, holding LVMDB_A4: LVA4 and PLTSC under Meters, each with its brand,
+    gateway and slave address; PLTSC opened lists what it reported, ACTIVE_ENERGY_DELIVERED among them,
+    and no time anywhere; and Values at this node, a table of its own, has active energy measured."""
     doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None,
            "channels": {"A": {"kind": "node", "id": nodes[METERS_NODE]}},
            "widgets": [{"id": "meters", "type": "meters", "title": "Meters", "x": 0, "y": 0, "w": 16,
@@ -195,16 +196,18 @@ def meters(page, out, nodes):
     found = []
     devices = page.locator(".widget .grid-table.clickable")
     listed = devices.inner_text()
-    for want in ("LVA4", "PLTSC"):
+    for want in ("LVA4", "Schneider", "192.168.20.13:502", "PLTSC", "Surya Nesia", "192.168.20.101:502", "99"):
         if want not in listed:
             found.append(f"meters: {want} isn't listed: {listed!r}")
     devices.locator("tr:has-text('PLTSC')").first.click()
     sub = page.locator(".widget .grid-table.sub")
     sub.wait_for()
     page.screenshot(path=str(out / "8c-meters.png"))
-    rows = [r for r in sub.locator("tbody tr").all_inner_texts() if "ACTIVE_ENERGY_DELIVERED" in r]
-    if not rows or not re.search(r"\d{2}/\d{2}/\d{2} - \d{2}:\d{2}", rows[0]):
-        found.append(f"meters: PLTSC's ACTIVE_ENERGY_DELIVERED has no last reading as DD/MM/YY - HH:MM: {rows!r}")
+    if not [r for r in sub.locator("tbody tr").all_inner_texts() if "ACTIVE_ENERGY_DELIVERED" in r]:
+        found.append("meters: PLTSC's quantities don't include ACTIVE_ENERGY_DELIVERED")
+    shown = page.locator(".widget:has(.grid-table.sub)").inner_text()
+    if re.search(r"\b\d{2}:\d{2}\b", shown) or "Last reading" in shown:
+        found.append(f"meters: the widget shows a time of day: {shown!r}")
     if sub.locator("tbody tr").count() < 2:
         found.append("meters: PLTSC lists fewer than two quantities of its own")
     values = page.locator(".widget h4:has-text('Values at this node') ~ table").inner_text()

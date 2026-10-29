@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useNodes, useVocabulary } from '../api/hooks';
 import type { Finding } from '../api/types';
+import type { Meters } from '../types/formats/meters';
 
 echarts.use([BarChart, LineChart, SankeyChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -16,6 +17,13 @@ echarts.use([BarChart, LineChart, SankeyChart, GridComponent, LegendComponent, T
 export function fmt(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
   return v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/** A device's data concentrator as address:port, as the device register records it. */
+export function gateway(d: Meters['devices'][number]) {
+  const g = d.gateway;
+  if (!g) return <span className="muted">not recorded</span>;
+  return <>{g.ip_address}{g.port !== null && `:${g.port}`}</>;
 }
 
 /** A stored node id as its current code and name; a node not in the plant today says so (decision 19). */

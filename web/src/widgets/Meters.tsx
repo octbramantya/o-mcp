@@ -1,11 +1,12 @@
 // Two questions about a node (GET /api/meters), on the range's last day. Meters: the devices reading
-// the node or its feeder, when each last reported, and, opened, each device's own quantities. Values
-// at this node: what the Value widget can give here, and how.
+// the node or its feeder, as the device register records them, and, opened, each device's own
+// quantities. Values at this node: what the Value widget can give here, and how. No reading times:
+// beside a Readings widget at minutes, a 15-minute bucket's time would read as the last reading.
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import { get } from '../api/client';
 import type { Meters as M } from '../types/formats/meters';
-import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
+import { Field, Findings, gateway, Hint, NodeName, NodePicker, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
@@ -19,12 +20,6 @@ type Device = M['devices'][number];
 const SOURCE: Record<M['resolvable'][number]['availability'], string> = {
   MEASURED: 'measured', INFERRED: 'solved', INHERITED: 'inherited', DERIVED: 'derived', NOT_AVAILABLE: 'not available',
 };
-
-/** An API time in site time as DD/MM/YY - HH:MM. */
-function when(s: string | null | undefined): string {
-  const m = s && /^\d{2}(\d{2})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
-  return m ? `${m[3]}/${m[2]}/${m[1]} - ${m[4]}:${m[5]}` : (s ?? '—');
-}
 
 /** One row per quantity the device reported in the lookback or the graph maps it for. */
 function quantities(d: Device) {
@@ -40,13 +35,12 @@ function DeviceQuantities({ d, days }: { d: Device; days: number }) {
   if (qs.length === 0) return <div className="muted">Nothing reported in the last {days} days.</div>;
   return (
     <table className="grid-table sub">
-      <thead><tr><th>Quantity</th><th>Reading</th><th>Last reading</th></tr></thead>
+      <thead><tr><th>Quantity</th><th>Reading</th></tr></thead>
       <tbody>
         {qs.map((q) => (
           <tr key={q.id}>
             <td>{q.code ?? <span className="warn">id {q.id}, not in the vocabulary</span>} {q.r?.unit && <span className="muted">({q.r.unit})</span>}</td>
-            <td className="muted">{q.r?.reading?.toLowerCase() ?? ''}</td>
-            <td>{q.r ? when(q.r.last_reading) : <span className="warn">not reported in {days} days</span>}</td>
+            <td>{q.r ? <span className="muted">{q.r.reading?.toLowerCase()}</span> : <span className="warn">not reported in {days} days</span>}</td>
           </tr>
         ))}
       </tbody>
@@ -79,19 +73,22 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
           <h4 className="pad-x">Meters</h4>
           {m.devices.length === 0 ? <div className="pad-x muted">No meter on this node or its feeder.</div> : (
             <table className="grid-table clickable">
-              <thead><tr><th>Device</th><th>On</th><th>Last reading</th><th>Status</th><th>Quantities</th></tr></thead>
+              <thead><tr><th>Device</th><th>On</th><th>Brand / model</th><th>Type</th><th>Gateway</th><th>Slave ID</th><th>Status</th><th>Quantities</th></tr></thead>
               <tbody>
                 {m.devices.map((d) => (
                   <Fragment key={d.device_id}>
                     <tr onClick={() => toggle(d.device_id)} className={open.has(d.device_id) ? 'selected' : undefined}>
                       <td title={d.name ?? undefined}>{open.has(d.device_id) ? '▾' : '▸'} <b>{d.code}</b> <span className="muted">{d.name}</span></td>
                       <td className="muted">{d.attached_to === 'FEEDER' ? `feeder from ${d.feeder_from}` : 'node'}</td>
-                      <td>{when(d.last_reading)}</td>
+                      <td>{d.brand ?? '—'} <span className="muted">{d.model}</span></td>
+                      <td>{d.type ?? '—'}</td>
+                      <td title={d.protocol ?? undefined}>{gateway(d)}</td>
+                      <td className="num">{d.slave_id ?? '—'}</td>
                       <td className={`status ${d.observed}`}>{d.observed.toLowerCase().replace('_', ' ')}</td>
                       <td className="muted">{d.reported.length} reported · {new Set(d.graph_quantities.map((g) => g.quantity_id)).size} in graph</td>
                     </tr>
                     {open.has(d.device_id) && (
-                      <tr className="expanded"><td colSpan={5}><DeviceQuantities d={d} days={m.query.lookback_days} /></td></tr>
+                      <tr className="expanded"><td colSpan={8}><DeviceQuantities d={d} days={m.query.lookback_days} /></td></tr>
                     )}
                   </Fragment>
                 ))}
@@ -130,7 +127,7 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
 
 export const meters: WidgetType<S> = {
   type: 'meters', label: 'Meters',
-  description: 'The meters on a node, when each last reported and what each reports, and which values can be given there.',
+  description: 'The meters on a node: brand, model, gateway and slave address, and what each reports; and which values can be given there.',
   minW: 6, minH: 5, w: 10, h: 9,
   defaults: { node: null },
   View, Settings,
