@@ -72,6 +72,11 @@ export function resolveInstant(s: string, edge: 'from' | 'to', now: Date): Date 
   return d;
 }
 
+/** One end of the range as a date-time picker's value (YYYY-MM-DDTHH:MM, site time), or '' when it isn't a time. */
+export function pickerValue(s: string, edge: 'from' | 'to', now: Date): string {
+  return isValid(s) ? param(resolveInstant(s, edge, now)) : '';
+}
+
 /** A site date as the API takes it: YYYY-MM-DDTHH:MM, no offset. */
 export function param(d: Date): string {
   return d.toISOString().slice(0, 16);

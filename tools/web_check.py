@@ -29,6 +29,7 @@ import asyncio
 import datetime
 import json
 import pathlib
+import re
 import sys
 import uuid
 
@@ -219,6 +220,32 @@ def units_and_compare(page, out, nodes):
     return found
 
 
+def calendar(page, out):
+    """From and To's calendars: each opens on the instant its field names and writes what is picked."""
+    found = []
+    page.click(".toolbar .popover-anchor > button")
+    fields = {}
+    for n, edge in ((1, "From"), (2, "To")):
+        label = f".time-picker .custom label:nth-child({n})"
+        text = page.input_value(f"{label} input:not(.calendar)")
+        page.click(f"{label} .time-field button")
+        opened = page.input_value(f"{label} input.calendar")
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", opened):
+            found.append(f"calendar: {edge}'s opened on {opened!r} for {text!r}")
+        page.keyboard.press("Escape")
+        fields[edge] = f"{DAY}T{'09:15' if n == 1 else '11:45'}"
+        page.fill(f"{label} input.calendar", fields[edge], force=True)
+        written = page.input_value(f"{label} input:not(.calendar)")
+        if written != fields[edge]:
+            found.append(f"calendar: picking {fields[edge]} in {edge} wrote {written!r}")
+    page.screenshot(path=str(out / "10-calendar.png"))
+    page.click(".time-picker .custom > button")
+    shown = page.inner_text(".toolbar .popover-anchor > button")
+    if shown != f"{fields['From'].replace('T', ' ')} to {fields['To'].replace('T', ' ')}":
+        found.append(f"calendar: the range applied reads {shown!r}")
+    return found
+
+
 def drive(page, url, email, temp, out, problems, nodes):
     def settle():
         page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
@@ -226,9 +253,9 @@ def drive(page, url, email, temp, out, problems, nodes):
 
     def time_range(start, end):
         page.click(".toolbar .popover-anchor > button")
-        page.fill(".time-picker .custom label:nth-child(1) input", start)
-        page.fill(".time-picker .custom label:nth-child(2) input", end)
-        page.click(".time-picker .custom button")
+        page.fill(".time-picker .custom label:nth-child(1) input:not(.calendar)", start)
+        page.fill(".time-picker .custom label:nth-child(2) input:not(.calendar)", end)
+        page.click(".time-picker .custom > button")
 
     page.goto(url)
     page.fill("input[type=email]", email)
@@ -345,6 +372,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += shared_tooltip(page, out, nodes)
     found += node_info(page, out, nodes)
     found += units_and_compare(page, out, nodes)
+    found += calendar(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 

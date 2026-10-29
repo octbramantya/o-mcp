@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValid, resolveInstant, resolveRange, siteNow } from './range';
+import { isValid, pickerValue, resolveInstant, resolveRange, siteNow } from './range';
 
 // Wednesday 2026-10-21 14:37:20 site time, as a site date (UTC fields hold the wall clock)
 const NOW = new Date(Date.UTC(2026, 9, 21, 14, 37, 20));
@@ -58,4 +58,14 @@ describe('ranges', () => {
     expect(siteNow('Asia/Jakarta', t).toISOString().slice(0, 16)).toBe('2026-10-22T03:00');
     expect(siteNow('Europe/London', t).toISOString().slice(0, 16)).toBe('2026-10-21T21:00');
   });
+});
+
+describe('picker values', () => {
+  it('opens on the instant the field names, absolute or relative', () => {
+    expect(pickerValue('2026-09-01', 'from', NOW)).toBe('2026-09-01T00:00');
+    expect(pickerValue('2026-09-01T06:30', 'to', NOW)).toBe('2026-09-01T06:30');
+    expect(pickerValue('now-7d', 'from', NOW)).toBe('2026-10-14T14:37');
+    expect(pickerValue('now/d', 'to', NOW)).toBe('2026-10-22T00:00');
+  });
+  it('is empty for what is not a time', () => expect(pickerValue('yesterday', 'from', NOW)).toBe(''));
 });

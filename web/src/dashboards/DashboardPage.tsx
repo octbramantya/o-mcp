@@ -99,7 +99,7 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
         )}
         <span className="spacer" />
         <Channels />
-        <TimePicker value={doc.time} onChange={(time) => s.change((d) => ({ ...d, time }))} />
+        <TimePicker tz={tz} value={doc.time} onChange={(time) => s.change((d) => ({ ...d, time }))} />
         <RefreshPicker value={doc.refresh} onChange={(refresh) => s.change((d) => ({ ...d, refresh }))} />
         <button type="button" onClick={() => refresh(true)} title="Resolve the range again and reload every widget">Refresh</button>
         {s.readOnly ? (
