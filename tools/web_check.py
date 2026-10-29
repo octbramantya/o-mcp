@@ -20,8 +20,8 @@ import the file; then at phone width. Last, three Readings widgets of other node
 intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
 Then a Node information widget: a board's feeders and loads, its meter on both the board and its
 feeder edge, with gateway and slave address, and a click on a load moving the channel there.
-Then a Meters widget on LVMDB_A4: both its devices, PLTSC opened to its own quantities with the
-graph's 1/3 on active energy marked, and the values the node can be given, apart from the meters.
+Then a Meters widget on LVMDB_A4: both its devices, PLTSC opened to its own quantities with their
+last readings as DD/MM/YY - HH:MM, and the values the node can be given, apart from the meters.
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
@@ -173,7 +173,7 @@ def node_info(page, out, nodes):
 
 def meters(page, out, nodes):
     """A Meters widget on channel A, holding LVMDB_A4: LVA4 and PLTSC under Meters; PLTSC opened lists
-    what it reported, ACTIVE_ENERGY_DELIVERED marked as used on the node at 1/3; and Values at this
+    what it reported, ACTIVE_ENERGY_DELIVERED among them with its last reading as DD/MM/YY - HH:MM; and Values at this
     node, a table of its own, has active energy measured."""
     doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None,
            "channels": {"A": {"kind": "node", "id": nodes[METERS_NODE]}},
@@ -203,8 +203,8 @@ def meters(page, out, nodes):
     sub.wait_for()
     page.screenshot(path=str(out / "8c-meters.png"))
     rows = [r for r in sub.locator("tbody tr").all_inner_texts() if "ACTIVE_ENERGY_DELIVERED" in r]
-    if not rows or "TOTAL on node × 0.333" not in rows[0]:
-        found.append(f"meters: PLTSC's ACTIVE_ENERGY_DELIVERED isn't marked as used at 1/3: {rows!r}")
+    if not rows or not re.search(r"\d{2}/\d{2}/\d{2} - \d{2}:\d{2}", rows[0]):
+        found.append(f"meters: PLTSC's ACTIVE_ENERGY_DELIVERED has no last reading as DD/MM/YY - HH:MM: {rows!r}")
     if sub.locator("tbody tr").count() < 2:
         found.append("meters: PLTSC lists fewer than two quantities of its own")
     values = page.locator(".widget h4:has-text('Values at this node') ~ table").inner_text()

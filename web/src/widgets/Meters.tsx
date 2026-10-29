@@ -1,12 +1,11 @@
 // Two questions about a node (GET /api/meters), on the range's last day. Meters: the devices reading
-// the node or its feeder, when each last reported, and, opened, each device's own quantities with the
-// ones the graph uses marked. Values at this node: what the Value widget can give here, and how.
+// the node or its feeder, when each last reported, and, opened, each device's own quantities. Values
+// at this node: what the Value widget can give here, and how.
 import { useQuery } from '@tanstack/react-query';
 import { Fragment, useState } from 'react';
 import { get } from '../api/client';
 import type { Meters as M } from '../types/formats/meters';
-import { show } from '../time/range';
-import { Field, Findings, fmt, Hint, NodeName, NodePicker, Pending } from './common';
+import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
@@ -16,26 +15,24 @@ interface S {
 }
 
 type Device = M['devices'][number];
-type Use = Device['graph_quantities'][number];
 
 const SOURCE: Record<M['resolvable'][number]['availability'], string> = {
   MEASURED: 'measured', INFERRED: 'solved', INHERITED: 'inherited', DERIVED: 'derived', NOT_AVAILABLE: 'not available',
 };
 
-/** One row per quantity the device reported in the lookback or the graph maps it for, graph-used first. */
+/** An API time in site time as DD/MM/YY - HH:MM. */
+function when(s: string | null | undefined): string {
+  const m = s && /^\d{2}(\d{2})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(s);
+  return m ? `${m[3]}/${m[2]}/${m[1]} - ${m[4]}:${m[5]}` : (s ?? '—');
+}
+
+/** One row per quantity the device reported in the lookback or the graph maps it for. */
 function quantities(d: Device) {
   const ids = new Set([...d.reported.map((r) => r.quantity_id), ...d.graph_quantities.map((g) => g.quantity_id)]);
   return [...ids].map((id) => {
     const r = d.reported.find((x) => x.quantity_id === id);
-    const uses = d.graph_quantities.filter((g) => g.quantity_id === id);
-    return { id, code: r?.code ?? uses[0]?.code ?? null, r, uses };
-  }).sort((a, b) => (b.uses.length > 0 ? 1 : 0) - (a.uses.length > 0 ? 1 : 0)
-    || (a.code ?? '').localeCompare(b.code ?? '') || a.id - b.id);
-}
-
-function use(g: Use): string {
-  const on = g.attached_to === 'FEEDER' ? 'feeder' : 'node';
-  return `${g.role} on ${on}${g.multiplier === 1 ? '' : ` × ${fmt(g.multiplier, 3)}`}`;
+    return { id, code: r?.code ?? d.graph_quantities.find((g) => g.quantity_id === id)?.code ?? null, r };
+  }).sort((a, b) => (a.code ?? '').localeCompare(b.code ?? '') || a.id - b.id);
 }
 
 function DeviceQuantities({ d, days }: { d: Device; days: number }) {
@@ -43,15 +40,13 @@ function DeviceQuantities({ d, days }: { d: Device; days: number }) {
   if (qs.length === 0) return <div className="muted">Nothing reported in the last {days} days.</div>;
   return (
     <table className="grid-table sub">
-      <thead><tr><th>Quantity</th><th>Reading</th><th>Last reading</th><th className="num">Readings ({days} d)</th><th>Used by the graph</th></tr></thead>
+      <thead><tr><th>Quantity</th><th>Reading</th><th>Last reading</th></tr></thead>
       <tbody>
         {qs.map((q) => (
           <tr key={q.id}>
             <td>{q.code ?? <span className="warn">id {q.id}, not in the vocabulary</span>} {q.r?.unit && <span className="muted">({q.r.unit})</span>}</td>
             <td className="muted">{q.r?.reading?.toLowerCase() ?? ''}</td>
-            <td>{q.r ? show(q.r.last_reading) : <span className="warn">not reported in {days} days</span>}</td>
-            <td className="num">{q.r ? q.r.readings.toLocaleString('en-US') : ''}</td>
-            <td>{q.uses.map(use).join('; ')}</td>
+            <td>{q.r ? when(q.r.last_reading) : <span className="warn">not reported in {days} days</span>}</td>
           </tr>
         ))}
       </tbody>
@@ -91,7 +86,7 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
                     <tr onClick={() => toggle(d.device_id)} className={open.has(d.device_id) ? 'selected' : undefined}>
                       <td title={d.name ?? undefined}>{open.has(d.device_id) ? '▾' : '▸'} <b>{d.code}</b> <span className="muted">{d.name}</span></td>
                       <td className="muted">{d.attached_to === 'FEEDER' ? `feeder from ${d.feeder_from}` : 'node'}</td>
-                      <td>{show(d.last_reading)}</td>
+                      <td>{when(d.last_reading)}</td>
                       <td className={`status ${d.observed}`}>{d.observed.toLowerCase().replace('_', ' ')}</td>
                       <td className="muted">{d.reported.length} reported · {new Set(d.graph_quantities.map((g) => g.quantity_id)).size} in graph</td>
                     </tr>
