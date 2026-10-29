@@ -20,6 +20,8 @@ import the file; then at phone width. Last, three Readings widgets of other node
 intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
 Then a Node information widget: a board's feeders and loads, its meter on both the board and its
 feeder edge, with gateway and slave address, and a click on a load moving the channel there.
+Then a Meters widget on LVMDB_A4: both its devices, PLTSC opened to its own quantities with the
+graph's 1/3 on active energy marked, and the values the node can be given, apart from the meters.
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
@@ -46,6 +48,7 @@ DAY = "2026-10-21"       # a site day with minute data, 15-minute buckets and th
 TOOLTIP_NODES = ("AJL1", "COMP_ELITE")    # metered, with current and power in 15-minute buckets on dev
 UNMETERED = "FLR_124"    # an unmetered panel on LVMDP_SPINNING_1 (056)
 INFO_NODE = "LVMDB_A5"   # its meter LVA5 is on its feeder edge from FACTORY_AB (energy) and on the board (THD)
+METERS_NODE = "LVMDB_A4"  # read by LVA4, and by PLTSC x 1/3 on active energy delivered (048)
 
 
 def remove(su, pattern):
@@ -168,6 +171,48 @@ def node_info(page, out, nodes):
     return found
 
 
+def meters(page, out, nodes):
+    """A Meters widget on channel A, holding LVMDB_A4: LVA4 and PLTSC under Meters; PLTSC opened lists
+    what it reported, ACTIVE_ENERGY_DELIVERED marked as used on the node at 1/3; and Values at this
+    node, a table of its own, has active energy measured."""
+    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None,
+           "channels": {"A": {"kind": "node", "id": nodes[METERS_NODE]}},
+           "widgets": [{"id": "meters", "type": "meters", "title": "Meters", "x": 0, "y": 0, "w": 16,
+                        "h": 14, "channel": "A", "settings": {"node": None}}]}
+    f = out / "meters.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-29T00:00:00Z",
+                             "title": "Meters", "format_version": 1, "document": doc}))
+    discard = page.locator(".toolbar button:has-text('Discard')")
+    if discard.count():                   # an earlier step left the channel changed
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.wait_for_selector("text=Dashboards · PRS")
+    page.set_input_files(".file-button input", str(f))
+    page.wait_for_url(lambda u: "/dashboards/" in u)
+    page.wait_for_selector(".widget h4:has-text('Values at this node')", timeout=180_000)
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
+    found = []
+    devices = page.locator(".widget .grid-table.clickable")
+    listed = devices.inner_text()
+    for want in ("LVA4", "PLTSC"):
+        if want not in listed:
+            found.append(f"meters: {want} isn't listed: {listed!r}")
+    devices.locator("tr:has-text('PLTSC')").first.click()
+    sub = page.locator(".widget .grid-table.sub")
+    sub.wait_for()
+    page.screenshot(path=str(out / "8c-meters.png"))
+    rows = [r for r in sub.locator("tbody tr").all_inner_texts() if "ACTIVE_ENERGY_DELIVERED" in r]
+    if not rows or "TOTAL on node × 0.333" not in rows[0]:
+        found.append(f"meters: PLTSC's ACTIVE_ENERGY_DELIVERED isn't marked as used at 1/3: {rows!r}")
+    if sub.locator("tbody tr").count() < 2:
+        found.append("meters: PLTSC lists fewer than two quantities of its own")
+    values = page.locator(".widget h4:has-text('Values at this node') ~ table").inner_text()
+    if not re.search(r"ACTIVE_ENERGY_DELIVERED.*\tmeasured", values):
+        found.append(f"meters: Values at this node doesn't have active energy measured: {values!r}")
+    return found
+
+
 def units_and_compare(page, out, nodes):
     """Readings of two units (current and power: a dual axis) and of three (with THD: one panel per
     unit), and Compare: ACTIVE_POWER at two loads, ACTIVE_ENERGY_DELIVERED at two boards and an
@@ -190,7 +235,7 @@ def units_and_compare(page, out, nodes):
     f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-28T00:00:00Z",
                              "title": "Units and Compare", "format_version": 1, "document": doc}))
     discard = page.locator(".toolbar button:has-text('Discard')")
-    if discard.count():                   # node_info's click left the channel changed
+    if discard.count():                   # an earlier step left the channel changed
         discard.click()
         discard.wait_for(state="detached")
     page.click(".brand")
@@ -371,6 +416,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.set_viewport_size({"width": 1600, "height": 1000})
     found += shared_tooltip(page, out, nodes)
     found += node_info(page, out, nodes)
+    found += meters(page, out, nodes)
     found += units_and_compare(page, out, nodes)
     found += calendar(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
@@ -389,7 +435,7 @@ def main():
     raw = parse_env_file(a.env_file)
     su = dict(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, user=raw["DB_USER"],
               password=raw["DB_PASSWORD"], sslmode=cfg.db_sslmode)
-    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE, UNMETERED, "LVMDP_SPINNING_1", "LVMDB_A1"))
+    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE, METERS_NODE, UNMETERED, "LVMDP_SPINNING_1", "LVMDB_A1"))
     run = uuid.uuid4().hex[:8]
     email = f"web-check+{run}@example.com"
     out = pathlib.Path(a.out)

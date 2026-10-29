@@ -156,6 +156,9 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .grid-table.clickable tbody tr { cursor: pointer; }
 .grid-table.clickable tbody tr:hover, .grid-table tr.selected { background: var(--panel-2); }
 .grid-table.list .actions { text-align: right; white-space: nowrap; }
+.grid-table.clickable tbody tr.expanded { cursor: default; background: none; }
+.grid-table.sub th { position: static; }
+.grid-table tr.expanded > td { padding: 0 0 6px 20px; }
 .status.REPORTING { color: var(--ok); }
 .status.SILENT, .status.NO_DATA { color: var(--danger); }
 .kind.NEGATIVE_RESIDUAL, .kind.NEGATIVE_FLOW { color: var(--danger); }
