@@ -20,7 +20,7 @@ export function fmt(v: number | null | undefined, digits = 2): string {
 }
 
 /** A device's data concentrator as address:port, as the device register records it. */
-export function gateway(d: Meters['devices'][number]) {
+export function gateway(d: Pick<Meters['devices'][number], 'gateway'>) {
   const g = d.gateway;
   if (!g) return <span className="muted">not recorded</span>;
   return <>{g.ip_address}{g.port !== null && `:${g.port}`}</>;

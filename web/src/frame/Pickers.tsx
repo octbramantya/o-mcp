@@ -1,6 +1,7 @@
-// The left panel (design/frontend.md §5): ways to choose a node, by text and filters, by the sankey's category
-// tree, or from the account's starred list. A click puts the node on the channel chosen at the top
-// (A unless changed) of the open dashboard; the star keeps it in the starred list, on every browser.
+// The side bar's three ways to choose a node (design/frontend.md §5): by text and filters, by the
+// sankey's category tree, or from the account's starred list. On a dashboard a click puts the node on
+// the channel chosen at the top (A unless changed) and ⓘ looks it up in the Reference view; elsewhere,
+// with no channel to fill, a click looks it up. The star keeps it in the starred list, on every browser.
 import { useState } from 'react';
 import { useCategories, useNodes, useStars, useVocabulary } from '../api/hooks';
 import type { PlantNode } from '../api/hooks';
@@ -8,26 +9,32 @@ import type { Categories } from '../api/types';
 import type { ChannelId } from '../dashboards/document';
 import { CHANNELS } from '../dashboards/document';
 import { useDashboard } from '../dashboards/store';
+import { useSideBar } from './sideBarStore';
 
-type Tab = 'find' | 'categories' | 'starred';
-const TABS: [Tab, string][] = [['find', 'Find'], ['categories', 'Categories'], ['starred', 'Starred']];
+export type Stars = ReturnType<typeof useStars>;
 
-type Stars = ReturnType<typeof useStars>;
+/** The channel a click fills, or null where there is no dashboard open. */
+export type Target = ChannelId | null;
 
-function NodeRow({ id, stars, target, note, showMetered }: { id: number; stars: Stars; target: ChannelId; note?: string; showMetered?: boolean }) {
+function NodeRow({ id, stars, target, note, showMetered }: { id: number; stars: Stars; target: Target; note?: string; showMetered?: boolean }) {
   const n = useNodes().data?.byId.get(id);
   const setChannel = useDashboard((s) => s.setChannel);
-  const selected = useDashboard((s) => s.doc?.channels[target]);
+  const selected = useDashboard((s) => (target ? s.doc?.channels[target] : undefined));
+  const inspect = useSideBar((s) => s.inspect);
+  const lookUp = () => inspect({ kind: 'node', id });
   const on = stars.has(id);
   return (
     <li className={selected?.kind === 'node' && selected.id === id ? 'selected' : undefined}>
       {n ? (
-        <button type="button" className="pick" onClick={() => setChannel(target, { kind: 'node', id })} title={n.name ?? undefined}>
+        <button type="button" className="pick" onClick={target ? () => setChannel(target, { kind: 'node', id }) : lookUp} title={n.name ?? undefined}>
           {showMetered && <span className={`metered${n.metered ? ' on' : ''}`} title={n.metered ? 'Metered' : 'Not metered: solved from its neighbours'} />}
           <b>{n.code}</b> <span className="muted">{n.name}{note && ` · ${note}`}</span>
         </button>
       ) : (
         <span className="pick muted">node {id} (not in the plant today)</span>
+      )}
+      {n && target && (
+        <button type="button" className="inspect" onClick={lookUp} title={`Look ${n.code} up in Reference`} aria-label={`Look ${n.code} up in Reference`}>ⓘ</button>
       )}
       <button type="button" className={`star${on ? ' on' : ''}`} onClick={() => stars.toggle(id)}
               title={on ? 'Unstar' : 'Star'} aria-label={on ? 'Unstar' : 'Star'} aria-pressed={on}>
@@ -40,9 +47,9 @@ function NodeRow({ id, stars, target, note, showMetered }: { id: number; stars: 
 interface Filters { type: string; utility: string; metered: boolean }
 
 /** Today's nodes by code or name, utility (those with a node), type (its subtypes too) and metered, grouped by type: the
- * group heading carries the type, which a 240 px panel has no room for as a column. Filtered here,
- * on the list the panel already holds. */
-function Find({ stars, target }: { stars: Stars; target: ChannelId }) {
+ * group heading carries the type, which a narrow side bar has no room for as a column. Filtered here,
+ * on the list the side bar already holds. */
+export function Find({ stars, target }: { stars: Stars; target: Target }) {
   const nodes = useNodes().data;
   const vocab = useVocabulary().data;
   const [text, setText] = useState('');
@@ -107,7 +114,7 @@ function share(m: Member) {
 }
 
 function CategoryBranch({ id, data, kids, members, stars, target }: {
-  id: number; data: Categories; stars: Stars; target: ChannelId; kids: Map<number | null, Categories['categories']>; members: Map<number | null, Member[]>;
+  id: number; data: Categories; stars: Stars; target: Target; kids: Map<number | null, Categories['categories']>; members: Map<number | null, Member[]>;
 }) {
   const c = data.categories.find((x) => x.id === id)!;
   const sub = kids.get(id) ?? [];
@@ -122,7 +129,7 @@ function CategoryBranch({ id, data, kids, members, stars, target }: {
   );
 }
 
-function CategoryTree({ stars, target }: { stars: Stars; target: ChannelId }) {
+export function CategoryTree({ stars, target }: { stars: Stars; target: Target }) {
   const q = useCategories();
   if (q.isError) return <div className="error pad">{(q.error as Error).message}</div>;
   if (!q.data) return <div className="muted pad">Loading…</div>;
@@ -146,7 +153,7 @@ function CategoryTree({ stars, target }: { stars: Stars; target: ChannelId }) {
   );
 }
 
-function Starred({ stars, target }: { stars: Stars; target: ChannelId }) {
+export function Starred({ stars, target }: { stars: Stars; target: Target }) {
   return (
     <>
       {stars.ids.length === 0 && <div className="muted pad">No starred nodes yet: ☆ beside a node stars it.</div>}
@@ -155,40 +162,17 @@ function Starred({ stars, target }: { stars: Stars; target: ChannelId }) {
   );
 }
 
-export function LeftPanel({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const [tab, setTab] = useState<Tab>('find');
-  const [target, setTarget] = useState<ChannelId>('A');
-  const stars = useStars();
-  if (collapsed) {
-    return (
-      <aside className="left collapsed">
-        <button type="button" className="collapse" onClick={onToggle} title="Show the left panel" aria-label="Show the left panel" aria-expanded={false}>»</button>
-      </aside>
-    );
-  }
+/** Which channel a click fills, at the top of the three views on a dashboard; not saved with it. */
+export function ChannelTarget({ value, onChange }: { value: ChannelId; onChange: (c: ChannelId) => void }) {
   return (
-    <aside className="left">
-      <div className="tabs" role="tablist">
-        {TABS.map(([t, label]) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'on' : undefined} onClick={() => setTab(t)}>
-            {label}{t === 'starred' && stars.ids.length > 0 && <span className="muted"> {stars.ids.length}</span>}
-          </button>
-        ))}
-        <button type="button" className="collapse" onClick={onToggle} title="Hide the left panel" aria-label="Hide the left panel" aria-expanded>«</button>
-      </div>
-      <div className="channel-target muted small pad" role="radiogroup" aria-label="Channel a click fills">
-        A click puts a node on channel
-        {CHANNELS.map((c) => (
-          <button key={c.id} type="button" role="radio" aria-checked={target === c.id} className={target === c.id ? 'on' : undefined}
-                  style={{ borderColor: c.color, ...(target === c.id ? { background: c.color } : {}) }} onClick={() => setTarget(c.id)}>
-            {c.id}
-          </button>
-        ))}
-      </div>
-      {stars.error && <div className="error pad small">{(stars.error as Error).message}</div>}
-      {tab === 'find' && <Find stars={stars} target={target} />}
-      {tab === 'categories' && <CategoryTree stars={stars} target={target} />}
-      {tab === 'starred' && <Starred stars={stars} target={target} />}
-    </aside>
+    <div className="channel-target muted small pad" role="radiogroup" aria-label="Channel a click fills">
+      A click puts a node on channel
+      {CHANNELS.map((c) => (
+        <button key={c.id} type="button" role="radio" aria-checked={value === c.id} className={value === c.id ? 'on' : undefined}
+                style={{ borderColor: c.color, ...(value === c.id ? { background: c.color } : {}) }} onClick={() => onChange(c.id)}>
+          {c.id}
+        </button>
+      ))}
+    </div>
   );
 }

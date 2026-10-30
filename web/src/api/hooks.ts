@@ -1,7 +1,10 @@
 // Queries shared by the frame and the widgets. Plant queries are keyed by tenant under 'plant', so
 // switching tenant drops them all (frame/TopBar.tsx).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { DeviceList } from '../types/formats/devicelist';
+import type { Meters } from '../types/formats/meters';
 import type { NodeList } from '../types/formats/nodelist';
+import type { Subgraph } from '../types/formats/subgraph';
 import type { Vocabulary } from '../types/formats/vocabulary';
 import { get, post } from './client';
 import type { Categories, Me } from './types';
@@ -41,13 +44,51 @@ export function useNodes() {
   });
 }
 
-/** The sankey's categories and the nodes in each, today: the left panel's category tree. */
+/** The sankey's categories and the nodes in each, today: the side bar's category tree. */
 export function useCategories() {
   const t = useTenant();
   return useQuery({
     queryKey: ['plant', t.id, 'categories-today'],
     queryFn: ({ signal }) => get<Categories>('/api/categories', undefined, signal),
     staleTime: 10 * 60_000,
+  });
+}
+
+export type Device = DeviceList['devices'][number];
+
+/** Every device of the register, where the model reads it today and what it reported in the last day:
+ * the Reference view's index of devices and quantities. */
+export function useDevices() {
+  const t = useTenant();
+  return useQuery({
+    queryKey: ['plant', t.id, 'devices-today'],
+    queryFn: async ({ signal }) => {
+      const r = await get<DeviceList>('/api/devices', undefined, signal);
+      return { ...r, byId: new Map(r.devices.map((d) => [d.device_id, d])) };
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** One node's meters today (GET /api/meters), for the Reference view. */
+export function useNodeMeters(node: number | null) {
+  const t = useTenant();
+  return useQuery({
+    queryKey: ['plant', t.id, 'meters-today', node],
+    queryFn: ({ signal }) => get<Meters>('/api/meters', { node }, signal),
+    enabled: node !== null,
+    staleTime: 60_000,
+  });
+}
+
+/** What feeds a node and what it feeds today, one level down (GET /api/section), for the Reference view. */
+export function useNodeSection(node: number | null) {
+  const t = useTenant();
+  return useQuery({
+    queryKey: ['plant', t.id, 'section-today', node],
+    queryFn: ({ signal }) => get<Subgraph>('/api/section', { node, depth: 1, direction: 'down' }, signal),
+    enabled: node !== null,
+    staleTime: 5 * 60_000,
   });
 }
 

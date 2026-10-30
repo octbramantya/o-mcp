@@ -1,9 +1,9 @@
 // The frame (design/frontend.md §5): the top bar shows who and where the user is, and lets an admin
-// switch site; the left panel holds ways to choose a node; the bottom bar the site's clock and the
-// open dashboard's refresh.
+// switch site; the Activity Bar and side bar, on every page of a site, hold ways to choose a node and
+// the Reference view; the bottom bar the site's clock and the open dashboard's refresh.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, Outlet, useMatch, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 import { post } from '../api/client';
 import { useMe } from '../api/hooks';
 import type { Me } from '../api/types';
@@ -11,7 +11,8 @@ import { PasswordPage } from '../auth/LoginPage';
 import { useDashboard } from '../dashboards/store';
 import { siteNow } from '../time/range';
 import { DataHealth } from './DataHealth';
-import { LeftPanel } from './LeftPanel';
+import { ActivityBar, SideBar } from './SideBar';
+import { useSideBar } from './sideBarStore';
 
 export function useSwitchTenant() {
   const qc = useQueryClient();
@@ -75,29 +76,21 @@ function BottomBar() {
   );
 }
 
-// whether the left panel is collapsed, remembered per browser: a convenience, so storage may fail
-const COLLAPSED = 'o-mcp.left-collapsed';
-
-function useCollapsed(): [boolean, () => void] {
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return localStorage.getItem(COLLAPSED) === '1'; } catch { return false; }
-  });
-  const toggle = () => setCollapsed((c) => {
-    try { localStorage.setItem(COLLAPSED, c ? '0' : '1'); } catch { /* not remembered */ }
-    return !c;
-  });
-  return [collapsed, toggle];
-}
-
 export function Frame() {
   const [password, setPassword] = useState(false);
-  const [collapsed, toggleLeft] = useCollapsed();
-  const onDashboard = useMatch('/dashboards/:id');
   const me = useMe().data!;
+  const open = useSideBar((s) => s.open);
+  const width = useSideBar((s) => s.width);
+  const forTenant = useSideBar((s) => s.forTenant);
+  const tenant = me.tenant?.id;
+  useEffect(() => { if (tenant !== undefined) forTenant(tenant); }, [tenant, forTenant]);
+  const sited = tenant !== undefined;
   return (
-    <div className={`frame${onDashboard ? ' with-left' : ''}${collapsed ? ' left-collapsed' : ''}`}>
+    <div className={`frame${sited ? ' with-side' : ''}${sited && open ? ' side-open' : ''}`}
+         style={sited ? { ['--side-w' as string]: `${width}px` } : undefined}>
       <TopBar onPassword={() => setPassword(true)} />
-      {onDashboard && me.tenant && <LeftPanel collapsed={collapsed} onToggle={toggleLeft} />}
+      {sited && <ActivityBar />}
+      {sited && open && <SideBar />}
       <main>
         {password ? <PasswordPage forced={false} onDone={() => setPassword(false)} /> : <Outlet />}
         {password && <button type="button" className="link pad" onClick={() => setPassword(false)}>Cancel</button>}
