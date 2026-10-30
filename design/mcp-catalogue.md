@@ -320,6 +320,11 @@ each series' `device_id` and the `minute` interval, which only the API gives.
 | `node_value` / values | whole site days only | minute, 15-minute or day, chosen from the window (`api/values.py`) |
 | cache | none | 30 s, identical requests in flight run once |
 
+**Added for the frontend only (2026-10-30):** `plant/devices.py`, `o-mcp/devicelist` v1 behind
+`GET /api/devices`: every device of the register, where the model reads it and the quantities it
+reported in the last day. It has no tool; it is a candidate for layer 2 (a device or quantity
+lookup without a node first), as `plant_find` is for nodes.
+
 **Worth bringing back to the server:**
 
 1. **`node_value`'s `data_until` for the daily summary** is the day after the tenant's last

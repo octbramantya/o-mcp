@@ -18,11 +18,12 @@ and find it as saved; look at the bottom bar's data health; star a node and find
 reload; open the category tree; click a node in the single-line diagram; export the dashboard and
 import the file; then at phone width. Last, three Readings widgets of other nodes, quantities and
 intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
-Then a Node information widget: a board's feeders and loads, its meter on both the board and its
-feeder edge, with gateway and slave address, and a click on a load moving the channel there.
-Then a Meters widget on LVMDB_A4: both its devices with their brand, gateway and slave address,
-PLTSC opened to its own quantities with no reading times, and the values the node can be given,
-apart from the meters.
+Then the side bar's Reference view, from the dashboard list: a board's feeders and loads, its meter
+on both the board and its feeder edge, with gateway and slave address; that meter's page, where the
+model reads it and what it reported, with no reading times; a quantity's page listing the devices
+read for it, a meter on another board among them; Back; a search by device; a node's values; ⓘ in
+Find on a dashboard opening Reference without moving the channel; and a saved Meters widget drawn
+as a placeholder pointing at Reference.
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
@@ -50,6 +51,7 @@ TOOLTIP_NODES = ("AJL1", "COMP_ELITE")    # metered, with current and power in 1
 UNMETERED = "FLR_124"    # an unmetered panel on LVMDP_SPINNING_1 (056)
 INFO_NODE = "LVMDB_A5"   # its meter LVA5 is on its feeder edge from FACTORY_AB (energy) and on the board (THD)
 METERS_NODE = "LVMDB_A4"  # read by LVA4, and by PLTSC x 1/3 on active energy delivered (048)
+REF = ".side-bar .reference"
 
 
 def remove(su, pattern):
@@ -137,82 +139,108 @@ def shared_tooltip(page, out, nodes):
     return found
 
 
-def node_info(page, out, nodes):
-    """A Node information widget on channel A, holding LVMDB_A5: what feeds it, with LVA5 on the
-    transformer edge; LVA5 on both the node and the edge, with its gateway and slave address; a click
-    on a node it feeds moves the channel there."""
-    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None,
-           "channels": {"A": {"kind": "node", "id": nodes[INFO_NODE]}},
-           "widgets": [{"id": "info", "type": "nodeinfo", "title": "Node information", "x": 0, "y": 0, "w": 16,
-                        "h": 12, "channel": "A", "settings": {"node": None}}]}
-    f = out / "node-info.json"
-    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-28T00:00:00Z",
-                             "title": "Node information", "format_version": 1, "document": doc}))
+def reference(page, out, nodes):
+    """The Reference view, from the dashboard list: LVMDB_A5 fed from FACTORY_AB through LVA5, feeding
+    COMP_300HP, with LVA5 on the node and the feeder and its gateway and slave address; LVA5's page;
+    ACTIVE_ENERGY_DELIVERED's, with PLTSC at LVMDB_A4 among the devices read for it; Back twice; PLTSC
+    found by search, with its register details; LVMDB_A4's values; and nowhere a time of day."""
+    found = []
     page.click(".brand")
     page.wait_for_selector("text=Dashboards · PRS")
-    page.set_input_files(".file-button input", str(f))
-    page.wait_for_url(lambda u: "/dashboards/" in u)
-    page.wait_for_selector(".widget h4:has-text('Devices')", timeout=180_000)
-    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
-    page.screenshot(path=str(out / "8-node-info.png"))
-    found = []
-    tables = page.locator(".widget .grid-table")
-    fed, feeds, devices = (tables.nth(i).inner_text() for i in range(3))
+    page.click(".activity-bar button[aria-label='Reference'][aria-selected=false]")
+    search = f"{REF} .ref-head input"
+    reads = f"{REF} section:has(h4:has-text('Where the model reads it'))"
+
+    def look_up(text, kind):
+        page.fill(search, text)
+        page.wait_for_selector(f"{REF} section h4", timeout=180_000)
+        page.click(f"{REF} section:has(h4:has-text('{kind}')) li .ref-link:has(b:text-is('{text}'))")
+        page.wait_for_selector(f"{REF} .ref-title b:text-is('{text}')")
+        page.wait_for_function("() => !document.querySelector('.side-bar .loading')", timeout=180_000)
+
+    def section(title):
+        return page.locator(f"{REF} section:has(h4:has-text('{title}'))").inner_text()
+
+    def no_time(where):
+        shown = page.locator(REF).inner_text()
+        if re.search(r"\b\d{2}:\d{2}\b", shown):
+            found.append(f"reference: the {where} page shows a time of day: {shown!r}")
+
+    look_up(INFO_NODE, "Nodes")
+    page.wait_for_selector(f"{REF} h4:has-text('Values at this node')", timeout=180_000)
+    page.screenshot(path=str(out / "8-reference-node.png"))
+    fed, feeds, devices = section("Fed by"), section("Feeds"), section("Devices")
     if "FACTORY_AB" not in fed or "LVA5" not in fed:
-        found.append(f"node information: Fed by doesn't show LVA5 on the edge from FACTORY_AB: {fed!r}")
+        found.append(f"reference: Fed by doesn't show LVA5 on the edge from FACTORY_AB: {fed!r}")
     if "COMP_300HP" not in feeds:
-        found.append(f"node information: Feeds doesn't list COMP_300HP: {feeds!r}")
-    for want in ("LVA5", "node", "edge from FACTORY_AB", "192.168.20.13:502", "28"):
+        found.append(f"reference: Feeds doesn't list COMP_300HP: {feeds!r}")
+    for want in ("LVA5", "node and the feeder from FACTORY_AB", "192.168.20.13:502", "slave ID 28"):
         if want not in devices:
-            found.append(f"node information: Devices doesn't show {want!r}: {devices!r}")
-    tables.nth(1).locator("button:has-text('COMP_300HP')").click()
-    page.wait_for_selector(".channel:has-text('COMP_300HP')")
-    page.wait_for_selector(".widget .pad:has-text('COMP_300HP')", timeout=180_000)
-    page.screenshot(path=str(out / "8b-node-info-followed.png"))
+            found.append(f"reference: Devices doesn't show {want!r}: {devices!r}")
+
+    page.click(f"{REF} section:has(h4:has-text('Devices')) .ref-link:has(b:text-is('LVA5'))")
+    page.wait_for_selector(f"{REF} .ref-title b:text-is('LVA5')")
+    where = section("Where the model reads it")
+    if INFO_NODE not in where or "feeder from" not in where or "ACTIVE_ENERGY_DELIVERED" not in where:
+        found.append(f"reference: LVA5 isn't read on {INFO_NODE} and its feeder: {where!r}")
+    page.screenshot(path=str(out / "8b-reference-device.png"))
+    no_time("device")
+
+    page.click(f"{reads} .ref-link:text-is('ACTIVE_ENERGY_DELIVERED')")
+    page.wait_for_selector(f"{REF} .ref-title b:text-is('ACTIVE_ENERGY_DELIVERED')")
+    read = section("Read by the model")
+    if not re.search(rf"PLTSC.*\n.*{METERS_NODE}", read) or "LVA5" not in read:
+        found.append(f"reference: ACTIVE_ENERGY_DELIVERED isn't read from PLTSC at {METERS_NODE} and LVA5: {read!r}")
+    page.screenshot(path=str(out / "8c-reference-quantity.png"))
+    page.click(f"{REF} .ref-head button[aria-label='Back']")
+    page.wait_for_selector(f"{REF} .ref-title b:text-is('LVA5')")
+    page.click(f"{REF} .ref-head button[aria-label='Back']")
+    page.wait_for_selector(f"{REF} .ref-title b:text-is('{INFO_NODE}')")
+
+    look_up("PLTSC", "Devices")
+    shown = page.locator(f"{REF} .facts").inner_text()
+    for want in ("Surya Nesia", "192.168.20.101:502", "99"):
+        if want not in shown:
+            found.append(f"reference: PLTSC's register doesn't show {want}: {shown!r}")
+    if METERS_NODE not in section("Where the model reads it"):
+        found.append(f"reference: PLTSC isn't read at {METERS_NODE}")
+    no_time("device")
+    page.click(f"{reads} .ref-link:has(b:text-is('{METERS_NODE}'))")
+    page.wait_for_selector(f"{REF} h4:has-text('Values at this node')", timeout=180_000)
+    values = section("Values at this node")
+    if not re.search(r"ACTIVE_ENERGY_DELIVERED.*· measured", values):
+        found.append(f"reference: {METERS_NODE}'s values don't have active energy measured: {values!r}")
+    page.screenshot(path=str(out / "8d-reference-values.png"))
     return found
 
 
-def meters(page, out, nodes):
-    """A Meters widget on channel A, holding LVMDB_A4: LVA4 and PLTSC under Meters, each with its brand,
-    gateway and slave address; PLTSC opened lists what it reported, ACTIVE_ENERGY_DELIVERED among them,
-    and no time anywhere; and Values at this node, a table of its own, has active energy measured."""
+def retired_and_inspect(page, out, nodes):
+    """A saved Meters widget is a placeholder pointing at Reference; on that dashboard, ⓘ beside a node
+    in Find opens it in Reference and leaves channel A as it was."""
     doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None,
            "channels": {"A": {"kind": "node", "id": nodes[METERS_NODE]}},
            "widgets": [{"id": "meters", "type": "meters", "title": "Meters", "x": 0, "y": 0, "w": 16,
-                        "h": 14, "channel": "A", "settings": {"node": None}}]}
-    f = out / "meters.json"
-    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-29T00:00:00Z",
-                             "title": "Meters", "format_version": 1, "document": doc}))
-    discard = page.locator(".toolbar button:has-text('Discard')")
-    if discard.count():                   # an earlier step left the channel changed
-        discard.click()
-        discard.wait_for(state="detached")
+                        "h": 6, "channel": "A", "settings": {"node": None}}]}
+    f = out / "retired-meters.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-10-30T00:00:00Z",
+                             "title": "Retired Meters", "format_version": 1, "document": doc}))
     page.click(".brand")
     page.wait_for_selector("text=Dashboards · PRS")
     page.set_input_files(".file-button input", str(f))
     page.wait_for_url(lambda u: "/dashboards/" in u)
-    page.wait_for_selector(".widget h4:has-text('Values at this node')", timeout=180_000)
-    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
     found = []
-    devices = page.locator(".widget .grid-table.clickable")
-    listed = devices.inner_text()
-    for want in ("LVA4", "Schneider", "192.168.20.13:502", "PLTSC", "Surya Nesia", "192.168.20.101:502", "99"):
-        if want not in listed:
-            found.append(f"meters: {want} isn't listed: {listed!r}")
-    devices.locator("tr:has-text('PLTSC')").first.click()
-    sub = page.locator(".widget .grid-table.sub")
-    sub.wait_for()
-    page.screenshot(path=str(out / "8c-meters.png"))
-    if not [r for r in sub.locator("tbody tr").all_inner_texts() if "ACTIVE_ENERGY_DELIVERED" in r]:
-        found.append("meters: PLTSC's quantities don't include ACTIVE_ENERGY_DELIVERED")
-    shown = page.locator(".widget:has(.grid-table.sub)").inner_text()
-    if re.search(r"\b\d{2}:\d{2}\b", shown) or "Last reading" in shown:
-        found.append(f"meters: the widget shows a time of day: {shown!r}")
-    if sub.locator("tbody tr").count() < 2:
-        found.append("meters: PLTSC lists fewer than two quantities of its own")
-    values = page.locator(".widget h4:has-text('Values at this node') ~ table").inner_text()
-    if not re.search(r"ACTIVE_ENERGY_DELIVERED.*\tmeasured", values):
-        found.append(f"meters: Values at this node doesn't have active energy measured: {values!r}")
+    shown = page.locator(".widget .body").inner_text()
+    if "Reference view" not in shown:
+        found.append(f"retired: the Meters widget isn't a placeholder pointing at Reference: {shown!r}")
+    page.click(".activity-bar button[aria-label='Find'][aria-selected=false]")
+    page.fill(".side-bar .find-filters input[placeholder='Find a node']", INFO_NODE)
+    row = page.locator(f".side-bar li:has-text('{INFO_NODE}')").first
+    row.hover()
+    row.locator(".inspect").click()
+    page.wait_for_selector(f"{REF} .ref-title b:text-is('{INFO_NODE}')")
+    if page.locator(f".channel:has-text('{METERS_NODE}')").count() != 1:
+        found.append("inspect: ⓘ in Find moved channel A")
+    page.screenshot(path=str(out / "8e-inspect.png"))
     return found
 
 
@@ -333,12 +361,12 @@ def drive(page, url, email, temp, out, problems, nodes):
     settle()
     page.screenshot(path=str(out / "2-template.png"))
 
-    # the left panel's Find: type groups, the utility and metered filters, a click sets channel A
-    page.fill(".left .find-filters input[placeholder='Find a node']", "LVMDB_A")
-    page.click(".left .find-filters .utilities button:has-text('Electricity')")
-    page.check(".left .find-filters input[type=checkbox]")
-    page.wait_for_selector(".left details[open] summary:has-text('MAIN_LV_BOARD')")
-    page.click(".left li:has-text('LVMDB_A5') .pick")
+    # the side bar's Find: type groups, the utility and metered filters, a click sets channel A
+    page.fill(".side-bar .find-filters input[placeholder='Find a node']", "LVMDB_A")
+    page.click(".side-bar .find-filters .utilities button:has-text('Electricity')")
+    page.check(".side-bar .find-filters input[type=checkbox]")
+    page.wait_for_selector(".side-bar details[open] summary:has-text('MAIN_LV_BOARD')")
+    page.click(".side-bar li:has-text('LVMDB_A5') .pick")
     page.wait_for_selector(".channel:has-text('LVMDB_A5')")
     time_range(f"{DAY}T10:00", f"{DAY}T12:00")
     settle()
@@ -375,14 +403,20 @@ def drive(page, url, email, temp, out, problems, nodes):
     settle()
     page.wait_for_selector(".bottombar :text('meters silent')")
 
-    # the left panel: star a node, find it starred after a reload, and the category tree
-    page.fill(".left .find-filters input[placeholder='Find a node']", "LVMDB_A5")
-    page.click(".left li:has-text('LVMDB_A5') .star")
-    page.wait_for_selector(".left li:has-text('LVMDB_A5') .star.on")
+    # the side bar: star a node, find it starred after a reload, and the category tree; the Activity
+    # Bar's icon of the open view closes it, and opens it again
+    page.fill(".side-bar .find-filters input[placeholder='Find a node']", "LVMDB_A5")
+    page.click(".side-bar li:has-text('LVMDB_A5') .star")
+    page.wait_for_selector(".side-bar li:has-text('LVMDB_A5') .star.on")
     page.reload()
-    page.click(".left .tabs button:has-text('Starred')")
-    page.wait_for_selector(".left li:has-text('LVMDB_A5') .star.on")
-    page.click(".left .tabs button:has-text('Categories')")
+    page.click(".activity-bar button[aria-label='Starred']")
+    page.wait_for_selector(".side-bar li:has-text('LVMDB_A5') .star.on")
+    page.wait_for_selector(".activity-bar button[aria-label='Starred'] .count:text-is('1')")
+    page.click(".activity-bar button[aria-label='Categories']")
+    page.wait_for_selector(".category-tree summary:has-text('Production')")
+    page.click(".activity-bar button[aria-label='Categories']")
+    page.wait_for_selector(".side-bar", state="detached")
+    page.click(".activity-bar button[aria-label='Categories']")
     page.wait_for_selector(".category-tree summary:has-text('Production')")
     settle()
 
@@ -418,8 +452,8 @@ def drive(page, url, email, temp, out, problems, nodes):
 
     page.set_viewport_size({"width": 1600, "height": 1000})
     found += shared_tooltip(page, out, nodes)
-    found += node_info(page, out, nodes)
-    found += meters(page, out, nodes)
+    found += reference(page, out, nodes)
+    found += retired_and_inspect(page, out, nodes)
     found += units_and_compare(page, out, nodes)
     found += calendar(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]

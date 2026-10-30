@@ -40,6 +40,7 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 26 | **A Compare widget: one quantity at several nodes as lines over the range**, Readings turned round, as a widget type of its own. Counters are added over a node's meters, sampled quantities a line per meter, `PF_TRUE` Stat's formula per interval; unmetered nodes are listed as "no meter"; at most 10 nodes; no stacking for now (§5, "Compare"). Decided 2026-10-28 | — |
 | 27 | **Readings draws each unit on a scale of its own**: one axis for one unit, a dual axis (left and right) for two, and from three units one panel per unit, stacked on one time axis. A setting draws panels for two units too (§5, "Readings' units"). Decided 2026-10-28 | a series override's axis placement; a panel per unit |
 | 28 | **Dark theme only, for now.** The colours are the tokens on `:root` in `web/src/styles.css`, which every widget, chart and the single-line diagram read; there is no light theme and no switch, whatever the browser or OS prefers. Decided 2026-10-29 | the dark theme |
+| 29 | **An Activity Bar and a side bar replace the left panel, and Node information and Meters become one Reference view.** Find, Categories and Starred are icons on the bar, each opening its view in a resizable side bar; the icon of the open view closes it. Below a divider, Reference looks up a node, a device or a quantity as the plant is today, apart from any channel or range: one search over all three, every one on a page linking to its own page, Back and Forward. The bar is on every page of a site, not only dashboards. The two widgets are retired; a saved one is a placeholder pointing at Reference (§5, "The Activity Bar and side bar"). Decided 2026-10-30 | — |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.
@@ -261,13 +262,13 @@ A first widget list, from what the MCP server and the database already answer:
 | Single-line diagram | a node and what it feeds, `depth` levels; a click selects the node | `plant_section` (`tools/sld.sql`) |
 | Path to source | what feeds a node, up to the incomer | `plant_section`, `direction: "up"` |
 | Node finder | nodes by text, type, class, utility, metered | `plant_find` |
-| Meters | the devices reading a node, what each reports, last reading, status | `node_meters` |
+| Meters (retired 2026-10-30, §1 29) | the devices reading a node, what each reports, last reading, status | `node_meters` |
 | Readings | several nodes' quantities over the range, on one chart or stacked | `meter_readings`, at the resolution of §3 |
 | Aggregate (was Value) | one quantity across several nodes over the range: a counter's total, a sampled quantity's minimum, average, 95th percentile and maximum per meter (below) | `node_value` for counters; a new read for sampled quantities |
 | Stat | one quantity at one node as one figure over the range, with its line (below) | `/api/aggregate` and `/api/readings` |
 | Compare | one quantity at several nodes over the range, a line per node or meter (below) | `/api/readings`, one call per node |
 | Now | the last reading of a node's meters | `telemetry_data`, latest row per device |
-| Node information | what feeds a node and what it feeds; its devices' brand, model, type, gateway and Modbus slave address, on the node or an edge (below) | `/api/section` (one level), `/api/meters` |
+| Node information (retired 2026-10-30, §1 29) | what feeds a node and what it feeds; its devices' brand, model, type, gateway and Modbus slave address, on the node or an edge (below) | `/api/section` (one level), `/api/meters` |
 | Sankey | where energy, water or air goes, by category | `graph.sankey` |
 | Diagnostics | silent meters, negative residuals, missing required properties | `graph.sankey_diagnostics`, `graph.v_property_gaps` |
 
@@ -331,8 +332,10 @@ channel, one quantity, one figure, and a line under it.
 - **Quantities offered** are Aggregate's.
 - **No thresholds or colours yet.** The figure's size follows the box.
 
-**Node information (built 2026-10-28).** For an operator checking a device without the site's
-worksheet: one node, from the settings or a channel, on the range's last day.
+**Node information (built 2026-10-28, retired 2026-10-30).** Merged with Meters into the side
+bar's Reference view (§1, 29), whose node page holds what follows, as of today. For an operator
+checking a device without the site's worksheet: one node, from the settings or a channel, on the
+range's last day.
 
 - **Fed by** and **Feeds**: the node's edges in and out, each with the node at the other end, its
   type, the edge type and utility, and "no flow" on a capacitor bank's edge. A click on a node puts
@@ -397,7 +400,7 @@ mean two things (§1, 26).
   each added over the node's meters.
 - **Unmetered nodes** have no line; they are listed under the chart as "no meter", as Aggregate
   lists them. Which they are comes from `GET /api/meters` on the range's last day (the devices
-  readings would read, shared with the Meters widget's cache), so no readings call is made for them.
+  readings would read), so no readings call is made for them.
 - **No stacking for now.** Stacked bars of energy per board would count a board and its own
   children twice; it waits until the widget can tell when one chosen node feeds another.
 - **Data**: `GET /api/readings` once per node with the one quantity, so a Stat on the same node
@@ -413,8 +416,9 @@ once they are built.
 The output formats (`design/*-v1.schema.json`) are the widgets' data contracts. The frontend
 generates its TypeScript types from them, so a format change shows up as a type error.
 
-**Frame.** The left panel holds ways to choose a node: the finder, the category tree, a starred
-list. The bottom bar holds data health: the time of the latest telemetry, the number of silent
+**Frame.** The Activity Bar and side bar (since 2026-10-30; before, a left panel with tabs) hold
+ways to choose a node: the finder, the category tree, a starred list; and the Reference view. The
+bottom bar holds data health: the time of the latest telemetry, the number of silent
 meters, refresh on or off, the tenant's clock.
 
 **Built (2026-10-26), `web/` slice 1.** The frame:
@@ -432,8 +436,8 @@ Widgets (`web/src/widgets/`, one file each):
 | now (slice 2) | `/api/now` |
 | node finder (retired 2026-10-27, §1 24) | `/api/nodes` |
 | plant section | `/api/section`, an indented tree, not yet a drawn single-line diagram |
-| meters | `/api/meters` |
-| node information (2026-10-28) | `/api/section`, `/api/meters` |
+| meters (retired 2026-10-30, §1 29) | `/api/meters` |
+| node information (2026-10-28, retired 2026-10-30) | `/api/section`, `/api/meters` |
 | sankey | `/api/sankey`, drawn as the Grafana panel draws it |
 | diagnostics | `/api/diagnostics` |
 
@@ -490,6 +494,43 @@ Widgets (`web/src/widgets/`, one file each):
   - Discard now reopens the saved copy. Before, a refetch that returned what the cache held kept
     the same object, so the edits stayed.
   - The browser check now reports any dialog.
+
+**The Activity Bar and side bar (2026-10-30, §1 29).** The left panel's three tabs become icons on
+an Activity Bar, 44 px down the left of every page of a site, and Node information and Meters
+leave the canvas for a fourth, Reference, below a divider.
+- **The bar** (`web/src/frame/SideBar.tsx`): Find, Categories and Starred (with its count), then
+  Reference. An icon opens its view in the side bar; the icon of the open view closes it. The
+  side bar's right edge resizes it (200 to 640 px, at most half the window; a double-click resets
+  300). The view, open or closed, and the width are remembered per browser; on a phone the bar
+  lies over the page and each visit starts with it closed.
+- **Find, Categories and Starred** are the panel's tabs as they were. On a dashboard a click puts
+  the node on the channel picked at the top, and ⓘ (on hover) opens it in Reference without
+  touching the channel. On a page without a dashboard there is no channel, so a click opens
+  Reference.
+- **Reference** (`web/src/frame/reference/`) is a lookup, not a widget: no channel, no time range,
+  the plant as it is today. One search box finds nodes (code, name), devices (code, name, brand,
+  model, gateway address, slave ID) and quantities (code, description, unit, id) in lists the
+  browser already holds; every node, device and quantity on a page opens its own page, and Back
+  and Forward walk the pages seen in the session (dropped on a site switch).
+  - **Node:** class, type, utilities and the site's status; Fed by and Feeds, each edge with its
+    type, utility and the meter on it; the devices on the node or its feeder, with where the model
+    reads each, brand and model, gateway, slave ID and whether it reports; and the values the
+    node can be given and how (`/api/section` one level down, `/api/meters`).
+  - **Device:** the register's details, where the model reads it today by node (on the node, or
+    on the feeder from another), each quantity linked, and the quantities it reported in the last
+    day beside those the model reads and didn't get. No reading times, as in the Meters widget
+    since 2026-10-29: a 15-minute bucket's time reads as the last reading.
+  - **Quantity:** its vocabulary entry (unit, counter or sample, whether the solver resolves it
+    for every node, the derived quantities it feeds) and the devices carrying it: those the model
+    reads it from, at which node, and those that reported it in the last day without the model
+    reading it.
+  - The index is `GET /api/devices` (§7), `o-mcp/devicelist` v1: every device of the register,
+    its graph mappings by node and what it reported in the last day (one day, not `meters`' seven:
+    the list reads every device's buckets). Measured on dev: 107 devices in 1.7 s, cached until
+    the 15-minute data moves.
+- **Retired widgets:** a saved `meters` or `nodeinfo` widget is drawn as a placeholder pointing at
+  Reference, removed by hand, as the finder was. The template's Meters widget is gone and the
+  plant section takes the full width.
 
 ## 6. Database connections
 
@@ -683,10 +724,11 @@ the values are.
 | `GET /api/nodes` | `as_of`, `text`, `type` (subtypes included), `class`, `utility`, `metered`, `site_status`, `limit` (≤ 500) | `o-mcp/nodelist` v1, the finder |
 | `GET /api/section` | `node`, `as_of`, `depth` (≤ 12), `direction` (`down`/`up`), `utility` | `o-mcp/subgraph` v1, the single-line diagram and the path to source |
 | `GET /api/meters` | `node`, `as_of` | `o-mcp/meters` v1: devices, last readings, what can be resolved |
+| `GET /api/devices` | `as_of` | `o-mcp/devicelist` v1: every device of the register, its hardware, where the model reads it on `as_of` (by node; a feeder's on the node the edge goes into) and the quantities it reported in the last day. The Reference view's index; no MCP tool yet |
 | `GET /api/readings` | `node`, `quantities` (≤ 8), `start`, `end` (≤ 92 days), `interval`, `device` | `o-mcp/readings` v1 on the meters in effect on the window's last day, at most 10,000 points |
 | `GET /api/sankey`, `GET /api/diagnostics` | `start`, `end` (≤ 92 days), `quantity`, `node_detail` | `graph.sankey`'s links; `graph.sankey_diagnostics` with node ids, and `graph.v_property_gaps` |
 | `GET /api/now` | `node`, `at` (default now), `quantities` | each of the node's meters' last minute reading in the 15 minutes before `at`, instantaneous values by default, power factor decoded (`plant/now.py`) |
-| `GET /api/categories` | `as_of`, `quantity` | the sankey's categories (`graph.category`, `FUNCTIONAL`) and the nodes in each on `as_of`, with how each was found and its weight (`graph.sankey_nodes` over that one day). The left panel's tree |
+| `GET /api/categories` | `as_of`, `quantity` | the sankey's categories (`graph.category`, `FUNCTIONAL`) and the nodes in each on `as_of`, with how each was found and its weight (`graph.sankey_nodes` over that one day). The side bar's Categories view |
 | `GET /api/status` | `at` (default now) | the latest minute and 15-minute data in the last 24 h, the daily summary's last refresh, and the meters the graph reads that have had no 15-minute data for over 2 hours, apart from those on nodes the site turned off (`plant/status.py`) |
 
 - Topology widgets pass their range's last day as `as_of` (§3, A); readings and the sankey take
