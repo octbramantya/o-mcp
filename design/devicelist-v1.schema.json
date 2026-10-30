@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "o-mcp://formats/devicelist/v1",
+  "title": "o-mcp/devicelist version 1",
+  "description": "Every device in the site's device register as of a date: what the register records about it, where the network model reads it (a node, or the edge into one), and which quantities it reported in the last day. Returned by GET /api/devices, the index of the frontend's Reference view; o-mcp/meters gives one node's devices in detail. Times are site time with their offset. Unknown fields may appear in later version-1 documents; ignore them.",
+  "type": "object",
+  "required": ["schema", "version", "query", "devices"],
+  "properties": {
+    "schema": {"const": "o-mcp/devicelist", "description": "Names the format. Check it, and version, before reading anything else."},
+    "version": {"const": 1, "description": "Format version. Adding fields keeps it at 1; removing, renaming or changing the meaning of a field makes 2."},
+    "query": {
+      "type": "object",
+      "description": "What was asked for.",
+      "required": ["tenant", "as_of", "observed_at", "reported_days"],
+      "properties": {
+        "tenant": {"type": "integer", "description": "Tenant (site) id."},
+        "as_of": {"type": "string", "format": "date", "description": "Where the model reads each device as of this day, YYYY-MM-DD, site time."},
+        "observed_at": {"type": "string", "description": "The instant reporting is judged at: now for today, else the end of the as_of day."},
+        "reported_days": {"type": "integer", "description": "Days before observed_at that reported and last_reading cover."}
+      }
+    },
+    "devices": {
+      "type": "array",
+      "description": "Every device in the register, by code, whether or not the model reads it.",
+      "items": {
+        "type": "object",
+        "required": ["device_id", "code", "name", "type", "declared_status", "active", "brand", "model", "protocol", "gateway", "slave_id", "graph", "last_reading", "reporting", "reported"],
+        "properties": {
+          "device_id": {"type": "integer", "description": "The device's database id."},
+          "code": {"type": "string", "description": "Device code."},
+          "name": {"type": ["string", "null"], "description": "Device name."},
+          "type": {"type": ["string", "null"], "description": "Device type, such as Power Meter or Flow Meter."},
+          "declared_status": {"type": ["string", "null"], "description": "The device register's status. It is not maintained: a silent device can still read ONLINE. Judge by reporting."},
+          "active": {"type": "boolean", "description": "Whether the register holds the device as active."},
+          "brand": {"type": ["string", "null"], "description": "Manufacturer, as the device register records it. Null if not recorded."},
+          "model": {"type": ["string", "null"], "description": "Model, as recorded. Null if not recorded."},
+          "protocol": {"type": ["string", "null"], "description": "How the device is read, as recorded, such as Modbus TCP. Null if not recorded."},
+          "gateway": {
+            "type": ["object", "null"],
+            "description": "The gateway (data concentrator) the device is polled through, identified by its address, as recorded; null if none is.",
+            "required": ["ip_address", "port"],
+            "properties": {
+              "ip_address": {"type": "string", "description": "The gateway's IP address on the plant network."},
+              "port": {"type": ["integer", "null"], "description": "The gateway's TCP port."}
+            }
+          },
+          "slave_id": {"type": ["integer", "null"], "description": "The device's Modbus slave address behind its gateway, as recorded. Null if not recorded."},
+          "graph": {
+            "type": "array",
+            "description": "Every quantity the network model reads from this device on as_of, and where, by node. Empty: the model doesn't read the device.",
+            "items": {
+              "type": "object",
+              "required": ["quantity_id", "code", "role", "multiplier", "attached_to", "node_id", "node", "edge", "feeder_from"],
+              "properties": {
+                "quantity_id": {"type": "integer", "description": "Quantity id."},
+                "code": {"type": ["string", "null"], "description": "Quantity code; null when the quantity is not in the vocabulary."},
+                "role": {"type": "string", "description": "TOTAL, SUBMETER or CHECK."},
+                "multiplier": {"type": "number", "description": "Factor applied to the reading (a CT ratio, a sign)."},
+                "attached_to": {"enum": ["NODE", "FEEDER"], "description": "NODE: read on the node. FEEDER: read on the edge into the node, from feeder_from."},
+                "node_id": {"type": "integer", "description": "The node's graph.node.id: the node itself, or for FEEDER the node the edge goes into, whose meters list the device."},
+                "node": {"type": "string", "description": "That node's code."},
+                "edge": {"type": ["integer", "null"], "description": "Id of the edge, for FEEDER."},
+                "feeder_from": {"type": ["string", "null"], "description": "Code of the node the edge comes from, for FEEDER."}
+              }
+            }
+          },
+          "last_reading": {"type": ["string", "null"], "description": "Its latest 15-minute value in the reported_days before observed_at; null if none."},
+          "reporting": {"type": "boolean", "description": "True when it read within 2 hours of observed_at."},
+          "reported": {
+            "type": "array",
+            "description": "Every quantity it reported in the reported_days before observed_at, by id.",
+            "items": {
+              "type": "object",
+              "required": ["quantity_id", "code"],
+              "properties": {
+                "quantity_id": {"type": "integer", "description": "Quantity id."},
+                "code": {"type": ["string", "null"], "description": "Quantity code; null when the quantity is not in the vocabulary."}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

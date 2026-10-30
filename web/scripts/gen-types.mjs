@@ -6,7 +6,7 @@ import { compile } from 'json-schema-to-typescript';
 
 const FORMATS = {
   dashboard: 'Dashboard', nodelist: 'NodeList', subgraph: 'Subgraph', meters: 'Meters',
-  readings: 'Readings', vocabulary: 'Vocabulary', aggregate: 'Aggregate',
+  readings: 'Readings', vocabulary: 'Vocabulary', aggregate: 'Aggregate', devicelist: 'DeviceList',
 };
 const design = new URL('../../design/', import.meta.url);
 const out = new URL('../src/types/formats/', import.meta.url);

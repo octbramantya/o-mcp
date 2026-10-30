@@ -400,6 +400,16 @@ def test_plant_reads(env, client):
     m = c.get("/api/meters", params={"node": A5, "as_of": DAY}).json()
     strictly(m, "meters-v1.schema.json")
     assert m["node"]["id"] == A5 and m["devices"]
+    # The device list: every device the node's meters name, read on the same node, and A5's energy
+    # meter on its feeder (046).
+    dl = c.get("/api/devices", params={"as_of": DAY}).json()
+    strictly(dl, "devicelist-v1.schema.json")
+    listed = {d["device_id"]: d for d in dl["devices"]}
+    for d in m["devices"]:
+        assert A5 in [g["node_id"] for g in listed[d["device_id"]]["graph"]]
+    assert any(g["node_id"] == A5 and g["attached_to"] == "FEEDER" and g["code"] == "ACTIVE_ENERGY_DELIVERED"
+               for d in dl["devices"] for g in d["graph"])
+    assert c.get("/api/devices", params={"as_of": "someday"}).status_code == 400
 
     # A node retired before as_of is refused by its code; an unknown id as such.
     with psycopg.connect(**env[1]) as conn:

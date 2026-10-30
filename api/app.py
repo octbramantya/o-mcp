@@ -692,6 +692,7 @@ def build(config):
         Route("/api/nodes", _read(reads.nodes), methods=["GET"]),
         Route("/api/section", _read(reads.subgraph), methods=["GET"]),
         Route("/api/meters", _read(reads.node_meters), methods=["GET"]),
+        Route("/api/devices", _read(reads.device_list), methods=["GET"]),
         Route("/api/readings", _read(reads.node_readings), methods=["GET"]),
         Route("/api/sankey", _read(reads.sankey), methods=["GET"]),
         Route("/api/diagnostics", _read(reads.diagnostics), methods=["GET"]),

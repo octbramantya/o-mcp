@@ -1,8 +1,9 @@
 """The plant routes beside GET /api/values (design/frontend.md §5, §7): the vocabulary, the node finder,
-a plant section, a node's meters, readings and last readings, the sankey with its diagnostics, and
-the data's status for the bottom bar. Each runs the
+a plant section, a node's meters, the device list, readings and last readings, the sankey with its
+diagnostics, and the data's status for the bottom bar. Each runs the
 MCP tool's own query from plant/, and answers in the tool's v1 format, which carries node ids
-(decision 19): a widget stores the id and shows the code and name the answer gives.
+(decision 19): a widget stores the id and shows the code and name the answer gives. The device list
+(o-mcp/devicelist) has no tool yet; it is the frontend's Reference view's index.
 
 Nodes are given by graph.node.id and looked up on the network of as_of. Topology is drawn on one
 day (decision 20, A): the frontend passes its range's last day as as_of; readings and the sankey
@@ -14,7 +15,7 @@ graph alone. Every answer is cached as /api/values' are (api/cache.py).
 """
 import datetime as dt
 
-from plant import find, meters, now, readings, section, status, timewin
+from plant import devices, find, meters, now, readings, section, status, timewin
 from plant import vocab as vocabulary
 from plant.db import rows
 from plant.errors import PlantError
@@ -131,6 +132,17 @@ def node_meters(tenant, params):
             node = await node_on(conn, tenant.id, nid, as_of)
             return await meters.document(conn, tenant.id, tenant.vocab, tenant.tz, node, as_of)
     return ("meters", tenant.id, nid, as_of), compute, ("quarter",)
+
+
+def device_list(tenant, params):
+    """Every device of the register, where the model reads it on as_of and what it reported in the last
+    day (plant/devices.py): the Reference view's index of devices and quantities."""
+    as_of = _as_of(params, tenant.tz)
+
+    async def compute():
+        async with tenant.tx() as conn:
+            return await devices.document(conn, tenant.id, tenant.vocab, tenant.tz, as_of)
+    return ("devices", tenant.id, as_of), compute, ("quarter",)
 
 
 def auto_interval(w, minutes_kept):
