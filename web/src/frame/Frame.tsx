@@ -19,7 +19,11 @@ export function useSwitchTenant() {
   const navigate = useNavigate();
   return useMutation({
     mutationFn: (id: number) => post<Me>('/api/tenant', { tenant_id: id }),
-    onSuccess: (me) => {
+    // a /api/me read in flight, started before the switch (after log-in, say), would land after it
+    // and put the old site back: drop it, before and after the switch
+    onMutate: () => qc.cancelQueries({ queryKey: ['me'] }),
+    onSuccess: async (me) => {
+      await qc.cancelQueries({ queryKey: ['me'] });
       qc.removeQueries({ queryKey: ['plant'] });
       qc.removeQueries({ queryKey: ['dashboards'] });
       qc.removeQueries({ queryKey: ['dashboard'] });
