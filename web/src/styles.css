@@ -73,8 +73,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .channel-target .choice { padding: 0 6px; border: 1px solid; border-radius: 10px; font-size: 11px; font-weight: 600; color: var(--text); cursor: pointer; }
 .channel-target .choice.on { color: #111317; }
 .channel-target .choice[data-focus-visible] { outline: 2px solid var(--accent); outline-offset: 1px; }
-.category-tree details { padding-left: 10px; }
-.category-tree summary { cursor: pointer; padding: 2px 4px; white-space: nowrap; }
+.category-tree .fold { padding-left: 10px; }
 .category-tree .node-list .pick { padding-left: 14px; }
 .find-filters { display: flex; flex-direction: column; gap: 6px; }
 .find-filters .utilities { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -277,6 +276,12 @@ button.danger { background: var(--danger); color: #fff; border-color: var(--dang
 .search-header { margin: 4px 0; font-size: 13px; font-weight: 600; }
 .search-hit { padding: 3px 8px; }
 .search-hit .link { padding: 0; }
+.fold-heading { margin: 0; font-size: inherit; font-weight: normal; }
+.fold-trigger { display: flex; align-items: center; gap: 4px; width: 100%; padding: 2px 4px; background: none; border: none; border-radius: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.fold-trigger[data-hovered] { background: var(--panel-2); }
+.fold-trigger[data-focus-visible] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.fold-chevron { display: inline-block; width: 12px; text-align: center; color: var(--muted); font-size: 12px; transition: transform 0.1s; }
+.fold[data-expanded] > .fold-heading .fold-chevron { transform: rotate(90deg); }
 .multi-pick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .search-field { display: flex; align-items: center; gap: 2px; }
 .search-input { flex: 1; min-width: 0; }

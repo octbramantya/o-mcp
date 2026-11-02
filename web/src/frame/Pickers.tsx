@@ -13,6 +13,7 @@ import { Check, Choices, Star, Toggle, ToggleGroup } from '../ui/toggles';
 import { useSideBar } from './sideBarStore';
 import { Select } from '../ui/Select';
 import { SearchField } from '../ui/search';
+import { Fold } from '../ui/Fold';
 
 export type Stars = ReturnType<typeof useStars>;
 
@@ -90,10 +91,10 @@ export function Find({ stars, target }: { stars: Stars; target: Target }) {
       </div>
       <div className="category-tree">
         {[...groups.keys()].sort().map((g) => (
-          <details key={g} open={open}>
-            <summary>{g} <span className="muted">{groups.get(g)!.length}</span></summary>
+          // remounted when a search or type opens every group, or clearing them folds them again
+          <Fold key={`${g} ${open}`} defaultOpen={open} title={<>{g} <span className="muted">{groups.get(g)!.length}</span></>}>
             <ul className="node-list">{groups.get(g)!.map((n) => <NodeRow key={n.id} id={n.id} stars={stars} target={target} showMetered />)}</ul>
-          </details>
+          </Fold>
         ))}
         {nodes && hits.length === 0 && <div className="muted pad">No node matches.</div>}
       </div>
@@ -115,11 +116,11 @@ function CategoryBranch({ id, data, kids, members, stars, target }: {
   const own = members.get(id) ?? [];
   const count = (cid: number): number => (members.get(cid)?.length ?? 0) + (kids.get(cid) ?? []).reduce((a, k) => a + count(k.id), 0);
   return (
-    <details open={c.parent_id === null}>
-      <summary><span className="dot" style={{ background: c.color ?? 'var(--muted)' }} />{c.name} <span className="muted">{count(id)}</span></summary>
+    <Fold defaultOpen={c.parent_id === null}
+          title={<><span className="dot" style={{ background: c.color ?? 'var(--muted)' }} />{c.name} <span className="muted">{count(id)}</span></>}>
       {sub.map((k) => <CategoryBranch key={k.id} id={k.id} data={data} kids={kids} members={members} stars={stars} target={target} />)}
       {own.length > 0 && <ul className="node-list">{own.map((m) => <NodeRow key={m.node_id} id={m.node_id} stars={stars} target={target} note={share(m)} />)}</ul>}
-    </details>
+    </Fold>
   );
 }
 
@@ -138,10 +139,9 @@ export function CategoryTree({ stars, target }: { stars: Stars; target: Target }
       <div className="muted small pad">{data.quantity.utility.toLowerCase()} nodes, by the sankey's categories</div>
       {(kids.get(null) ?? []).map((c) => <CategoryBranch key={c.id} id={c.id} data={data} kids={kids} members={members} stars={stars} target={target} />)}
       {unassigned.length > 0 && (
-        <details>
-          <summary><span className="dot" style={{ background: 'var(--muted)' }} />Unassigned <span className="muted">{unassigned.length}</span></summary>
+        <Fold title={<><span className="dot" style={{ background: 'var(--muted)' }} />Unassigned <span className="muted">{unassigned.length}</span></>}>
           <ul className="node-list">{unassigned.map((m) => <NodeRow key={m.node_id} id={m.node_id} stars={stars} target={target} />)}</ul>
-        </details>
+        </Fold>
       )}
     </div>
   );

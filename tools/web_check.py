@@ -15,9 +15,10 @@ choose the site; start from tenant 3's template; set a range dev has data for; p
 channel's widgets follow; narrow to two hours so readings go to minutes and Now has readings; enter
 edit mode from a widget's Edit, add a Stat on channel A and find its figure and line; save, reload
 and find it as saved; look at the bottom bar's data health; star a node and find it starred after a
-reload; open the category tree; click a node in the single-line diagram; export the dashboard and
-import the file; then at phone width. Last, three Readings widgets of other nodes, quantities and
-intervals share their tooltip: hovering one shows the others' at the same time, and leaving clears all.
+reload; open the category tree and fold and unfold its headings by keyboard and click; click a node
+in the single-line diagram; export the dashboard and import the file; then at phone width. Last,
+three Readings widgets of other nodes, quantities and intervals share their tooltip: hovering one
+shows the others' at the same time, and leaving clears all.
 Then the side bar's Reference view, from the dashboard list: a board's feeders and loads, its meter
 on both the board and its feeder edge, with gateway and slave address; that meter's page, where the
 model reads it and what it reported, with no reading times; a quantity's page listing the devices
@@ -161,7 +162,8 @@ def reference(page, out, nodes):
     def look_up(text, kind):
         page.fill(search, text)
         page.wait_for_selector(f"{REF} .search-header", timeout=180_000)
-        page.click(f"{REF} .search-section:has(.search-header:has-text('{kind}')) [role=option]:has(b:text-is('{text}'))")
+        section = f"{REF} .search-section:has(.search-header:has-text('{kind}'))"
+        page.click(f"{section} [role=option]:has(b:text-is('{text}'))")
         page.wait_for_selector(f"{REF} .ref-title b:text-is('{text}')")
         page.wait_for_function("() => !document.querySelector('.side-bar .loading')", timeout=180_000)
 
@@ -227,7 +229,8 @@ def reference(page, out, nodes):
     page.keyboard.press("ArrowDown")
     page.keyboard.press("ArrowDown")
     focused = page.locator(f"{REF} [role=option][data-focused] b")
-    if page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "Look up a node, device or quantity":
+    held = page.evaluate("() => document.activeElement?.getAttribute('aria-label')")
+    if held != "Look up a node, device or quantity":
         found.append("reference search: the arrow keys took focus out of the field")
     if not focused.count():
         found.append("reference search: ArrowDown focused no match")
@@ -429,6 +432,33 @@ def calendar(page, out):
     shown = page.inner_text(".toolbar .range-button")
     if shown != f"{fields['From'].replace('T', ' ')} to {fields['To'].replace('T', ' ')}":
         found.append(f"calendar: the range applied reads {shown!r}")
+    return found
+
+
+def folds(page, out):
+    """The category tree's headings fold and unfold (design/frontend-aria.md phase 9): the root, Supply,
+    opens with its branches shown, Enter on its heading hides them and says so, Enter again shows them,
+    and a click on a folded branch, Production, opens it and shows its own."""
+    found = []
+    tree = page.locator(".category-tree")
+    root = tree.locator(".fold-trigger:has-text('Supply')").first
+    branch = tree.locator(".fold-trigger:has-text('Production')").first
+    if root.get_attribute("aria-expanded") != "true" or not branch.is_visible():
+        found.append("folds: Supply doesn't start open with its branches shown")
+    root.focus()
+    page.keyboard.press("Enter")
+    if root.get_attribute("aria-expanded") != "false" or branch.is_visible():
+        found.append("folds: Enter on Supply didn't fold it")
+    page.keyboard.press("Enter")
+    if root.get_attribute("aria-expanded") != "true" or not branch.is_visible():
+        found.append("folds: Enter again didn't unfold Supply")
+    if branch.get_attribute("aria-expanded") != "false":
+        found.append("folds: Production doesn't start folded")
+    branch.click()
+    under = tree.locator(".fold:has(> .fold-heading .fold-trigger:has-text('Production')) > .fold-panel .fold-trigger")
+    if branch.get_attribute("aria-expanded") != "true" or not under.first.is_visible():
+        found.append("folds: a click didn't open Production")
+    page.screenshot(path=str(out / "5b-folds.png"))
     return found
 
 
@@ -678,7 +708,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.fill(".side-bar .find-filters input[placeholder='Find a node']", "LVMDB_A")
     page.click(".side-bar .find-filters .utilities button:has-text('Electricity')")
     page.click(".side-bar .find-filters .check:has-text('metered')")
-    page.wait_for_selector(".side-bar details[open] summary:has-text('MAIN_LV_BOARD')")
+    page.wait_for_selector(".side-bar .fold[data-expanded] .fold-trigger:has-text('MAIN_LV_BOARD')")
     page.click(".side-bar li:has-text('LVMDB_A5') .pick")
     page.wait_for_selector(".channel:has-text('LVMDB_A5')")
     # Find's text is a search field: Escape clears it, and the clear button too
@@ -735,11 +765,12 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.wait_for_selector(".side-bar li:has-text('LVMDB_A5') .star.on")
     page.wait_for_selector(".activity-bar button[aria-label='Starred'] .count:text-is('1')")
     page.click(".activity-bar button[aria-label='Categories']")
-    page.wait_for_selector(".category-tree summary:has-text('Production')")
+    page.wait_for_selector(".category-tree .fold-trigger:has-text('Production')")
+    problems.extend(folds(page, out))
     page.click(".activity-bar button[aria-label='Categories']")
     page.wait_for_selector(".side-bar", state="detached")
     page.click(".activity-bar button[aria-label='Categories']")
-    page.wait_for_selector(".category-tree summary:has-text('Production')")
+    page.wait_for_selector(".category-tree .fold-trigger:has-text('Production')")
     settle()
 
     # the single-line diagram: a click on a node's code puts it on the channel
