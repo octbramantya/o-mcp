@@ -135,9 +135,7 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .channels { display: flex; gap: 6px; flex-wrap: wrap; }
 .channel { border: 1px solid; border-radius: 12px; padding: 1px 6px; white-space: nowrap; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
-.popover-anchor { position: relative; }
-.popover { position: absolute; right: 0; top: calc(100% + 4px); z-index: 100; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.25); }
-.time-picker { display: flex; gap: 12px; width: 460px; }
+.time-picker { display: flex; gap: 12px; width: min(460px, calc(100vw - 32px)); }
 .time-picker .presets { display: flex; flex-direction: column; gap: 2px; min-width: 150px; }
 .time-picker .presets button { text-align: left; background: none; border: none; }
 .time-picker .presets button.on, .time-picker .presets button:hover { background: var(--panel-2); }
@@ -213,7 +211,6 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .health.ok { color: var(--ok); }
 .health.warn { color: var(--warn); }
 .health.bad { color: var(--danger); }
-.popover-anchor.up .popover { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
 .silent-list { width: min(560px, 90vw); max-height: 60vh; overflow: auto; }
 .new-account { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .notice { margin: 12px 0; padding: 12px; border-color: var(--warn); }
@@ -260,3 +257,5 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .select-value[data-placeholder] { color: var(--muted); }
 .select .chevron { color: var(--muted); font-size: 10px; }
 .field .select, .field .select-button { width: 100%; }
+.panel-popover { padding: 10px; max-width: calc(100vw - 16px); }
+.popover-dialog { outline: none; }

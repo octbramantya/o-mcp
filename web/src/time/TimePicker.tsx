@@ -1,5 +1,6 @@
 // The dashboard's time range and refresh (design/frontend.md §3), on the dashboard's own toolbar.
 import { useRef, useState } from 'react';
+import { PopoverButton } from '../ui/PopoverButton';
 import type { TimeRange } from './range';
 import { describe, isValid, pickerValue, PRESETS, siteNow } from './range';
 
@@ -33,25 +34,21 @@ export function TimePicker({ value, onChange, tz }: { value: TimeRange; onChange
   const ok = isValid(from) && isValid(to);
   const pick = (t: TimeRange) => { onChange(t); setOpen(false); };
   return (
-    <div className="popover-anchor">
-      <button type="button" onClick={() => { setFrom(value.from); setTo(value.to); setOpen(!open); }}>{describe(value)}</button>
-      {open && (
-        <div className="popover time-picker">
-          <div className="presets">
-            {PRESETS.map((p) => (
-              <button key={p.label} type="button" className={p.from === value.from && p.to === value.to ? 'on' : undefined}
-                      onClick={() => pick({ from: p.from, to: p.to })}>{p.label}</button>
-            ))}
-          </div>
-          <div className="custom">
-            <TimeField label="From" edge="from" value={from} onChange={setFrom} placeholder="2026-09-01 or now-7d" tz={tz} />
-            <TimeField label="To" edge="to" value={to} onChange={setTo} placeholder="2026-10-01 or now" tz={tz} />
-            <p className="muted">Site time. A date is its midnight; the end is excluded. now-6h, now/d (start of today; as To, its end).</p>
-            <button type="button" disabled={!ok} onClick={() => pick({ from, to })}>Apply</button>
-          </div>
-        </div>
-      )}
-    </div>
+    <PopoverButton button={describe(value)} buttonClassName="range-button" title="Time range" className="time-picker"
+                   isOpen={open} onOpenChange={(o) => { if (o) { setFrom(value.from); setTo(value.to); } setOpen(o); }}>
+      <div className="presets">
+        {PRESETS.map((p) => (
+          <button key={p.label} type="button" className={p.from === value.from && p.to === value.to ? 'on' : undefined}
+                  onClick={() => pick({ from: p.from, to: p.to })}>{p.label}</button>
+        ))}
+      </div>
+      <div className="custom">
+        <TimeField label="From" edge="from" value={from} onChange={setFrom} placeholder="2026-09-01 or now-7d" tz={tz} />
+        <TimeField label="To" edge="to" value={to} onChange={setTo} placeholder="2026-10-01 or now" tz={tz} />
+        <p className="muted">Site time. A date is its midnight; the end is excluded. now-6h, now/d (start of today; as To, its end).</p>
+        <button type="button" disabled={!ok} onClick={() => pick({ from, to })}>Apply</button>
+      </div>
+    </PopoverButton>
   );
 }
 

@@ -378,7 +378,7 @@ def sld_values(page, out, nodes):
 def calendar(page, out):
     """From and To's calendars: each opens on the instant its field names and writes what is picked."""
     found = []
-    page.click(".toolbar .popover-anchor > button")
+    page.click(".toolbar .range-button")
     fields = {}
     for n, edge in ((1, "From"), (2, "To")):
         label = f".time-picker .custom label:nth-child({n})"
@@ -395,7 +395,7 @@ def calendar(page, out):
             found.append(f"calendar: picking {fields[edge]} in {edge} wrote {written!r}")
     page.screenshot(path=str(out / "10-calendar.png"))
     page.click(".time-picker .custom > button")
-    shown = page.inner_text(".toolbar .popover-anchor > button")
+    shown = page.inner_text(".toolbar .range-button")
     if shown != f"{fields['From'].replace('T', ' ')} to {fields['To'].replace('T', ' ')}":
         found.append(f"calendar: the range applied reads {shown!r}")
     return found
@@ -410,7 +410,8 @@ def add_widget(page, kind):
 def controls(page, out):
     """The React Aria controls (design/frontend-aria.md), by keyboard: on a new blank dashboard, a
     Stat's node picker offers matches as you type, Escape closes the list and clears the field, and
-    the arrow keys and Enter pick one."""
+    the arrow keys and Enter pick one; the range and the silent meters open from the keyboard, close
+    on Escape with focus back on their button, and the range on a click outside."""
     found = []
     discard = page.locator(".toolbar button:text-is('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
@@ -441,6 +442,28 @@ def controls(page, out):
         found.append(f"node picker: the field kept {box.input_value()!r} after a pick")
     page.screenshot(path=str(out / "9-controls.png"))
     page.click(".toolbar button:text-is('Done editing')")
+
+    # the range and the silent meters: each opens a dialog that Escape closes, focus back on its button
+    for button, dialog in ((".toolbar .range-button", "Time range"), (".bottombar .health.link", "Silent meters")):
+        page.focus(button)
+        page.keyboard.press("Enter")
+        panel = page.get_by_role("dialog", name=dialog)
+        panel.wait_for()
+        if dialog == "Time range":
+            page.screenshot(path=str(out / "9b-range.png"))
+        page.keyboard.press("Escape")
+        panel.wait_for(state="detached")
+        try:            # React Aria restores focus a frame after the panel goes
+            page.wait_for_function("s => document.activeElement === document.querySelector(s)",
+                                   arg=button, timeout=2000)
+        except Exception:
+            where = page.evaluate("() => document.activeElement?.outerHTML.slice(0, 80)")
+            found.append(f"{dialog}: focus didn't return to its button after Escape (it is on {where})")
+    # and a click outside closes the range
+    page.click(".toolbar .range-button")
+    page.get_by_role("dialog", name="Time range").wait_for()
+    page.mouse.click(800, 600)
+    page.get_by_role("dialog", name="Time range").wait_for(state="detached")
     return found
 
 
@@ -450,7 +473,7 @@ def drive(page, url, email, temp, out, problems, nodes):
         page.wait_for_timeout(1500)       # chart animations
 
     def time_range(start, end):
-        page.click(".toolbar .popover-anchor > button")
+        page.click(".toolbar .range-button")
         page.fill(".time-picker .custom label:nth-child(1) input:not(.calendar)", start)
         page.fill(".time-picker .custom label:nth-child(2) input:not(.calendar)", end)
         page.click(".time-picker .custom > button")
