@@ -153,7 +153,7 @@ def reference(page, out, nodes):
     found = []
     page.click(".brand")
     page.wait_for_selector("text=Dashboards · PRS")
-    page.click(".activity-bar button[aria-label='Reference'][aria-selected=false]")
+    page.click(".activity-bar button[aria-label='Reference'][aria-checked=false]")
     search = f"{REF} .ref-head input"
     reads = f"{REF} section:has(h4:has-text('Where the model reads it'))"
 
@@ -238,7 +238,7 @@ def retired_and_inspect(page, out, nodes):
     shown = page.locator(".widget .body").inner_text()
     if "Reference view" not in shown:
         found.append(f"retired: the Meters widget isn't a placeholder pointing at Reference: {shown!r}")
-    page.click(".activity-bar button[aria-label='Find'][aria-selected=false]")
+    page.click(".activity-bar button[aria-label='Find'][aria-checked=false]")
     page.fill(".side-bar .find-filters input[placeholder='Find a node']", INFO_NODE)
     row = page.locator(f".side-bar li:has-text('{INFO_NODE}')").first
     row.hover()
@@ -412,7 +412,8 @@ def controls(page, out):
     Stat's node picker offers matches as you type, Escape closes the list and clears the field, and
     the arrow keys and Enter pick one; the range and the silent meters open from the keyboard, close
     on Escape with focus back on their button, and the range on a click outside; leaving a changed
-    dashboard and deleting one ask first, in a dialog that Escape or Cancel answers no."""
+    dashboard and deleting one ask first, in a dialog that Escape or Cancel answers no; the arrow keys
+    change the channel a click fills and move along the Activity Bar."""
     found = []
     discard = page.locator(".toolbar button:text-is('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
@@ -466,6 +467,18 @@ def controls(page, out):
     page.mouse.click(800, 600)
     page.get_by_role("dialog", name="Time range").wait_for(state="detached")
 
+    # the channel a click fills: radios, the arrow keys change it
+    find = page.locator(".activity-bar button[aria-label='Find'][aria-checked=false]")
+    if find.count():
+        find.click()
+    page.locator(".channel-target").get_by_role("radio", name="A", exact=True).focus()
+    page.keyboard.press("ArrowRight")
+    try:
+        page.wait_for_selector(".channel-target .choice.on:text-is('B')", timeout=2000)
+    except Exception:
+        found.append("channel target: ArrowRight from A didn't choose B")
+    page.keyboard.press("ArrowLeft")
+
     # leaving with unsaved changes asks first: Escape stays (focus on Stay), Leave goes
     leave = page.get_by_role("alertdialog", name="Leave without saving?")
     page.click(".brand")
@@ -502,6 +515,18 @@ def controls(page, out):
             arg=n - 1, timeout=10_000)
     except Exception:
         found.append("delete: the dashboard is still listed after Delete")
+
+    # the Activity Bar: arrow keys move between views, Enter opens one and closes it again
+    page.focus(".activity-bar button[aria-label='Find']")
+    page.keyboard.press("ArrowDown")
+    if page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "Categories":
+        found.append("Activity Bar: ArrowDown from Find didn't move to Categories")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".activity-bar button[aria-label='Categories'][aria-checked=true]")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".activity-bar button[aria-label='Categories'][aria-checked=false]")
+    if page.locator(".side-bar").count():
+        found.append("Activity Bar: Enter on the open view didn't close the side bar")
     return found
 
 
@@ -553,7 +578,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     # the side bar's Find: type groups, the utility and metered filters, a click sets channel A
     page.fill(".side-bar .find-filters input[placeholder='Find a node']", "LVMDB_A")
     page.click(".side-bar .find-filters .utilities button:has-text('Electricity')")
-    page.check(".side-bar .find-filters input[type=checkbox]")
+    page.click(".side-bar .find-filters .check:has-text('metered')")
     page.wait_for_selector(".side-bar details[open] summary:has-text('MAIN_LV_BOARD')")
     page.click(".side-bar li:has-text('LVMDB_A5') .pick")
     page.wait_for_selector(".channel:has-text('LVMDB_A5')")

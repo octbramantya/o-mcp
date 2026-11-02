@@ -70,8 +70,9 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .node-list li:hover .inspect, .node-list .inspect:focus-visible { visibility: visible; }
 @media (hover: none) { .node-list .inspect { visibility: visible; } }
 .channel-target { display: flex; align-items: center; gap: 4px; }
-.channel-target button { padding: 0 6px; border-radius: 10px; font-size: 11px; font-weight: 600; background: none; }
-.channel-target button.on { color: #111317; }
+.channel-target .choice { padding: 0 6px; border: 1px solid; border-radius: 10px; font-size: 11px; font-weight: 600; color: var(--text); cursor: pointer; }
+.channel-target .choice.on { color: #111317; }
+.channel-target .choice[data-focus-visible] { outline: 2px solid var(--accent); outline-offset: 1px; }
 .category-tree details { padding-left: 10px; }
 .category-tree summary { cursor: pointer; padding: 2px 4px; white-space: nowrap; }
 .category-tree .node-list .pick { padding-left: 14px; }
@@ -81,7 +82,6 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accen
 .find-filters .utilities button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .find-filters .row { display: flex; align-items: center; gap: 8px; }
 .find-filters .row select { flex: 1; min-width: 0; }
-.find-filters label input { width: auto; }
 .metered { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); margin-right: 6px; vertical-align: middle; }
 .metered.on { background: var(--accent); border-color: var(--accent); }
 main { grid-area: main; overflow: auto; min-width: 0; }
@@ -266,3 +266,9 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .confirm-body { color: var(--muted); }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+.titled { display: contents; }
+.choices { display: flex; align-items: center; gap: 4px; }
+.check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.check-box { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel-2); font-size: 10px; line-height: 1; }
+.check[data-selected] .check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.check[data-focus-visible] .check-box { outline: 2px solid var(--accent); outline-offset: 1px; }

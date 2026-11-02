@@ -9,6 +9,7 @@ import type { Categories } from '../api/types';
 import type { ChannelId } from '../dashboards/document';
 import { CHANNELS } from '../dashboards/document';
 import { useDashboard } from '../dashboards/store';
+import { Check, Choices, Star, Toggle, ToggleGroup } from '../ui/toggles';
 import { useSideBar } from './sideBarStore';
 
 export type Stars = ReturnType<typeof useStars>;
@@ -36,10 +37,7 @@ function NodeRow({ id, stars, target, note, showMetered }: { id: number; stars: 
       {n && target && (
         <button type="button" className="inspect" onClick={lookUp} title={`Look ${n.code} up in Reference`} aria-label={`Look ${n.code} up in Reference`}>ⓘ</button>
       )}
-      <button type="button" className={`star${on ? ' on' : ''}`} onClick={() => stars.toggle(id)}
-              title={on ? 'Unstar' : 'Star'} aria-label={on ? 'Unstar' : 'Star'} aria-pressed={on}>
-        {on ? '★' : '☆'}
-      </button>
+      <Star on={on} onToggle={() => stars.toggle(id)} />
     </li>
   );
 }
@@ -78,20 +76,15 @@ export function Find({ stars, target }: { stars: Stars; target: Target }) {
     <>
       <div className="pad find-filters">
         <input placeholder="Find a node" value={text} onChange={(e) => setText(e.target.value)} />
-        <div className="utilities" role="group" aria-label="Utility">
-          {vocab?.utilities.filter((u) => utilities.has(u.code)).map((u) => (
-            <button key={u.code} type="button" aria-pressed={f.utility === u.code} className={f.utility === u.code ? 'on' : undefined}
-                    title={u.name} onClick={() => setF({ ...f, utility: f.utility === u.code ? '' : u.code })}>
-              {u.name}
-            </button>
-          ))}
-        </div>
+        <ToggleGroup className="utilities" label="Utility" value={f.utility || null} onChange={(u) => setF({ ...f, utility: u ?? '' })}>
+          {vocab?.utilities.filter((u) => utilities.has(u.code)).map((u) => <Toggle key={u.code} id={u.code}>{u.name}</Toggle>)}
+        </ToggleGroup>
         <div className="row">
           <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} aria-label="Type">
             <option value="">Any type</option>
             {vocab?.node_types.filter((x) => used.has(x.code)).map((x) => <option key={x.code} value={x.code}>{x.code}</option>)}
           </select>
-          <label className="small"><input type="checkbox" checked={f.metered} onChange={(e) => setF({ ...f, metered: e.target.checked })} /> metered</label>
+          <Check className="small" checked={f.metered} onChange={(metered) => setF({ ...f, metered })}>metered</Check>
         </div>
       </div>
       <div className="category-tree">
@@ -165,14 +158,7 @@ export function Starred({ stars, target }: { stars: Stars; target: Target }) {
 /** Which channel a click fills, at the top of the three views on a dashboard; not saved with it. */
 export function ChannelTarget({ value, onChange }: { value: ChannelId; onChange: (c: ChannelId) => void }) {
   return (
-    <div className="channel-target muted small pad" role="radiogroup" aria-label="Channel a click fills">
-      A click puts a node on channel
-      {CHANNELS.map((c) => (
-        <button key={c.id} type="button" role="radio" aria-checked={value === c.id} className={value === c.id ? 'on' : undefined}
-                style={{ borderColor: c.color, ...(value === c.id ? { background: c.color } : {}) }} onClick={() => onChange(c.id)}>
-          {c.id}
-        </button>
-      ))}
-    </div>
+    <Choices className="channel-target muted small pad" label="A click puts a node on channel" value={value} onChange={onChange}
+             options={CHANNELS.map((c) => ({ id: c.id, label: c.id, style: (on) => ({ borderColor: c.color, ...(on ? { background: c.color } : {}) }) }))} />
   );
 }

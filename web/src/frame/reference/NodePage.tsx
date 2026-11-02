@@ -4,6 +4,7 @@
 import { useNodeMeters, useNodes, useNodeSection } from '../../api/hooks';
 import type { Meters } from '../../types/formats/meters';
 import type { Subgraph } from '../../types/formats/subgraph';
+import { Star } from '../../ui/toggles';
 import { Findings, gateway, Pending } from '../../widgets/common';
 import type { Stars } from '../Pickers';
 import { Facts, Go, NodeLink, QuantityCode, words } from './links';
@@ -82,8 +83,7 @@ export function NodePage({ id, stars }: { id: number; stars: Stars }) {
     <div className="ref-page">
       <div className="ref-title">
         <span className="kind">node</span> <b>{known?.code ?? id}</b>
-        <button type="button" className={`star${on ? ' on' : ''}`} onClick={() => stars.toggle(id)}
-                title={on ? 'Unstar' : 'Star'} aria-label={on ? 'Unstar' : 'Star'} aria-pressed={on}>{on ? '★' : '☆'}</button>
+        <Star on={on} onToggle={() => stars.toggle(id)} />
       </div>
       {known?.name && <div className="muted">{known.name}</div>}
       <Pending q={m}>

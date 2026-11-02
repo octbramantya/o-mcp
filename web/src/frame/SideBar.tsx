@@ -5,6 +5,7 @@
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { useStars } from '../api/hooks';
 import { useDashboard } from '../dashboards/store';
+import { Toggle, ToggleGroup } from '../ui/toggles';
 import { CategoriesIcon, FindIcon, ReferenceIcon, StarIcon } from './icons';
 import { CategoryTree, ChannelTarget, Find, Starred } from './Pickers';
 import { Reference } from './reference/Reference';
@@ -22,21 +23,21 @@ export function ActivityBar() {
   const { view, open, press } = useSideBar();
   const stars = useStars();
   return (
-    <nav className="activity-bar" role="tablist" aria-label="Side bar" aria-orientation="vertical">
+    <ToggleGroup className="activity-bar" label="Side bar" orientation="vertical" value={open ? view : null}
+                 onChange={(v) => press(v ?? view)}>
       {VIEWS.map((v) => {
         const on = open && view === v.id;
         return (
           <div key={v.id} className="activity-slot">
             {v.id === 'reference' && <hr />}
-            <button type="button" role="tab" aria-selected={on} className={on ? 'on' : undefined} onClick={() => press(v.id)}
-                    title={on ? `Hide ${v.label}` : v.label} aria-label={v.label}>
+            <Toggle id={v.id} label={v.label} title={on ? `Hide ${v.label}` : v.label}>
               <v.icon />
               {v.id === 'starred' && stars.ids.length > 0 && <span className="count">{stars.ids.length}</span>}
-            </button>
+            </Toggle>
           </div>
         );
       })}
-    </nav>
+    </ToggleGroup>
   );
 }
 
