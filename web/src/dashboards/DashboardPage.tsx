@@ -10,6 +10,7 @@ import type { DashboardFull } from '../api/types';
 import { resolveRange } from '../time/range';
 import { RefreshPicker, TimePicker } from '../time/TimePicker';
 import { ConfirmDialog } from '../ui/confirm';
+import { MenuButton } from '../ui/MenuButton';
 import { NodeName } from '../widgets/common';
 import type { View } from '../widgets/contract';
 import { WIDGETS } from '../widgets/registry';
@@ -145,12 +146,10 @@ function Channels() {
 function AddWidget() {
   const addWidget = useDashboard((s) => s.addWidget);
   return (
-    <select value="" onChange={(e) => {
-      const t = WIDGETS.find((w) => w.type === e.target.value);
-      if (t) addWidget(t.type, t.w, t.h, t.defaults);
-    }}>
-      <option value="">Add a widget…</option>
-      {WIDGETS.map((w) => <option key={w.type} value={w.type} title={w.description}>{w.label}</option>)}
-    </select>
+    <MenuButton button="Add a widget ▾" actions={WIDGETS.map((w) => ({ id: w.type, label: w.label, description: w.description }))}
+                onAction={(type) => {
+                  const t = WIDGETS.find((w) => w.type === type);
+                  if (t) addWidget(t.type, t.w, t.h, t.defaults);
+                }} />
   );
 }

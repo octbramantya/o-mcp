@@ -403,7 +403,8 @@ def calendar(page, out):
 
 def add_widget(page, kind):
     """Add a widget of `kind` to the dashboard in edit mode; the new one is the last."""
-    page.locator(".toolbar select").filter(has_text="Add a widget").select_option(kind)
+    page.click(".toolbar button:has-text('Add a widget')")
+    page.locator(f"[role=menuitem][data-key='{kind}']").click()
     return page.locator(".widget").last
 
 
@@ -424,6 +425,19 @@ def controls(page, out):
     page.wait_for_selector(".toolbar")
     if page.locator(".toolbar button:text-is('Edit')").count():
         page.click(".toolbar button:text-is('Edit')")
+    # Add a widget is a menu: arrow keys move through it, Escape closes it with focus back on its button
+    page.focus(".toolbar button:has-text('Add a widget')")
+    page.keyboard.press("Enter")
+    menu = page.get_by_role("menu")
+    menu.wait_for()
+    page.keyboard.press("ArrowDown")
+    page.screenshot(path=str(out / "9a-add-widget.png"))
+    page.keyboard.press("Escape")
+    menu.wait_for(state="detached")
+    try:
+        page.wait_for_function("() => document.activeElement?.textContent?.startsWith('Add a widget')", timeout=2000)
+    except Exception:
+        found.append("Add a widget: focus didn't return to its button after Escape")
     stat = add_widget(page, "stat")
     stat.locator("header button:text-is('Settings')").click()
     box = stat.get_by_role("combobox", name="Find a node")
