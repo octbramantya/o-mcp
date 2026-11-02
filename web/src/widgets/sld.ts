@@ -733,7 +733,7 @@ function drawLegend(frame: Svg, ly: number) {
     + 'PV / G source  ·  dashed = carries no flow', 11, p.muted, 'start');
   frame.text(MARGIN + 35, ly + 18, 'feeders above a bar, loads below  ·  ● connected to this bar; a line crossing '
     + 'a bar without a dot is not', 11, p.muted, 'start');
-  frame.text(MARGIN + 35, ly + 36, '? / missing = a gap in graph.v_property_gaps  ·  2 live parents = connected to '
+  frame.text(MARGIN + 35, ly + 36, '? / missing = a property not yet recorded  ·  2 live parents = connected to '
     + 'two bars, which the plant may not be  ·  implicit bus = several children but no bus node', 11, p.warn, 'start');
 }
 

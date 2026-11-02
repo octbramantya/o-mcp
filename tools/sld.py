@@ -641,7 +641,7 @@ def draw_legend(frame, ly):
                "PV / G source  ·  dashed = carries no flow", 11, MUTED, "start")
     frame.text(MARGIN + 35, ly + 18, "feeders above a bar, loads below  ·  ● connected to this bar; a line crossing "
                "a bar without a dot is not", 11, MUTED, "start")
-    frame.text(MARGIN + 35, ly + 36, "? / missing = a gap in graph.v_property_gaps  ·  2 live parents = connected to "
+    frame.text(MARGIN + 35, ly + 36, "? / missing = a property not yet recorded  ·  2 live parents = connected to "
                "two bars, which the plant may not be  ·  implicit bus = several children but no bus node", 11, WARN,
                "start")
 
