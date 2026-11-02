@@ -30,7 +30,8 @@ listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too
 Last, the single-line diagram with figures: INCOMING_PLN three levels down (121 nodes, three batches of
 /api/aggregate) with each node's energy over a day, measured in bold and worked out in italics, a
 click on a figure putting its node on the channel, and the legend shown under the drawing on request;
-and FACTORY_AB with readings at the range's end, LVA5's on its feeder rather than on LVMDB_A5.
+and FACTORY_AB with readings at the range's end, LVA5's on its feeder rather than on LVMDB_A5,
+exported as one SVG with its figures, legend and caption.
 """
 import argparse
 import asyncio
@@ -351,6 +352,14 @@ def sld_values(page, out, nodes):
     page.locator(f"{readings}").scroll_into_view_if_needed()
     page.click(f"{readings} .foot button:text-is('Actual size')")
     page.screenshot(path=str(out / "10c-sld-readings.png"))
+    with page.expect_download() as dl:
+        page.click(f"{readings} .foot button:text-is('Export SVG')")
+    svg = out / dl.value.suggested_filename
+    dl.value.save_as(str(svg))
+    text = svg.read_text()
+    if not (svg.name.startswith("sld_FACTORY_AB_d1_") and "Legend:" in text and "LVA5" in text
+            and "PF_TOTAL, THD_VOLTAGE_LN at" in text and text.rstrip().endswith("</svg>")):
+        found.append(f"sld export: {svg.name} lacks the legend, LVA5's readings or the caption")
 
     page.locator(f"{energy}").scroll_into_view_if_needed()
     page.click(f"{energy} .foot button:text-is('Legend')")

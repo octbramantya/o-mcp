@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Subgraph } from '../types/formats/subgraph';
-import { draw, g, render } from './sld';
+import { draw, g, render, withFigures } from './sld';
 
 const ROOT = resolve(__dirname, '../../..');
 const FIXTURES = join(__dirname, 'sld-fixtures');
@@ -50,4 +50,28 @@ describe.skipIf(!hasUv())('render, against tools/sld.py', () => {
       expect(d.anchors.length).toBeGreaterThan(0);
     });
   }
+});
+
+describe('withFigures', () => {
+  it('writes each figure and the caption into the drawing, escaped, inside its frame', () => {
+    const doc = JSON.parse(readFileSync(join(FIXTURES, 'GAS_ENGINE_d1.json'), 'utf8')) as Subgraph;
+    const d = draw(doc, { legend: true, rows: 1 });
+    const a = d.anchors[0];
+    const out = withFigures(d.svg, [{ x: a.x, y: a.y, anchor: a.anchor, text: '1,234 kWh', title: 'A & B', kind: 'measured' }],
+      'As of 2026-10-21 <x>');
+    expect(out.startsWith(d.svg.slice(0, -'</svg>'.length))).toBe(true);
+    expect(out.endsWith('</svg>')).toBe(true);
+    expect(out).toContain(`<text x="${g(a.x)}" y="${g(a.y)}" font-size="11" text-anchor="${a.anchor}" fill="#1f2937" font-weight="bold"`);
+    expect(out).toContain('<title>A &amp; B</title>1,234 kWh</text>');
+    expect(out).toContain(`y="${g(d.height - 9)}"`);
+    expect(out).toContain('As of 2026-10-21 &lt;x&gt;</text>');
+  });
+
+  it('finds the figures where the widget, drawn without the legend, put them', () => {
+    for (const f of readdirSync(FIXTURES).filter((f) => f.endsWith('.json'))) {
+      const doc = JSON.parse(readFileSync(join(FIXTURES, f), 'utf8')) as Subgraph;
+      const opts = { rows: 2, feederRows: 1 };
+      expect(draw(doc, { ...opts, legend: true }).anchors).toEqual(draw(doc, { ...opts, legend: false }).anchors);
+    }
+  });
 });

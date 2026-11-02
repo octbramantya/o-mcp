@@ -587,7 +587,15 @@ Here the diagram is drawn from the graph, so the layout says where each value go
      - The readings are minute data, read like the Now widget, and production keeps 14 days of it:
        a range ending earlier has no readings. Dev's minute data holds only the solver's
        quantities (`dev_refresh.sh --raw`), so on dev only `PF_TOTAL` and `THD_VOLTAGE_LN` show.
-  4. `tools/sld.py` filling its own value rows, for a static diagram with figures.
+  4. ~~`tools/sld.py` filling its own value rows, for a static diagram with figures.~~ Replaced on
+     2026-11-02 by an export from the widget: the frontend already has the figures, and a second
+     way of working them out in `sld.py` would drift from the API's. `--rows` and `--anchors` stay
+     for a later job that needs diagrams made without the frontend. **Built 2026-11-02:** the
+     plant section's Export SVG downloads the drawing with its figures written in. It uses
+     `tools/sld.py`'s print colours, includes its legend, adds a caption (as of, the totals'
+     window, the readings' time), and takes `sld.py`'s file name (`sld_<root>_d<depth>_<as_of>.svg`).
+     The overlay and the file draw the same figures (`figures` in `Section.tsx`). The legend
+     changes nothing above it, so the widget's anchors hold in the file (`sld.test.ts`).
 
 ## 6. Database connections
 

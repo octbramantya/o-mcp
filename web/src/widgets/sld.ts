@@ -736,3 +736,29 @@ function drawLegend(frame: Svg, ly: number) {
   frame.text(MARGIN + 35, ly + 36, '? / missing = a gap in graph.v_property_gaps  ·  2 live parents = connected to '
     + 'two bars, which the plant may not be  ·  implicit bus = several children but no bus node', 11, p.warn, 'start');
 }
+
+// -- the frontend's own: a drawing with its figures in one file --------------------------------------------
+/** One figure on the drawing: where, what, and how it reads. measured and solved are totals (bold, and
+ * italic: worked out on the graph); live a meter's reading; none a missing figure. */
+export interface Figure {
+  x: number; y: number; anchor: Anchor['anchor'];
+  text: string; title: string; kind: 'measured' | 'solved' | 'live' | 'none';
+}
+
+/** The drawing with the figures written into it and a caption in its last line, as one SVG file:
+ * what the widget shows, for a report. The drawing must have been drawn with its legend, which leaves
+ * room for the caption below the legend's last line. */
+export function withFigures(svg: string, figures: Figure[], caption: string, p: Palette = PRINT): string {
+  const height = Number(/ height="([\d.]+)"/.exec(svg)?.[1]);
+  const halo = ` stroke="${p.paper}" stroke-width="4" stroke-linejoin="round" paint-order="stroke"`;
+  const texts = figures.map((f) => {
+    const style = f.kind === 'measured' ? ` fill="${p.ink}" font-weight="bold"`
+      : f.kind === 'solved' ? ` fill="${p.ink}" font-style="italic"`
+      : f.kind === 'none' ? ` fill="${p.muted}" font-style="italic"` : ` fill="${p.ink}"`;
+    return `<text x="${g(f.x)}" y="${g(f.y)}" font-size="11" text-anchor="${f.anchor}"${style}${halo}>`
+      + `<title>${escape(f.title)}</title>${escape(f.text)}</text>`;
+  });
+  const foot = `<text x="${g(MARGIN - 20)}" y="${g(height - 9)}" font-size="11" text-anchor="start" fill="${p.muted}">`
+    + `${escape(caption)}</text>`;
+  return svg.replace(/<\/svg>$/, [...texts, foot, '</svg>'].join('\n'));
+}

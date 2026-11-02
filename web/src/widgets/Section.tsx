@@ -17,8 +17,8 @@ import type { Aggregate } from '../types/formats/aggregate';
 import type { Subgraph } from '../types/formats/subgraph';
 import { show } from '../time/range';
 import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
-import type { Anchor, Palette } from './sld';
-import { draw } from './sld';
+import type { Anchor, Figure, Options, Palette } from './sld';
+import { draw, PRINT, withFigures } from './sld';
 import type { SettingsProps, View as Window, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
@@ -172,48 +172,62 @@ function liveText(live: Live, devices: Device[], code: string) {
   return { text, title, none: text === '—' };
 }
 
-/** The figures, in the drawing's coordinates. A node's rows are its total (if asked for), then its
- * readings; a feeder's rows its readings. A measured total is bold, one worked out on the graph italic,
- * a reading upright; each says more in its tooltip. */
-function Values({ anchors, ids, totals, live, width, height }: {
-  anchors: Anchor[]; ids: Map<string, number>; totals: Totals | null; live: Live | null; width: number; height: number;
-}) {
+type Placed = Figure & { node: string; feeder?: string };
+
+/** Every figure of the drawing, where its anchor says. A node's rows are its total (if asked for), then
+ * its readings; a feeder's rows its readings. The overlay and the exported file both draw these. */
+function figures(anchors: Anchor[], ids: Map<string, number>, totals: Totals | null, live: Live | null): Placed[] {
   const unit = totals?.first?.quantity.unit ? ` ${totals.first.quantity.unit}` : '';
   const rows: (string | null)[] = [...(totals ? [null] : []), ...(live?.codes ?? [])];   // null: the total
-  const total = (a: Anchor & { kind: 'node' }, i: number) => {
-    const id = ids.get(a.node);
-    const r = id === undefined || !totals ? undefined : totals.rows.get(id);
-    if (!r) return null;
-    const has = r.total !== null && r.total !== undefined;
-    const how = ORIGIN[r.origin] ?? r.origin;
-    const notes = totals!.about.get(r.node_id) ?? [];
-    return (
-      <text key={i} x={a.x} y={a.y} textAnchor={a.anchor} data-node={a.node}
-            className={!has ? 'none' : r.origin === 'MEASURED' ? 'measured' : 'solved'}>
-        <title>{[`${a.node}: ${has ? `${figure(r.total)}${unit}, ${how}` : how}`, ...notes].join('\n')}</title>
-        {has ? `${figure(r.total)}${unit}` : '—'}
-      </text>
-    );
-  };
+  const out: Placed[] = [];
+  for (const a of anchors) {
+    const at = { x: a.x, y: a.y, anchor: a.anchor };
+    if (a.kind === 'node' && rows[a.row] === null) {
+      const id = ids.get(a.node);
+      const r = id === undefined || !totals ? undefined : totals.rows.get(id);
+      if (!r) continue;
+      const has = r.total !== null && r.total !== undefined;
+      const how = ORIGIN[r.origin] ?? r.origin;
+      out.push({ ...at, node: a.node, kind: !has ? 'none' : r.origin === 'MEASURED' ? 'measured' : 'solved',
+        text: has ? `${figure(r.total)}${unit}` : '—',
+        title: [`${a.node}: ${has ? `${figure(r.total)}${unit}, ${how}` : how}`, ...(totals!.about.get(r.node_id) ?? [])].join('\n') });
+      continue;
+    }
+    const code = a.kind === 'node' ? rows[a.row] : live?.codes[a.row];
+    const devices = !live || !code ? undefined
+      : a.kind === 'node' ? live.onNode.get(a.node) : live.onFeeder.get(`${a.from}>${a.to}`);
+    if (!devices?.length || !code) continue;
+    const t = liveText(live!, devices, code);
+    out.push({ ...at, node: a.kind === 'node' ? a.node : a.to, feeder: a.kind === 'feeder' ? `${a.from}>${a.to}` : undefined,
+      kind: t.none ? 'none' : 'live', text: t.text, title: t.title });
+  }
+  return out;
+}
+
+/** The figures over the drawing, in its coordinates; each says more in its tooltip. */
+function Values({ figs, width, height }: { figs: Placed[]; width: number; height: number }) {
   return (
     <svg className="sld-values" viewBox={`0 0 ${width} ${height}`}>
-      {anchors.map((a, i) => {
-        if (a.kind === 'node' && rows[a.row] === null) return total(a, i);
-        const code = a.kind === 'node' ? rows[a.row] : live?.codes[a.row];
-        const devices = !live || !code ? undefined
-          : a.kind === 'node' ? live.onNode.get(a.node) : live.onFeeder.get(`${a.from}>${a.to}`);
-        if (!devices?.length || !code) return null;
-        const t = liveText(live!, devices, code);
-        return (
-          <text key={i} x={a.x} y={a.y} textAnchor={a.anchor} data-node={a.kind === 'node' ? a.node : a.to}
-                data-feeder={a.kind === 'feeder' ? `${a.from}>${a.to}` : undefined} className={t.none ? 'none' : 'live'}>
-            <title>{t.title}</title>
-            {t.text}
-          </text>
-        );
-      })}
+      {figs.map((f, i) => (
+        <text key={i} x={f.x} y={f.y} textAnchor={f.anchor} data-node={f.node} data-feeder={f.feeder} className={f.kind}>
+          <title>{f.title}</title>
+          {f.text}
+        </text>
+      ))}
     </svg>
   );
+}
+
+/** Downloads the drawing with its figures and legend as one SVG, in tools/sld.py's print colours and
+ * named as it names its files; the caption says when the figures are from. */
+function download(doc: Subgraph, opts: Options, figs: Placed[], caption: string) {
+  const d = draw(doc, { ...opts, palette: PRINT, links: false, legend: true });
+  const url = URL.createObjectURL(new Blob([withFigures(d.svg, figs, caption)], { type: 'image/svg+xml' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sld_${doc.query.root}_d${doc.query.depth}_${doc.query.as_of}.svg`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** How many drawn nodes have no figure; each says why in its tooltip. */
@@ -249,10 +263,9 @@ function Diagram({ doc, select, quantity, codes, view }: {
   const reached = useMemo(() => new Set(doc.nodes.filter((n) => n.scope === 'reached').map((n) => n.code)), [doc]);
   const live = useLive(codes, asked, view);
   const feeders = !!live?.devices.some((m) => m.on.some((p) => p.kind === 'feeder' && reached.has(p.to)));
-  const d = useMemo(
-    () => draw(doc, { palette: palette(), links: true, legend: false,
-      rows: (quantity ? 1 : 0) + codes.length, feederRows: feeders ? codes.length : 0 }),
-    [doc, quantity, codes, feeders]);
+  const opts = useMemo(() => ({ rows: (quantity ? 1 : 0) + codes.length, feederRows: feeders ? codes.length : 0 }),
+    [quantity, codes, feeders]);
+  const d = useMemo(() => draw(doc, { ...opts, palette: palette(), links: true, legend: false }), [doc, opts]);
   const offFeeders = useMemo(() => {
     if (!live) return 0;
     const drawn = new Set(d.anchors.flatMap((a) => (a.kind === 'feeder' ? [`${a.from}>${a.to}`] : [])));
@@ -261,6 +274,12 @@ function Diagram({ doc, select, quantity, codes, view }: {
   const drawn = useMemo(() => [...new Set(d.anchors.flatMap((a) => (a.kind === 'node' && ids.has(a.node) ? [ids.get(a.node)!] : [])))],
     [d, ids]);
   const totals = useTotals(quantity, drawn, view);
+  const figs = useMemo(() => figures(d.anchors, ids, totals, live), [d, ids, totals, live]);
+  const caption = [
+    `As of ${doc.query.as_of}`,
+    ...(totals?.first ? [`${totals.first.quantity.code} ${show(totals.first.window.start)} to ${show(totals.first.window.end)}`] : []),
+    ...(live?.at ? [`${live.codes.join(', ')} at ${show(live.at)}`] : []),
+  ].join(' · ');
   const pick = (e: MouseEvent) => {
     const code = (e.target as Element).closest('[data-node]')?.getAttribute('data-node');
     const id = code ? ids.get(code) : undefined;
@@ -271,7 +290,7 @@ function Diagram({ doc, select, quantity, codes, view }: {
       <div className={`scroll sld${fit ? ' fit' : ''}${select ? ' linked' : ''}`} onClick={pick}>
         <div className="sld-stage">
           <div dangerouslySetInnerHTML={{ __html: d.svg }} />
-          {(totals || live) && <Values anchors={d.anchors} ids={ids} totals={totals} live={live} width={d.width} height={d.height} />}
+          {figs.length > 0 && <Values figs={figs} width={d.width} height={d.height} />}
         </div>
       </div>
       {legend && <Legend values={totals !== null || live !== null} />}
@@ -287,6 +306,9 @@ function Diagram({ doc, select, quantity, codes, view }: {
         {live?.error && <> · <span className="error">readings: {live.error.message}</span></>}
         {' · '}<button type="button" className="link" onClick={() => setFit(!fit)}>{fit ? 'Actual size' : 'Fit to width'}</button>
         {' · '}<button type="button" className="link" onClick={() => setLegend(!legend)}>{legend ? 'Hide legend' : 'Legend'}</button>
+        {' · '}<button type="button" className="link" disabled={!!(totals?.loading || live?.loading)}
+                        title="The drawing with its figures and legend, as an SVG file"
+                        onClick={() => download(doc, opts, figs, caption)}>Export SVG</button>
         {select && ' · click a node to put it on the channel'}
       </div>
       {totals && <Findings findings={totals.findings.map((f) => ({ code: f.code, message: f.message }))} />}
