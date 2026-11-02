@@ -1,5 +1,6 @@
 // The dashboard's time range and refresh (design/frontend.md §3), on the dashboard's own toolbar.
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { DateTimePick } from '../ui/DateTimePick';
 import { PopoverButton } from '../ui/PopoverButton';
 import { Select } from '../ui/Select';
 import type { TimeRange } from './range';
@@ -9,20 +10,11 @@ import { describe, isValid, pickerValue, PRESETS, siteNow } from './range';
 function TimeField({ label, edge, value, onChange, placeholder, tz }: {
   label: string; edge: 'from' | 'to'; value: string; onChange: (s: string) => void; placeholder: string; tz: string;
 }) {
-  const cal = useRef<HTMLInputElement>(null);
-  const open = () => {
-    const el = cal.current;
-    if (!el) return;
-    el.value = pickerValue(value, edge, siteNow(tz));
-    try { el.showPicker(); } catch { el.focus(); }
-  };
   return (
     <label>{label}
       <span className="time-field">
         <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
-        <button type="button" onClick={open} title="Pick a date and time" aria-label={`Pick ${label} date and time`}>📅</button>
-        <input ref={cal} type="datetime-local" className="calendar" tabIndex={-1} aria-hidden="true"
-               onChange={(e) => { if (e.target.value) onChange(e.target.value); }} />
+        <DateTimePick label={label} initial={() => pickerValue(value, edge, siteNow(tz))} onPick={onChange} />
       </span>
     </label>
   );

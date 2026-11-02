@@ -465,25 +465,40 @@ def tooltips(page, out, nodes):
 
 
 def calendar(page, out):
-    """From and To's calendars: each opens on the instant its field names and writes what is picked."""
+    """From and To's calendars: each opens on the day and time its field names, a day clicked and a
+    time typed write YYYY-MM-DDTHH:MM into the field, Escape closes only the calendar, and the range
+    applied is the one picked. The time picker's own dialog stays open throughout."""
     found = []
     page.click(".toolbar .range-button")
+    picker = page.get_by_role("dialog", name="Time range")
     fields = {}
     for n, edge in ((1, "From"), (2, "To")):
-        label = f".time-picker .custom label:nth-child({n})"
-        text = page.input_value(f"{label} input:not(.calendar)")
-        page.click(f"{label} .time-field button")
-        opened = page.input_value(f"{label} input.calendar")
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", opened):
-            found.append(f"calendar: {edge}'s opened on {opened!r} for {text!r}")
-        page.keyboard.press("Escape")
+        text_field = page.locator(f".time-picker .custom label:nth-child({n}) input")
+        text = text_field.input_value()
+        page.get_by_role("button", name=f"Pick {edge} date and time").click()
+        cal = page.get_by_role("dialog", name=f"{edge} date and time")
+        cal.wait_for()
+        day = cal.locator(".calendar-cell[data-selected]")
+        hour = cal.locator("[role=spinbutton][data-type=hour]")
+        if re.match(r"\d{4}-\d{2}-\d{2}", text) and (not day.count() or day.inner_text() != str(int(text[8:10]))):
+            found.append(f"calendar: {edge}'s opened on day {day.all_inner_texts()} for {text!r}")
+        if not hour.count() or not hour.inner_text().isdigit():
+            found.append(f"calendar: {edge}'s time has no hour for {text!r}")
         fields[edge] = f"{DAY}T{'09:15' if n == 1 else '11:45'}"
-        page.fill(f"{label} input.calendar", fields[edge], force=True)
-        written = page.input_value(f"{label} input:not(.calendar)")
+        cal.locator(".calendar-cell:not([data-outside-month])").filter(has_text=re.compile(rf"^{int(DAY[8:])}$")).click()
+        hour.click()
+        page.keyboard.type(fields[edge][11:13] + fields[edge][14:16])
+        if n == 1:
+            page.screenshot(path=str(out / "10-calendar.png"))
+        written = text_field.input_value()
         if written != fields[edge]:
             found.append(f"calendar: picking {fields[edge]} in {edge} wrote {written!r}")
-    page.screenshot(path=str(out / "10-calendar.png"))
-    page.click(".time-picker .custom > button")
+        page.keyboard.press("Escape")
+        cal.wait_for(state="detached")
+        if not picker.is_visible():
+            found.append(f"calendar: Escape in {edge}'s calendar closed the time picker too")
+            return found
+    page.click(".time-picker .custom > button:text-is('Apply')")
     shown = page.inner_text(".toolbar .range-button")
     if shown != f"{fields['From'].replace('T', ' ')} to {fields['To'].replace('T', ' ')}":
         found.append(f"calendar: the range applied reads {shown!r}")
@@ -532,7 +547,8 @@ def controls(page, out):
     dashboard and deleting one ask first, in a dialog that Escape or Cancel answers no; the arrow keys
     change the channel a click fills and move along the Activity Bar; a select opens on Enter, picks with
     the arrow keys and Enter, and Escape leaves it as it was; a Readings widget's quantities filter as you
-    type, check by keyboard, stop at 8, and Escape clears the filter, not the choice."""
+    type, check by keyboard, stop at 8, and Escape clears the filter, not the choice; a Section's levels
+    step by the arrow keys and +, and come back into 1..12; Import opens the file chooser."""
     found = []
     discard = page.locator(".toolbar button:text-is('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
@@ -626,6 +642,22 @@ def controls(page, out):
         found.append(f"multiple choice: at 8 ({chosen.inner_text()!r}) {open_} unchecked items can still be checked")
     readings.scroll_into_view_if_needed()
     page.screenshot(path=str(out / "9e-multiple.png"))
+
+    # a number: the arrow keys and + step it, a number past the range comes back to it on leaving
+    section = add_widget(page, "section")
+    section.locator("header button:text-is('Settings')").click()
+    levels = section.get_by_role("textbox", name="Levels")
+    start = int(levels.input_value())
+    levels.press("ArrowUp")
+    section.get_by_role("button", name="More levels").click()
+    if levels.input_value() != str(start + 2):
+        found.append(f"levels: ArrowUp and + from {start} gave {levels.input_value()!r}")
+    levels.fill("99")
+    levels.press("Tab")
+    if levels.input_value() != "12":
+        found.append(f"levels: 99 became {levels.input_value()!r}, not 12")
+    section.scroll_into_view_if_needed()
+    page.screenshot(path=str(out / "9f-levels.png"))
     page.click(".toolbar button:text-is('Done editing')")
 
     # the range and the silent meters: each opens a dialog that Escape closes, focus back on its button
@@ -676,6 +708,12 @@ def controls(page, out):
     leave.get_by_role("button", name="Leave").click()
     page.wait_for_selector("text=New blank dashboard")
 
+    # Import is a button that opens the file chooser
+    with page.expect_file_chooser(timeout=5000) as chooser:
+        page.get_by_role("button", name="Import…").click()
+    if chooser.value.is_multiple():
+        found.append("import: the file chooser takes several files")
+
     # deleting a dashboard asks first: Cancel keeps it, Delete removes it
     rows = page.locator(".list tr:has(a:text-is('New dashboard'))")
     rows.first.wait_for()
@@ -720,9 +758,9 @@ def drive(page, url, email, temp, out, problems, nodes):
 
     def time_range(start, end):
         page.click(".toolbar .range-button")
-        page.fill(".time-picker .custom label:nth-child(1) input:not(.calendar)", start)
-        page.fill(".time-picker .custom label:nth-child(2) input:not(.calendar)", end)
-        page.click(".time-picker .custom > button")
+        page.fill(".time-picker .custom label:nth-child(1) input", start)
+        page.fill(".time-picker .custom label:nth-child(2) input", end)
+        page.click(".time-picker .custom > button:text-is('Apply')")
 
     page.goto(url)
     page.fill("input[type=email]", email)

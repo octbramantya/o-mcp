@@ -25,6 +25,7 @@ import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
 import { quantityLabel, useOffered } from './Value';
 import { Tip } from '../ui/Tip';
+import { NumberField } from '../ui/NumberField';
 
 interface S {
   node: number | null;
@@ -394,9 +395,8 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
           <LiveSelect value={settings.live ?? []} onChange={(live) => setSettings({ ...settings, live })} />
         </Field>
       )}
-      <Field label="Levels">
-        <input type="number" min={1} max={12} value={settings.depth}
-               onChange={(e) => setSettings({ ...settings, depth: Math.min(12, Math.max(1, Number(e.target.value) || 1)) })} />
+      <Field label="Levels" group>
+        <NumberField label="Levels" min={1} max={12} value={settings.depth} onChange={(depth) => setSettings({ ...settings, depth })} />
       </Field>
     </>
   );

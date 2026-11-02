@@ -12,6 +12,7 @@ import { confirm } from '../ui/confirm';
 import type { Dashboard } from './document';
 import { blank, FORMAT_VERSION } from './document';
 import { parseImport } from './transfer';
+import { FileButton } from '../ui/FileButton';
 
 export function ListPage() {
   const me = useMe().data!;
@@ -61,10 +62,9 @@ export function ListPage() {
             New from “{t.title}”
           </button>
         ))}
-        <label className="file-button" title="A dashboard exported from this site, as a JSON file">
+        <FileButton title="A dashboard exported from this site, as a JSON file" accept={['application/json', '.json']} onFile={importFile}>
           Import…
-          <input type="file" accept="application/json,.json" onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = ''; }} />
-        </label>
+        </FileButton>
       </section>
       {failed && <div className="error">{failed}</div>}
       <List tz={tenant.time_zone} q={mine.data?.dashboards} empty="No dashboards yet." render={(d) => (

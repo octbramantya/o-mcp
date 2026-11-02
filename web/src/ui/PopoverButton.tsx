@@ -5,9 +5,11 @@ import type { ReactNode } from 'react';
 import type { PopoverProps } from 'react-aria-components';
 import { Button, Dialog, DialogTrigger, Popover } from 'react-aria-components';
 
-export function PopoverButton({ button, buttonClassName, title, className, placement = 'bottom end', isOpen, onOpenChange, children }: {
+export function PopoverButton({ button, buttonClassName, buttonLabel, title, className, placement = 'bottom end', isOpen, onOpenChange, children }: {
   button: ReactNode;
   buttonClassName?: string;
+  /** The button's accessible name, when its content is only an icon. */
+  buttonLabel?: string;
   /** The panel's accessible name. */
   title: string;
   className?: string;
@@ -19,7 +21,7 @@ export function PopoverButton({ button, buttonClassName, title, className, place
 }) {
   return (
     <DialogTrigger isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Button className={buttonClassName}>{button}</Button>
+      <Button className={buttonClassName} aria-label={buttonLabel}>{button}</Button>
       <Popover className="popover-surface panel-popover" placement={placement} offset={4}>
         <Dialog className={`popover-dialog${className ? ` ${className}` : ''}`} aria-label={title}>{children}</Dialog>
       </Popover>
