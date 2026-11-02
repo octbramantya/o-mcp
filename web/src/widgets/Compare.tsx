@@ -9,6 +9,8 @@ import { useNodes, useVocabulary } from '../api/hooks';
 import type { Meters } from '../types/formats/meters';
 import type { Readings } from '../types/formats/readings';
 import { show } from '../time/range';
+import { INTERVALS } from '../ui/options';
+import { Select } from '../ui/Select';
 import type { Line } from './chart';
 import { means, ratio, sumPerInterval, timeOption, unitOf } from './chart';
 import { EChart, Field, Findings, Hint, mutedColor, NodeList, textColor } from './common';
@@ -116,12 +118,8 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         <NodeList ids={settings.nodes} max={MAX_NODES} onChange={(nodes) => setSettings({ ...settings, nodes })} />
       </Field>
       <Field label="Interval">
-        <select value={settings.interval} onChange={(e) => setSettings({ ...settings, interval: e.target.value as S['interval'] })}>
-          <option value="auto">Automatic (minutes for 6 hours or less)</option>
-          <option value="15min">15 minutes</option>
-          <option value="hour">Hour</option>
-          <option value="day">Day</option>
-        </select>
+        <Select<S['interval']> label="Interval" value={settings.interval} options={INTERVALS}
+                               onChange={(interval) => setSettings({ ...settings, interval })} />
       </Field>
     </>
   );

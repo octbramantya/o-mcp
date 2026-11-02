@@ -414,7 +414,8 @@ def controls(page, out):
     the arrow keys and Enter pick one; the range and the silent meters open from the keyboard, close
     on Escape with focus back on their button, and the range on a click outside; leaving a changed
     dashboard and deleting one ask first, in a dialog that Escape or Cancel answers no; the arrow keys
-    change the channel a click fills and move along the Activity Bar."""
+    change the channel a click fills and move along the Activity Bar; a select opens on Enter, picks with
+    the arrow keys and Enter, and Escape leaves it as it was."""
     found = []
     discard = page.locator(".toolbar button:text-is('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
@@ -457,6 +458,30 @@ def controls(page, out):
     if box.input_value():
         found.append(f"node picker: the field kept {box.input_value()!r} after a pick")
     page.screenshot(path=str(out / "9-controls.png"))
+    # a select: Enter opens its list on the current choice, ArrowDown and Enter pick the next, focus
+    # back on its button; Escape closes it unchanged
+    line = stat.locator(".field:has-text('Line') .select-button")
+    line.focus()
+    page.keyboard.press("Enter")
+    options = page.get_by_role("listbox")
+    options.wait_for()
+    page.screenshot(path=str(out / "9d-select.png"))
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("Enter")
+    options.wait_for(state="detached")
+    if line.inner_text().split("\n")[0] != "None":
+        found.append(f"select: ArrowDown and Enter left the line at {line.inner_text()!r}, not None")
+    try:
+        page.wait_for_function("() => document.activeElement?.classList.contains('select-button')", timeout=2000)
+    except Exception:
+        found.append("select: focus didn't return to its button after a pick")
+    page.keyboard.press("Enter")
+    options.wait_for()
+    page.keyboard.press("ArrowUp")
+    page.keyboard.press("Escape")
+    options.wait_for(state="detached")
+    if line.inner_text().split("\n")[0] != "None":
+        found.append("select: Escape changed the choice")
     page.click(".toolbar button:text-is('Done editing')")
 
     # the range and the silent meters: each opens a dialog that Escape closes, focus back on its button
@@ -581,7 +606,8 @@ def drive(page, url, email, temp, out, problems, nodes):
     ask.wait_for(state="detached")
     page.click(".brand")
 
-    page.select_option("select.tenant", "3")
+    page.click(".topbar .tenant .select-button")
+    page.click("[role=listbox] [role=option][data-key='3']")
     page.wait_for_selector("text=Dashboards · PRS")
     page.click("text=New from “Energy overview”")
     page.wait_for_selector(".toolbar")
@@ -612,7 +638,8 @@ def drive(page, url, email, temp, out, problems, nodes):
     edit.click()
     page.wait_for_selector(".toolbar button:text-is('Done editing')")
     stat = add_widget(page, "stat")
-    stat.locator("header select").select_option("A")
+    stat.locator("header .select-button").click()
+    page.click("[role=listbox] [role=option][data-key='A']")
     page.click(".toolbar button:text-is('Done editing')")
     page.wait_for_selector(".widget:has-text('ACTIVE_ENERGY_DELIVERED · total') .stat .chart canvas")
     settle()

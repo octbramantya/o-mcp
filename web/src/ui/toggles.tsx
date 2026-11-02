@@ -7,7 +7,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Checkbox, Label, Radio, RadioGroup, ToggleButton, ToggleButtonGroup } from 'react-aria-components';
 
-function Titled({ title, children }: { title?: string; children: ReactNode }) {
+export function Titled({ title, children }: { title?: string; children: ReactNode }) {
   return title ? <span className="titled" title={title}>{children}</span> : <>{children}</>;
 }
 

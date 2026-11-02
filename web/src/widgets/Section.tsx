@@ -16,6 +16,7 @@ import type { NowNodes } from '../api/types';
 import type { Aggregate } from '../types/formats/aggregate';
 import type { Subgraph } from '../types/formats/subgraph';
 import { show } from '../time/range';
+import { Select } from '../ui/Select';
 import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
 import type { Anchor, Figure, Options, Palette } from './sld';
 import { draw, PRINT, withFigures } from './sld';
@@ -374,16 +375,13 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         <NodePicker onPick={(node) => setSettings({ ...settings, node })} />
       </Field>
       <Field label="Drawn as">
-        <select value={settings.view} onChange={(e) => setSettings({ ...settings, view: e.target.value as S['view'] })}>
-          <option value="diagram">A single-line diagram (what it feeds only)</option>
-          <option value="tree">An indented list</option>
-        </select>
+        <Select<S['view']> label="Drawn as" value={settings.view} onChange={(view) => setSettings({ ...settings, view })}
+                           options={[{ id: 'diagram', label: 'A single-line diagram (what it feeds only)' },
+                                     { id: 'tree', label: 'An indented list' }]} />
       </Field>
       <Field label="Direction">
-        <select value={settings.direction} onChange={(e) => setSettings({ ...settings, direction: e.target.value as S['direction'] })}>
-          <option value="down">What it feeds</option>
-          <option value="up">What feeds it, back to the sources</option>
-        </select>
+        <Select<S['direction']> label="Direction" value={settings.direction} onChange={(direction) => setSettings({ ...settings, direction })}
+                                options={[{ id: 'down', label: 'What it feeds' }, { id: 'up', label: 'What feeds it, back to the sources' }]} />
       </Field>
       {settings.view === 'diagram' && settings.direction === 'down' && (
         <Field label="Figures on the diagram, over the range">
@@ -411,11 +409,10 @@ function TotalSelect({ value, onChange }: { value: string | null; onChange: (q: 
     ...v.derived_quantities.map((q) => ({ code: q.code, unit: q.unit })),
   ] : [];
   return (
-    <select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">None</option>
-      {!v && value && <option value={value}>{value}</option>}
-      {totals.map((q) => <option key={q.code} value={q.code}>{quantityLabel(q.code, q.unit)}</option>)}
-    </select>
+    <Select label="Figures" value={value ?? 'none'} onChange={(q) => onChange(q === 'none' ? null : q)}
+            options={[{ id: 'none', label: 'None' },
+                      ...(!v && value ? [{ id: value, label: value }] : []),
+                      ...totals.map((q) => ({ id: q.code, label: quantityLabel(q.code, q.unit) }))]} />
   );
 }
 
@@ -427,15 +424,9 @@ function LiveSelect({ value, onChange }: { value: string[]; onChange: (codes: st
   return (
     <div className="stack">
       {slots.map((c, i) => (
-        <select key={i} value={c} onChange={(e) => set(i, e.target.value)}>
-          <option value="">{c ? 'None' : 'Add a reading…'}</option>
-          {!groups.length && c && <option value={c}>{c}</option>}
-          {groups.map(([g, qs]) => (
-            <optgroup key={g} label={g}>
-              {qs.map((q) => <option key={q.code} value={q.code}>{quantityLabel(q.code, q.unit)}</option>)}
-            </optgroup>
-          ))}
-        </select>
+        <Select key={i} label={`Reading ${i + 1}`} value={c || 'none'} onChange={(code) => set(i, code === 'none' ? '' : code)}
+                options={[{ id: 'none', label: c ? 'None' : 'Add a reading…' }, ...(!groups.length && c ? [{ id: c, label: c }] : [])]}
+                groups={groups.map(([g, qs]) => ({ title: g, options: qs.map((q) => ({ id: q.code, label: quantityLabel(q.code, q.unit) })) }))} />
       ))}
     </div>
   );

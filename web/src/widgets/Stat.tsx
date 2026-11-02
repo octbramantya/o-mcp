@@ -11,6 +11,7 @@ import type { Aggregate } from '../types/formats/aggregate';
 import type { Meters } from '../types/formats/meters';
 import type { Readings } from '../types/formats/readings';
 import { show } from '../time/range';
+import { Select } from '../ui/Select';
 import type { Point } from './chart';
 import { means, ratio, sumPerInterval } from './chart';
 import { accentColor, EChart, Field, fmt, Hint, NodeName, NodePicker, Pending } from './common';
@@ -165,26 +166,22 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
       ) : (
         <>
           <Field label="Figure">
-            <select value={settings.statistic} onChange={(e) => setSettings({ ...settings, statistic: e.target.value as Statistic })}>
-              {Object.entries(STATISTICS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-            </select>
+            <Select<Statistic> label="Figure" value={settings.statistic} onChange={(statistic) => setSettings({ ...settings, statistic })}
+                               options={Object.entries(STATISTICS).map(([k, label]) => ({ id: k as Statistic, label }))} />
           </Field>
           {devices.length > 1 && (
             <Field label="Meter">
-              <select value={settings.device ?? ''}
-                      onChange={(e) => setSettings({ ...settings, device: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">The first listed</option>
-                {devices.map((d) => <option key={d.device_id} value={d.device_id}>{d.code} {d.name}</option>)}
-              </select>
+              <Select label="Meter" value={settings.device === null ? 'first' : String(settings.device)}
+                      onChange={(v) => setSettings({ ...settings, device: v === 'first' ? null : Number(v) })}
+                      options={[{ id: 'first', label: 'The first listed' },
+                                ...devices.map((d) => ({ id: String(d.device_id), label: `${d.code} ${d.name}` }))]} />
             </Field>
           )}
         </>
       )}
       <Field label="Line">
-        <select value={settings.sparkline ? 'yes' : 'no'} onChange={(e) => setSettings({ ...settings, sparkline: e.target.value === 'yes' })}>
-          <option value="yes">Over the range, under the figure</option>
-          <option value="no">None</option>
-        </select>
+        <Select label="Line" value={settings.sparkline ? 'yes' : 'no'} onChange={(v) => setSettings({ ...settings, sparkline: v === 'yes' })}
+                options={[{ id: 'yes', label: 'Over the range, under the figure' }, { id: 'no', label: 'None' }]} />
       </Field>
     </>
   );

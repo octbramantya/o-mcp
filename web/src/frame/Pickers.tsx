@@ -11,6 +11,7 @@ import { CHANNELS } from '../dashboards/document';
 import { useDashboard } from '../dashboards/store';
 import { Check, Choices, Star, Toggle, ToggleGroup } from '../ui/toggles';
 import { useSideBar } from './sideBarStore';
+import { Select } from '../ui/Select';
 
 export type Stars = ReturnType<typeof useStars>;
 
@@ -80,10 +81,9 @@ export function Find({ stars, target }: { stars: Stars; target: Target }) {
           {vocab?.utilities.filter((u) => utilities.has(u.code)).map((u) => <Toggle key={u.code} id={u.code}>{u.name}</Toggle>)}
         </ToggleGroup>
         <div className="row">
-          <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} aria-label="Type">
-            <option value="">Any type</option>
-            {vocab?.node_types.filter((x) => used.has(x.code)).map((x) => <option key={x.code} value={x.code}>{x.code}</option>)}
-          </select>
+          <Select label="Type" value={f.type || 'any'} onChange={(type) => setF({ ...f, type: type === 'any' ? '' : type })}
+                  options={[{ id: 'any', label: 'Any type' },
+                            ...(vocab?.node_types.filter((x) => used.has(x.code)).map((x) => ({ id: x.code, label: x.code })) ?? [])]} />
           <Check className="small" checked={f.metered} onChange={(metered) => setF({ ...f, metered })}>metered</Check>
         </div>
       </div>

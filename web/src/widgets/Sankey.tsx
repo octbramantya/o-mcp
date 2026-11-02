@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Sankey as S_ } from '../api/types';
 import { show } from '../time/range';
+import { Select } from '../ui/Select';
 import { EChart, Field, Findings, fmt, Pending, QuantitySelect, textColor } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { useHeldView } from './fresh';
@@ -96,10 +97,9 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         <QuantitySelect kind="flow" value={settings.quantity} onChange={(quantity) => setSettings({ ...settings, quantity })} />
       </Field>
       <Field label="Nodes">
-        <select value={String(settings.node_detail)} onChange={(e) => setSettings({ ...settings, node_detail: e.target.value === 'true' })}>
-          <option value="true">Every node under its category</option>
-          <option value="false">Categories only, where they have subcategories</option>
-        </select>
+        <Select label="Nodes" value={String(settings.node_detail)} onChange={(v) => setSettings({ ...settings, node_detail: v === 'true' })}
+                options={[{ id: 'true', label: 'Every node under its category' },
+                          { id: 'false', label: 'Categories only, where they have subcategories' }]} />
       </Field>
     </>
   );

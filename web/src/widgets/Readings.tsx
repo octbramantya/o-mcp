@@ -7,6 +7,8 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Readings as R } from '../types/formats/readings';
 import { show } from '../time/range';
+import { INTERVALS } from '../ui/options';
+import { Select } from '../ui/Select';
 import type { Axes, Line, Point } from './chart';
 import { means, timeOption, unitOf } from './chart';
 import { EChart, Field, Findings, Hint, mutedColor, NodeName, NodePicker, Pending, textColor, useQuantities } from './common';
@@ -75,18 +77,13 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         </select>
       </Field>
       <Field label="Interval">
-        <select value={settings.interval} onChange={(e) => setSettings({ ...settings, interval: e.target.value as S['interval'] })}>
-          <option value="auto">Automatic (minutes for 6 hours or less)</option>
-          <option value="15min">15 minutes</option>
-          <option value="hour">Hour</option>
-          <option value="day">Day</option>
-        </select>
+        <Select<S['interval']> label="Interval" value={settings.interval} options={INTERVALS}
+                               onChange={(interval) => setSettings({ ...settings, interval })} />
       </Field>
       <Field label="Axes">
-        <select value={settings.axes} onChange={(e) => setSettings({ ...settings, axes: e.target.value as Axes })}>
-          <option value="auto">Automatic (two units on a dual axis, panels from three)</option>
-          <option value="panels">One panel per unit</option>
-        </select>
+        <Select<Axes> label="Axes" value={settings.axes} onChange={(axes) => setSettings({ ...settings, axes })}
+                      options={[{ id: 'auto', label: 'Automatic (two units on a dual axis, panels from three)' },
+                                { id: 'panels', label: 'One panel per unit' }]} />
       </Field>
     </>
   );

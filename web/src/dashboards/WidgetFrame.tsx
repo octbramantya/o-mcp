@@ -2,6 +2,7 @@
 // while editing, settings and remove, and otherwise an Edit shown on hover that puts the whole dashboard
 // in edit mode; an error boundary, so one widget failing never blanks the canvas.
 import { useState } from 'react';
+import { Select } from '../ui/Select';
 import { ErrorBoundary } from 'react-error-boundary';
 import { byType, retired } from '../widgets/registry';
 import type { View } from '../widgets/contract';
@@ -36,11 +37,9 @@ export function WidgetFrame({ widget, view }: { widget: Widget; view: View }) {
         )}
         {editing && !readOnly && (
           <span className="no-drag actions">
-            <select value={widget.channel ?? ''} title="Channel: widgets on one channel show the same node"
-                    onChange={(e) => updateWidget(widget.id, { channel: (e.target.value || null) as Widget['channel'] })}>
-              <option value="">No channel</option>
-              {CHANNELS.map((c) => <option key={c.id} value={c.id}>Channel {c.id}</option>)}
-            </select>
+            <Select label="Channel" title="Channel: widgets on one channel show the same node" value={widget.channel ?? 'none'}
+                    options={[{ id: 'none', label: 'No channel' }, ...CHANNELS.map((c) => ({ id: c.id, label: `Channel ${c.id}` }))]}
+                    onChange={(v) => updateWidget(widget.id, { channel: (v === 'none' ? null : v) as Widget['channel'] })} />
             {type?.Settings && <button type="button" onClick={() => setShowSettings(!showSettings)}>{showSettings ? 'Done' : 'Settings'}</button>}
             <button type="button" onClick={() => removeWidget(widget.id)}>Remove</button>
           </span>

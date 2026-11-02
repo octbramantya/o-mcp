@@ -10,6 +10,7 @@ import type { Me } from '../api/types';
 import { PasswordPage } from '../auth/LoginPage';
 import { useDashboard } from '../dashboards/store';
 import { siteNow } from '../time/range';
+import { Select } from '../ui/Select';
 import { DataHealth } from './DataHealth';
 import { ActivityBar, SideBar } from './SideBar';
 import { useSideBar } from './sideBarStore';
@@ -44,10 +45,8 @@ function TopBar({ onPassword }: { onPassword: () => void }) {
       {me.user.role === 'user' ? (
         <span className="tenant">{me.tenant?.name}</span>
       ) : (
-        <select className="tenant" value={me.tenant?.id ?? ''} onChange={(e) => switchTenant.mutate(Number(e.target.value))}>
-          {!me.tenant && <option value="">Choose a site…</option>}
-          {me.tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <Select className="tenant" label="Site" value={me.tenant?.id ?? null} placeholder="Choose a site…"
+                options={me.tenants.map((t) => ({ id: t.id, label: t.name }))} onChange={(id) => switchTenant.mutate(id)} />
       )}
       <span className="spacer" />
       {me.user.role === 'super_admin' && <Link to="/accounts">Accounts</Link>}

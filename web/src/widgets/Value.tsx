@@ -9,6 +9,7 @@ import { useTenant, useVocabulary } from '../api/hooks';
 import type { Aggregate } from '../types/formats/aggregate';
 import type { Meters } from '../types/formats/meters';
 import { show } from '../time/range';
+import { Select } from '../ui/Select';
 import { Field, Findings, fmt, Hint, NodeList, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
@@ -166,14 +167,8 @@ export function useOffered(nodes: number[], keep: string) {
 export function OfferedSelect({ nodes, value, onChange }: { nodes: number[]; value: string; onChange: (q: string) => void }) {
   const groups = useOffered(nodes, value);
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {!groups.length && <option value={value}>Loading quantities…</option>}
-      {groups.map(([g, qs]) => (
-        <optgroup key={g} label={g}>
-          {qs.map((q) => <option key={q.code} value={q.code}>{quantityLabel(q.code, q.unit)}</option>)}
-        </optgroup>
-      ))}
-    </select>
+    <Select label="Quantity" value={groups.length ? value : null} placeholder="Loading quantities…" onChange={onChange}
+            groups={groups.map(([g, qs]) => ({ title: g, options: qs.map((q) => ({ id: q.code, label: quantityLabel(q.code, q.unit) })) }))} />
   );
 }
 

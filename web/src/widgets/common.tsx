@@ -12,6 +12,7 @@ import type { Finding } from '../api/types';
 import type { Meters } from '../types/formats/meters';
 import type { Match } from '../ui/ComboBox';
 import { ComboBox } from '../ui/ComboBox';
+import { Select } from '../ui/Select';
 
 echarts.use([BarChart, LineChart, SankeyChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -76,9 +77,8 @@ export function useQuantities(kind: 'value' | 'reading' | 'flow') {
 export function QuantitySelect({ value, onChange, kind }: { value: string; onChange: (q: string) => void; kind: 'value' | 'flow' }) {
   const qs = useQuantities(kind);
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {qs.map((q) => <option key={q.code} value={q.code}>{q.code} ({q.unit})</option>)}
-    </select>
+    <Select label="Quantity" value={qs.length ? value : null} placeholder={value} onChange={onChange}
+            options={qs.map((q) => ({ id: q.code, label: `${q.code} (${q.unit})` }))} />
   );
 }
 

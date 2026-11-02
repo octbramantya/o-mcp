@@ -1,6 +1,7 @@
 // The dashboard's time range and refresh (design/frontend.md §3), on the dashboard's own toolbar.
 import { useRef, useState } from 'react';
 import { PopoverButton } from '../ui/PopoverButton';
+import { Select } from '../ui/Select';
 import type { TimeRange } from './range';
 import { describe, isValid, pickerValue, PRESETS, siteNow } from './range';
 
@@ -61,8 +62,8 @@ function label(s: number | null) {
 
 export function RefreshPicker({ value, onChange }: { value: number | null; onChange: (s: number | null) => void }) {
   return (
-    <select value={value ?? ''} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}>
-      {REFRESH.map((s) => <option key={s ?? 'off'} value={s ?? ''}>{label(s)}</option>)}
-    </select>
+    <Select label="Refresh" value={value === null ? 'off' : String(value)}
+            options={REFRESH.map((s) => ({ id: s === null ? 'off' : String(s), label: label(s) }))}
+            onChange={(v) => onChange(v === 'off' ? null : Number(v))} />
   );
 }

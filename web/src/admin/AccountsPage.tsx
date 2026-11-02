@@ -9,6 +9,7 @@ import { useMe } from '../api/hooks';
 import type { Account, Role, Tenant } from '../api/types';
 import { stamp } from '../time/range';
 import { confirm } from '../ui/confirm';
+import { Select } from '../ui/Select';
 
 const ROLES: { role: Role; label: string }[] = [
   { role: 'user', label: 'User (one site)' },
@@ -21,16 +22,11 @@ function RoleSite({ role, tenant, tenants, onChange }: {
 }) {
   return (
     <>
-      <select value={role} onChange={(e) => {
-        const r = e.target.value as Role;
-        onChange(r, r === 'user' ? tenant ?? tenants[0]?.id ?? null : null);
-      }}>
-        {ROLES.map((r) => <option key={r.role} value={r.role}>{r.label}</option>)}
-      </select>
+      <Select<Role> label="Role" value={role} options={ROLES.map((r) => ({ id: r.role, label: r.label }))}
+                    onChange={(r) => onChange(r, r === 'user' ? tenant ?? tenants[0]?.id ?? null : null)} />
       {role === 'user' && (
-        <select value={tenant ?? ''} onChange={(e) => onChange(role, Number(e.target.value))}>
-          {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <Select label="Site" value={tenant} placeholder="Choose a site…"
+                options={tenants.map((t) => ({ id: t.id, label: t.name }))} onChange={(t) => onChange(role, t)} />
       )}
     </>
   );

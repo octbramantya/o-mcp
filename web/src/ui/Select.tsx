@@ -1,8 +1,10 @@
 // A single choice from a list, on React Aria's Select (design/frontend-aria.md): a button showing the
 // choice, and a list that opens below it, with arrow keys, type-ahead and Escape. Options may come in
-// titled groups. Pages and widgets import this, never react-aria-components directly.
+// titled groups. A value is a key, never "": a caller's empty choice takes a word of its own ('none').
+// Pages and widgets import this, never react-aria-components directly.
 import type { ReactNode } from 'react';
 import type { Key } from 'react-aria-components';
+import { Titled } from './toggles';
 import { Button, Header, ListBox, ListBoxItem, ListBoxSection, Popover, Select as AriaSelect, SelectValue } from 'react-aria-components';
 
 export interface Option<K extends Key = string> {
@@ -14,7 +16,7 @@ export interface Option<K extends Key = string> {
 
 export interface OptionGroup<K extends Key = string> { title: string; options: Option<K>[] }
 
-export function Select<K extends Key = string>({ value, onChange, options, groups, label, placeholder, className, isDisabled }: {
+export function Select<K extends Key = string>({ value, onChange, options, groups, label, placeholder, title, className, isDisabled }: {
   value: K | null;
   onChange: (v: K) => void;
   options?: Option<K>[];
@@ -22,6 +24,8 @@ export function Select<K extends Key = string>({ value, onChange, options, group
   /** The accessible name; the visible one is the Field around it. */
   label: string;
   placeholder?: string;
+  /** A hover hint on the button. */
+  title?: string;
   className?: string;
   isDisabled?: boolean;
 }) {
@@ -31,23 +35,25 @@ export function Select<K extends Key = string>({ value, onChange, options, group
     </ListBoxItem>
   );
   return (
-    <AriaSelect className={`select${className ? ` ${className}` : ''}`} aria-label={label} placeholder={placeholder}
-                value={value} onChange={(k) => { if (k !== null) onChange(k as K); }} isDisabled={isDisabled}>
-      <Button className="select-button">
-        <SelectValue className="select-value" />
-        <span className="chevron" aria-hidden="true">▾</span>
-      </Button>
-      <Popover className="popover-surface list-popover" placement="bottom start">
-        <ListBox className="listbox">
-          {options?.map(item)}
-          {groups?.map((g) => (
-            <ListBoxSection key={g.title} id={g.title} className="listbox-section">
-              <Header className="listbox-header">{g.title}</Header>
-              {g.options.map(item)}
-            </ListBoxSection>
-          ))}
-        </ListBox>
-      </Popover>
-    </AriaSelect>
+    <Titled title={title}>
+      <AriaSelect className={`select${className ? ` ${className}` : ''}`} aria-label={label} placeholder={placeholder}
+                  value={value} onChange={(k) => { if (k !== null) onChange(k as K); }} isDisabled={isDisabled}>
+        <Button className="select-button">
+          <SelectValue className="select-value" />
+          <span className="chevron" aria-hidden="true">▾</span>
+        </Button>
+        <Popover className="popover-surface list-popover" placement="bottom start">
+          <ListBox className="listbox">
+            {options?.map(item)}
+            {groups?.map((g) => (
+              <ListBoxSection key={g.title} id={g.title} className="listbox-section">
+                <Header className="listbox-header">{g.title}</Header>
+                {g.options.map(item)}
+              </ListBoxSection>
+            ))}
+          </ListBox>
+        </Popover>
+      </AriaSelect>
+    </Titled>
   );
 }
