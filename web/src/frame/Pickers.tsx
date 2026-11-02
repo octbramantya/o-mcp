@@ -12,6 +12,7 @@ import { useDashboard } from '../dashboards/store';
 import { Check, Choices, Star, Toggle, ToggleGroup } from '../ui/toggles';
 import { useSideBar } from './sideBarStore';
 import { Select } from '../ui/Select';
+import { SearchField } from '../ui/search';
 
 export type Stars = ReturnType<typeof useStars>;
 
@@ -76,7 +77,7 @@ export function Find({ stars, target }: { stars: Stars; target: Target }) {
   return (
     <>
       <div className="pad find-filters">
-        <input placeholder="Find a node" value={text} onChange={(e) => setText(e.target.value)} />
+        <SearchField label="Find a node" placeholder="Find a node" value={text} onChange={setText} />
         <ToggleGroup className="utilities" label="Utility" value={f.utility || null} onChange={(u) => setF({ ...f, utility: u ?? '' })}>
           {vocab?.utilities.filter((u) => utilities.has(u.code)).map((u) => <Toggle key={u.code} id={u.code}>{u.name}</Toggle>)}
         </ToggleGroup>

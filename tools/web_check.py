@@ -23,7 +23,8 @@ on both the board and its feeder edge, with gateway and slave address; that mete
 model reads it and what it reported, with no reading times; a quantity's page listing the devices
 read for it, a meter on another board among them; Back; a search by device; a node's values; ⓘ in
 Find on a dashboard opening Reference without moving the channel; and a saved Meters widget drawn
-as a placeholder pointing at Reference.
+as a placeholder pointing at Reference. Both searches by keyboard: Reference's matches by the arrow
+keys and Enter while typing, "N more", and Escape clearing either field.
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
@@ -159,8 +160,8 @@ def reference(page, out, nodes):
 
     def look_up(text, kind):
         page.fill(search, text)
-        page.wait_for_selector(f"{REF} section h4", timeout=180_000)
-        page.click(f"{REF} section:has(h4:has-text('{kind}')) li .ref-link:has(b:text-is('{text}'))")
+        page.wait_for_selector(f"{REF} .search-header", timeout=180_000)
+        page.click(f"{REF} .search-section:has(.search-header:has-text('{kind}')) [role=option]:has(b:text-is('{text}'))")
         page.wait_for_selector(f"{REF} .ref-title b:text-is('{text}')")
         page.wait_for_function("() => !document.querySelector('.side-bar .loading')", timeout=180_000)
 
@@ -217,6 +218,36 @@ def reference(page, out, nodes):
     if not re.search(r"ACTIVE_ENERGY_DELIVERED.*· measured", values):
         found.append(f"reference: {METERS_NODE}'s values don't have active energy measured: {values!r}")
     page.screenshot(path=str(out / "8d-reference-values.png"))
+
+    # by keyboard: the arrow keys move through the matches while the field keeps focus, Enter opens
+    # the one focused, "N more" shows the rest of its kind, and Escape clears the field
+    page.fill(search, "LVMDB")
+    hits = page.locator(f"{REF} [role=listbox] [role=option]")
+    hits.first.wait_for()
+    page.keyboard.press("ArrowDown")
+    page.keyboard.press("ArrowDown")
+    focused = page.locator(f"{REF} [role=option][data-focused] b")
+    if page.evaluate("() => document.activeElement?.getAttribute('aria-label')") != "Look up a node, device or quantity":
+        found.append("reference search: the arrow keys took focus out of the field")
+    if not focused.count():
+        found.append("reference search: ArrowDown focused no match")
+    else:
+        code = focused.inner_text()
+        page.keyboard.press("Enter")
+        page.wait_for_selector(f"{REF} .ref-title b:text-is('{code}')")
+        if page.input_value(search):
+            found.append(f"reference search: the field kept {page.input_value(search)!r} after Enter")
+    page.fill(search, "a")
+    more = page.locator(f"{REF} .search-section:has(.search-header:has-text('Nodes')) [role=option]:has-text(' more')")
+    shown = page.locator(f"{REF} .search-section:has(.search-header:has-text('Nodes')) [role=option]")
+    before = shown.count()
+    more.click()
+    if more.count() or shown.count() <= before:
+        found.append(f"reference search: 'N more' left {shown.count()} nodes shown (from {before})")
+    page.screenshot(path=str(out / "8f-reference-search.png"))
+    page.locator(search).press("Escape")
+    if page.input_value(search) or page.locator(f"{REF} [role=listbox]").count():
+        found.append("reference search: Escape didn't clear the field and the matches")
     return found
 
 
@@ -650,6 +681,15 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.wait_for_selector(".side-bar details[open] summary:has-text('MAIN_LV_BOARD')")
     page.click(".side-bar li:has-text('LVMDB_A5') .pick")
     page.wait_for_selector(".channel:has-text('LVMDB_A5')")
+    # Find's text is a search field: Escape clears it, and the clear button too
+    find_text = page.locator(".side-bar .find-filters input[placeholder='Find a node']")
+    find_text.press("Escape")
+    if find_text.input_value():
+        problems.append(f"find: Escape left {find_text.input_value()!r} in the field")
+    find_text.fill("LVMDB_A")
+    page.click(".side-bar .find-filters .search-clear")
+    if find_text.input_value():
+        problems.append("find: the clear button left the field filled")
     time_range(f"{DAY}T10:00", f"{DAY}T12:00")
     settle()
     page.wait_for_selector("text=minute points")

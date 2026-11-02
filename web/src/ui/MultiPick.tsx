@@ -5,7 +5,8 @@
 // The choice keeps the order it was made in, and a line under the list names it, since the filter
 // may hide some of it.
 import type { Key, Selection } from 'react-aria-components';
-import { Autocomplete, Button, Input, ListBox, ListBoxItem, SearchField, useFilter } from 'react-aria-components';
+import { Autocomplete, ListBox, ListBoxItem, useFilter } from 'react-aria-components';
+import { SearchField } from './search';
 
 export interface Item { id: string; label: string }
 
@@ -29,10 +30,7 @@ export function MultiPick({ label, items, value, onChange, max, empty = 'None ch
   return (
     <div className="multi-pick">
       <Autocomplete filter={contains}>
-        <SearchField className="search-field" aria-label={`Filter ${label.toLowerCase()}`}>
-          <Input className="search-input" placeholder="Filter…" />
-          <Button className="search-clear link">✕</Button>
-        </SearchField>
+        <SearchField label={`Filter ${label.toLowerCase()}`} placeholder="Filter…" />
         <ListBox<Item> className="listbox multi-list" aria-label={label} items={items} selectionMode="multiple"
                        selectedKeys={value} onSelectionChange={change} escapeKeyBehavior="none"
                        disabledKeys={full ? items.filter((i) => !value.includes(i.id)).map((i) => i.id as Key) : []}

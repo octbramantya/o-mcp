@@ -1,12 +1,14 @@
 // The Reference view (design/frontend.md §5): a lookup of the plant today, apart from any dashboard
-// and channel. One search finds nodes, devices and quantities in the lists the browser already holds;
-// every node, device and quantity on a page opens its own page, and Back and Forward walk the pages
-// seen, as in a browser.
+// and channel. One search finds nodes, devices and quantities in the lists the browser already holds,
+// grouped by kind; the arrow keys move through them while typing, and Enter opens one. Every node,
+// device and quantity on a page opens its own page, and Back and Forward walk the pages seen, as in a
+// browser.
 import { useState } from 'react';
 import { useDevices, useNodes, useVocabulary } from '../../api/hooks';
 import type { Stars } from '../Pickers';
 import type { Ref } from '../sideBarStore';
 import { useSideBar } from '../sideBarStore';
+import { SearchArea, SearchField, SearchResults } from '../../ui/search';
 import { DevicePage } from './DevicePage';
 import { Go } from './links';
 import { NodePage } from './NodePage';
@@ -26,28 +28,14 @@ function ranked<T>(xs: T[], code: (x: T) => string, t: string) {
   return [...xs].sort((a, b) => starts(a) - starts(b) || code(a).localeCompare(code(b)));
 }
 
-function Group({ title, hits, onPick }: { title: string; hits: Hit[]; onPick: () => void }) {
-  const [all, setAll] = useState(false);
-  if (hits.length === 0) return null;
-  return (
-    <section>
-      <h4>{title} <span className="muted">{hits.length}</span></h4>
-      <ul className="node-list">
-        {(all ? hits : hits.slice(0, SHOWN)).map((h) => (
-          <li key={`${h.to.kind} ${h.to.id}`} onClick={onPick}>
-            <Go to={h.to} title={h.note ?? undefined}><b>{h.code}</b> <span className="muted">{h.note}</span></Go>
-          </li>
-        ))}
-      </ul>
-      {hits.length > SHOWN && !all && <button type="button" className="link small" onClick={() => setAll(true)}>{hits.length - SHOWN} more</button>}
-    </section>
-  );
-}
+const KINDS = { node: 'Nodes', device: 'Devices', quantity: 'Quantities' } as const;
 
-function Results({ text, onPick }: { text: string; onPick: () => void }) {
+function Results({ text, onPick }: { text: string; onPick: (to: Ref) => void }) {
   const nq = useNodes();
   const dq = useDevices();
   const vq = useVocabulary();
+  // the kinds whose every hit is shown, not only the first SHOWN; a new search folds them again
+  const [all, setAll] = useState<{ text: string; kinds: string[] }>({ text, kinds: [] });
   const nodes = nq.data?.list ?? [];
   const devices = dq.data?.devices ?? [];
   const quantities = vq.data?.quantities ?? [];
@@ -65,11 +53,28 @@ function Results({ text, onPick }: { text: string; onPick: () => void }) {
     return failed ? <div className="error pad">{failed.message}</div>
       : <div className="muted pad">{loading ? 'Loading…' : 'Nothing matches.'}</div>;
   }
+  const open = all.text === text ? all.kinds : [];
+  const byId = new Map<string, Ref>();
+  const sections = ([['node', ns], ['device', ds], ['quantity', qs]] as const).map(([kind, hits]) => {
+    const shown = open.includes(kind) ? hits : hits.slice(0, SHOWN);
+    const items = shown.map((h) => {
+      const id = `${h.to.kind} ${h.to.id}`;
+      byId.set(id, h.to);
+      return { id, text: `${h.code} ${h.note ?? ''}`, label: <><b>{h.code}</b> <span className="muted" title={h.note ?? undefined}>{h.note}</span></> };
+    });
+    if (shown.length < hits.length) {
+      const more = `${hits.length - shown.length} more`;
+      items.push({ id: `more ${kind}`, text: more, label: <span className="link small">{more}</span> });
+    }
+    return { id: kind, title: <>{KINDS[kind]} <span className="muted">{hits.length}</span></>, hits: items };
+  });
   return (
     <div className="ref-page">
-      <Group key={`n ${t}`} title="Nodes" hits={ns} onPick={onPick} />
-      <Group key={`d ${t}`} title="Devices" hits={ds} onPick={onPick} />
-      <Group key={`q ${t}`} title="Quantities" hits={qs} onPick={onPick} />
+      <SearchResults label="Matches" sections={sections}
+                     onAction={(id) => {
+                       if (id.startsWith('more ')) setAll({ text, kinds: [...open, id.slice(5)] });
+                       else onPick(byId.get(id)!);
+                     }} />
       {failed && <div className="error small">{failed.message}</div>}
       {!failed && loading && <div className="muted small">Still loading: more may match.</div>}
     </div>
@@ -104,21 +109,23 @@ export function Reference({ stars }: { stars: Stars }) {
   const history = useSideBar((s) => s.history);
   const at = useSideBar((s) => s.at);
   const go = useSideBar((s) => s.go);
+  const inspect = useSideBar((s) => s.inspect);
   const [text, setText] = useState('');
   const cur = history[at];
   return (
+    <SearchArea value={text} onChange={setText}>
     <div className="reference">
       <div className="ref-head pad">
         <button type="button" onClick={() => go(-1)} disabled={at <= 0} title="Back" aria-label="Back">‹</button>
         <button type="button" onClick={() => go(1)} disabled={at >= history.length - 1} title="Forward" aria-label="Forward">›</button>
-        <input type="search" placeholder="Node, device or quantity" value={text} onChange={(e) => setText(e.target.value)}
-               onKeyDown={(e) => { if (e.key === 'Escape') setText(''); }} aria-label="Look up a node, device or quantity" />
+        <SearchField label="Look up a node, device or quantity" placeholder="Node, device or quantity" />
       </div>
-      {text.trim() ? <Results text={text} onPick={() => setText('')} />
+      {text.trim() ? <Results text={text} onPick={(to) => { setText(''); inspect(to); }} />
         : !cur ? <Start stars={stars} />
         : cur.kind === 'node' ? <NodePage key={cur.id} id={cur.id} stars={stars} />
         : cur.kind === 'device' ? <DevicePage key={cur.id} id={cur.id} />
         : <QuantityPage key={cur.id} id={cur.id} />}
     </div>
+    </SearchArea>
   );
 }

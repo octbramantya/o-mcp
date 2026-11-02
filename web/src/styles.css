@@ -90,7 +90,7 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 /* the Reference view */
 .ref-head { display: flex; gap: 4px; align-items: center; position: sticky; top: 0; z-index: 3; background: var(--panel); border-bottom: 1px solid var(--border); }
 .ref-head button { padding: 2px 8px; }
-.ref-head input { flex: 1; min-width: 0; }
+.ref-head .search-field { flex: 1; min-width: 0; }
 .ref-page { padding: 8px 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .ref-page section { margin-top: 6px; }
 .ref-page h4 { margin: 4px 0; }
@@ -273,9 +273,14 @@ button.danger { background: var(--danger); color: #fff; border-color: var(--dang
 .check-box { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel-2); font-size: 10px; line-height: 1; }
 .check[data-selected] .check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .check[data-focus-visible] .check-box { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search-results { display: flex; flex-direction: column; gap: 6px; }
+.search-header { margin: 4px 0; font-size: 13px; font-weight: 600; }
+.search-hit { padding: 3px 8px; }
+.search-hit .link { padding: 0; }
 .multi-pick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .search-field { display: flex; align-items: center; gap: 2px; }
 .search-input { flex: 1; min-width: 0; }
+.search-input::-webkit-search-cancel-button, .search-input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
 .search-field[data-empty] .search-clear { visibility: hidden; }
 .multi-list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; padding: 2px; background: var(--panel-2); }
 .multi-option { display: flex; align-items: center; gap: 6px; }
