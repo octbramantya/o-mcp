@@ -2,14 +2,17 @@
 // (decision 20): what it feeds as a single-line diagram (sld.ts, tools/sld.py's drawing) or an
 // indented tree, what feeds it as the tree. Clicking a node puts it on the widget's channel.
 //
-// The diagram can carry one total per node over the range (GET /api/aggregate, design/frontend.md §5,
-// "The single-line diagram with values"): the drawing leaves a value row at each node and says where,
-// and the figures are a second SVG over it in the same coordinates, so a refresh redraws only them.
+// The diagram can carry one total per node over the range (GET /api/aggregate) and up to three
+// readings at the range's end (GET /api/now/nodes), each meter's where it sits: on its node, or on the
+// feeder into it (design/frontend.md §5, "The single-line diagram with values"). The drawing leaves
+// value rows and says where; the figures are a second SVG over it in the same coordinates, so a refresh
+// redraws only them. Feeders get rows only when a drawn feeder has a meter.
 import { useQueries, useQuery } from '@tanstack/react-query';
 import type { MouseEvent } from 'react';
 import { useMemo, useState } from 'react';
 import { get } from '../api/client';
 import { useVocabulary } from '../api/hooks';
+import type { NowNodes } from '../api/types';
 import type { Aggregate } from '../types/formats/aggregate';
 import type { Subgraph } from '../types/formats/subgraph';
 import { show } from '../time/range';
@@ -19,7 +22,7 @@ import { draw } from './sld';
 import type { SettingsProps, View as Window, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
-import { quantityLabel } from './Value';
+import { quantityLabel, useOffered } from './Value';
 
 interface S {
   node: number | null;
@@ -29,9 +32,13 @@ interface S {
   /** A total to show at each node of the diagram (a counter the solver resolves, or derived); null for none.
    * Absent in dashboards saved before 2026-11-02. */
   quantity?: string | null;
+  /** Up to three sampled quantities read at the range's end. Absent before 2026-11-02. */
+  live?: string[];
 }
 
 const BATCH = 50;    // /api/aggregate's limit on node ids
+const LIVE_BATCH = 300;    // /api/now/nodes's
+const MAX_LIVE = 3;
 
 /** Where a total came from, for its tooltip; Aggregate's words. */
 const ORIGIN: Record<string, string> = {
@@ -113,27 +120,95 @@ function useTotals(quantity: string | null, ids: number[], live: Window) {
 
 type Totals = NonNullable<ReturnType<typeof useTotals>>;
 
-/** The figures, in the drawing's coordinates: a measured total in bold, one worked out on the graph in
- * italics, its origin in the tooltip. */
-function Values({ anchors, ids, totals, width, height }: {
-  anchors: Anchor[]; ids: Map<string, number>; totals: Totals; width: number; height: number;
+type Device = NowNodes['devices'][number];
+
+/** The last readings of codes at the range's end from every meter of the nodes ids, by where each sits. */
+function useLive(codes: string[], ids: number[], live: Window) {
+  const [view, track] = useHeldView(live, [codes, ids]);
+  const batches: number[][] = [];
+  for (let i = 0; i < ids.length; i += LIVE_BATCH) batches.push(ids.slice(i, i + LIVE_BATCH));
+  const qs = useQueries({
+    queries: batches.map((nodes) => ({
+      queryKey: ['plant', view.tenant, 'now-nodes', codes, nodes, view.end, view.tick],
+      queryFn: ({ signal }: { signal: AbortSignal }) => get<NowNodes>('/api/now/nodes', {
+        nodes: nodes.join(','), quantities: codes.join(','), at: view.end,
+      }, signal),
+      enabled: codes.length > 0,
+      placeholderData: (prev: NowNodes | undefined) => prev,
+    })),
+  });
+  track(...qs.map((q) => q.data));
+  if (!codes.length) return null;
+  const done = qs.filter((q) => q.data).map((q) => q.data!);
+  const devices = [...new Map(done.flatMap((r) => r.devices).map((d) => [d.device_id, d])).values()];
+  const onNode = new Map<string, Device[]>();
+  const onFeeder = new Map<string, Device[]>();
+  for (const d of devices) {
+    for (const p of d.on) {
+      const [m, k] = p.kind === 'node' ? [onNode, p.node] : [onFeeder, `${p.from}>${p.to}`];
+      m.set(k, [...(m.get(k) ?? []), d]);
+    }
+  }
+  const notes = new Map<number, string[]>();
+  for (const f of done.flatMap((r) => r.findings)) notes.set(f.device_id, [...(notes.get(f.device_id) ?? []), f.message]);
+  return {
+    codes, onNode, onFeeder, notes, devices,
+    at: done[0]?.at ?? null,
+    units: new Map((done[0]?.quantities ?? []).map((q) => [q.code, q.unit])),
+    error: qs.find((q) => q.isError)?.error as Error | undefined,
+    loading: qs.some((q) => !q.data || q.isPlaceholderData),
+  };
+}
+
+type Live = NonNullable<ReturnType<typeof useLive>>;
+
+/** One quantity's readings from the meters at one place: each meter's value, or — when it has none. */
+function liveText(live: Live, devices: Device[], code: string) {
+  const unit = live.units.get(code) ? ` ${live.units.get(code)}` : '';
+  const got = devices.map((d) => [d, d.readings.find((r) => r.quantity === code)] as const);
+  const text = got.every(([, r]) => !r) ? '—' : got.map(([, r]) => (r ? figure(r.value) : '—')).join(' · ') + unit;
+  const title = [code, ...got.map(([d, r]) => `${d.code}: ${r ? `${figure(r.value)}${unit} at ${show(r.at)}` : 'no reading'}`),
+    ...devices.flatMap((d) => live.notes.get(d.device_id) ?? [])].join('\n');
+  return { text, title, none: text === '—' };
+}
+
+/** The figures, in the drawing's coordinates. A node's rows are its total (if asked for), then its
+ * readings; a feeder's rows its readings. A measured total is bold, one worked out on the graph italic,
+ * a reading upright; each says more in its tooltip. */
+function Values({ anchors, ids, totals, live, width, height }: {
+  anchors: Anchor[]; ids: Map<string, number>; totals: Totals | null; live: Live | null; width: number; height: number;
 }) {
-  const unit = totals.first?.quantity.unit ? ` ${totals.first.quantity.unit}` : '';
+  const unit = totals?.first?.quantity.unit ? ` ${totals.first.quantity.unit}` : '';
+  const rows: (string | null)[] = [...(totals ? [null] : []), ...(live?.codes ?? [])];   // null: the total
+  const total = (a: Anchor & { kind: 'node' }, i: number) => {
+    const id = ids.get(a.node);
+    const r = id === undefined || !totals ? undefined : totals.rows.get(id);
+    if (!r) return null;
+    const has = r.total !== null && r.total !== undefined;
+    const how = ORIGIN[r.origin] ?? r.origin;
+    const notes = totals!.about.get(r.node_id) ?? [];
+    return (
+      <text key={i} x={a.x} y={a.y} textAnchor={a.anchor} data-node={a.node}
+            className={!has ? 'none' : r.origin === 'MEASURED' ? 'measured' : 'solved'}>
+        <title>{[`${a.node}: ${has ? `${figure(r.total)}${unit}, ${how}` : how}`, ...notes].join('\n')}</title>
+        {has ? `${figure(r.total)}${unit}` : '—'}
+      </text>
+    );
+  };
   return (
-    <svg className="sld-values" viewBox={`0 0 ${width} ${height}`} aria-hidden={false}>
+    <svg className="sld-values" viewBox={`0 0 ${width} ${height}`}>
       {anchors.map((a, i) => {
-        if (a.kind !== 'node') return null;
-        const id = ids.get(a.node);
-        const r = id === undefined ? undefined : totals.rows.get(id);
-        if (!r) return null;
-        const has = r.total !== null && r.total !== undefined;
-        const how = ORIGIN[r.origin] ?? r.origin;
-        const notes = totals.about.get(r.node_id) ?? [];
+        if (a.kind === 'node' && rows[a.row] === null) return total(a, i);
+        const code = a.kind === 'node' ? rows[a.row] : live?.codes[a.row];
+        const devices = !live || !code ? undefined
+          : a.kind === 'node' ? live.onNode.get(a.node) : live.onFeeder.get(`${a.from}>${a.to}`);
+        if (!devices?.length || !code) return null;
+        const t = liveText(live!, devices, code);
         return (
-          <text key={i} x={a.x} y={a.y} textAnchor={a.anchor} data-node={a.node}
-                className={!has ? 'none' : r.origin === 'MEASURED' ? 'measured' : 'solved'}>
-            <title>{[`${a.node}: ${has ? `${figure(r.total)}${unit}, ${how}` : how}`, ...notes].join('\n')}</title>
-            {has ? `${figure(r.total)}${unit}` : '—'}
+          <text key={i} x={a.x} y={a.y} textAnchor={a.anchor} data-node={a.kind === 'node' ? a.node : a.to}
+                data-feeder={a.kind === 'feeder' ? `${a.from}>${a.to}` : undefined} className={t.none ? 'none' : 'live'}>
+            <title>{t.title}</title>
+            {t.text}
           </text>
         );
       })}
@@ -156,21 +231,33 @@ function Legend({ values }: { values: boolean }) {
       <span>feeders above a bar, loads below · ● connected to this bar; a line crossing a bar without a dot is not</span>
       <span className="warn">? or missing = a property not yet recorded · 2 live parents = connected to two bars,
         which the plant may not be · implicit bus = several children but no bus node</span>
-      {values && <span><b>bold</b> = measured · <i>italic</i> = worked out on the graph · — = no figure (hover for why)</span>}
+      {values && <span><b>bold</b> = a total measured · <i>italic</i> = a total worked out on the graph · upright = a meter's
+        reading at the range's end, on the feeder when the meter is there · — = no figure (hover for why)</span>}
     </div>
   );
 }
 
 /** The drawing at its own size, or fitted to the widget's width; a click on a node's code picks it. */
-function Diagram({ doc, select, quantity, view }: {
-  doc: Subgraph; select: WidgetProps<S>['select']; quantity: string | null; view: Window;
+function Diagram({ doc, select, quantity, codes, view }: {
+  doc: Subgraph; select: WidgetProps<S>['select']; quantity: string | null; codes: string[]; view: Window;
 }) {
   const [fit, setFit] = useState(true);
   const [legend, setLegend] = useState(false);
-  const d = useMemo(
-    () => draw(doc, { palette: palette(), links: true, legend: false, rows: quantity ? 1 : 0 }),
-    [doc, quantity]);
   const ids = useMemo(() => new Map(doc.nodes.map((n) => [n.code, n.id])), [doc]);
+  // every node that can be drawn: reached, and the parents drawn beside them (a second board, a PV plant)
+  const asked = useMemo(() => doc.nodes.filter((n) => n.scope !== 'context').map((n) => n.id), [doc]);
+  const reached = useMemo(() => new Set(doc.nodes.filter((n) => n.scope === 'reached').map((n) => n.code)), [doc]);
+  const live = useLive(codes, asked, view);
+  const feeders = !!live?.devices.some((m) => m.on.some((p) => p.kind === 'feeder' && reached.has(p.to)));
+  const d = useMemo(
+    () => draw(doc, { palette: palette(), links: true, legend: false,
+      rows: (quantity ? 1 : 0) + codes.length, feederRows: feeders ? codes.length : 0 }),
+    [doc, quantity, codes, feeders]);
+  const offFeeders = useMemo(() => {
+    if (!live) return 0;
+    const drawn = new Set(d.anchors.flatMap((a) => (a.kind === 'feeder' ? [`${a.from}>${a.to}`] : [])));
+    return [...live.onFeeder].filter(([k]) => !drawn.has(k)).reduce((n, [, ms]) => n + ms.length, 0);
+  }, [d, live]);
   const drawn = useMemo(() => [...new Set(d.anchors.flatMap((a) => (a.kind === 'node' && ids.has(a.node) ? [ids.get(a.node)!] : [])))],
     [d, ids]);
   const totals = useTotals(quantity, drawn, view);
@@ -184,16 +271,20 @@ function Diagram({ doc, select, quantity, view }: {
       <div className={`scroll sld${fit ? ' fit' : ''}${select ? ' linked' : ''}`} onClick={pick}>
         <div className="sld-stage">
           <div dangerouslySetInnerHTML={{ __html: d.svg }} />
-          {totals && <Values anchors={d.anchors} ids={ids} totals={totals} width={d.width} height={d.height} />}
+          {(totals || live) && <Values anchors={d.anchors} ids={ids} totals={totals} live={live} width={d.width} height={d.height} />}
         </div>
       </div>
-      {legend && <Legend values={totals !== null} />}
+      {legend && <Legend values={totals !== null || live !== null} />}
       <div className="foot muted">
         As of {doc.query.as_of}
         {totals?.first && <> · {totals.first.quantity.code} {show(totals.first.window.start)} to {show(totals.first.window.end)}</>}
         {totals && !totals.loading && <Missing totals={totals} />}
         {totals?.loading && !totals.error && <> · <span className="loading">loading figures…</span></>}
         {totals?.error && <> · <span className="error">figures: {totals.error.message}</span></>}
+        {live?.at && <> · readings at {show(live.at)}</>}
+        {offFeeders > 0 && <> · {offFeeders} meter(s) on a feeder not drawn here</>}
+        {live?.loading && !live.error && <> · <span className="loading">loading readings…</span></>}
+        {live?.error && <> · <span className="error">readings: {live.error.message}</span></>}
         {' · '}<button type="button" className="link" onClick={() => setFit(!fit)}>{fit ? 'Actual size' : 'Fit to width'}</button>
         {' · '}<button type="button" className="link" onClick={() => setLegend(!legend)}>{legend ? 'Hide legend' : 'Legend'}</button>
         {select && ' · click a node to put it on the channel'}
@@ -202,6 +293,8 @@ function Diagram({ doc, select, quantity, view }: {
     </>
   );
 }
+
+const NONE: string[] = [];
 
 function View({ settings, entity, select, view }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
@@ -219,7 +312,7 @@ function View({ settings, entity, select, view }: WidgetProps<S>) {
       <Pending q={q}>
         {(doc) => (
           <div className="stack">
-            <Diagram doc={doc} select={select} quantity={settings.quantity ?? null} view={view} />
+            <Diagram doc={doc} select={select} quantity={settings.quantity ?? null} codes={settings.live ?? NONE} view={view} />
             <Findings findings={doc.findings.filter((f) => f.code !== 'PROPERTY_GAP').map((f) => ({ code: f.code, message: f.message }))} />
           </div>
         )}
@@ -275,6 +368,11 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
           <TotalSelect value={settings.quantity ?? null} onChange={(quantity) => setSettings({ ...settings, quantity })} />
         </Field>
       )}
+      {settings.view === 'diagram' && settings.direction === 'down' && (
+        <Field label={`Readings at the range's end, on each meter's node or feeder (up to ${MAX_LIVE})`}>
+          <LiveSelect value={settings.live ?? []} onChange={(live) => setSettings({ ...settings, live })} />
+        </Field>
+      )}
       <Field label="Levels">
         <input type="number" min={1} max={12} value={settings.depth}
                onChange={(e) => setSettings({ ...settings, depth: Math.min(12, Math.max(1, Number(e.target.value) || 1)) })} />
@@ -299,10 +397,32 @@ function TotalSelect({ value, onChange }: { value: string | null; onChange: (q: 
   );
 }
 
+/** Up to MAX_LIVE sampled quantities, each picked from the same grouped list as Aggregate's. */
+function LiveSelect({ value, onChange }: { value: string[]; onChange: (codes: string[]) => void }) {
+  const groups = useOffered([], '').map(([g, qs]) => [g, qs.filter((q) => !q.total)] as const).filter(([, qs]) => qs.length);
+  const slots = [...value, ...(value.length < MAX_LIVE ? [''] : [])];
+  const set = (i: number, code: string) => onChange([...new Set(slots.map((c, j) => (j === i ? code : c)).filter(Boolean))]);
+  return (
+    <div className="stack">
+      {slots.map((c, i) => (
+        <select key={i} value={c} onChange={(e) => set(i, e.target.value)}>
+          <option value="">{c ? 'None' : 'Add a reading…'}</option>
+          {!groups.length && c && <option value={c}>{c}</option>}
+          {groups.map(([g, qs]) => (
+            <optgroup key={g} label={g}>
+              {qs.map((q) => <option key={q.code} value={q.code}>{quantityLabel(q.code, q.unit)}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      ))}
+    </div>
+  );
+}
+
 export const section: WidgetType<S> = {
   type: 'section', label: 'Plant section',
   description: 'A node and what it feeds, as a single-line diagram, or the path back to its sources, on the range\'s last day.',
   minW: 5, minH: 5, w: 8, h: 10,
-  defaults: { node: null, depth: 2, direction: 'down', view: 'diagram', quantity: null },
+  defaults: { node: null, depth: 2, direction: 'down', view: 'diagram', quantity: null, live: [] },
   View, Settings,
 };

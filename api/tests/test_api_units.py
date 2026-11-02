@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from api import auth, cache, config, fresh, reads, tenants, values
-from plant import timewin, value
+from plant import now, timewin, value
 
 
 def test_token_hash_is_sha256_of_the_token():
@@ -214,3 +214,22 @@ def test_fresh_until_takes_the_soonest_source_within_bounds():
 def test_readings_sources_follow_auto_interval(start, end, interval, want):
     w = timewin.window(start, end, ZoneInfo("Asia/Jakarta"), 92)
     assert reads.readings_sources(w, interval) == want
+
+
+def test_a_meter_sits_on_its_feeder_else_on_its_x1_nodes():
+    """LVA5 has rows on its feeder (energy) and on LVMDB_A5 (THD): it sits on the feeder. PLTSC has a
+    x1 row on PLTS_A4 and a x1/3 one on LVMDB_A4 (048), which PLACES never returns: it sits on PLTS_A4."""
+    def row(device, node=None, edge=None):
+        r = {"device_id": device, "device_code": f"D{device}", "device_name": "", "node_id": None, "node_code": None,
+             "edge_id": None, "from_node_id": None, "from_code": None, "to_node_id": None, "to_code": None}
+        if node:
+            r.update(node_id=node[0], node_code=node[1])
+        if edge:
+            r.update(edge_id=edge[0], from_node_id=edge[1], from_code="FACTORY_AB", to_node_id=edge[2],
+                     to_code="LVMDB_A5")
+        return r
+    got = now.places([row(28, node=(75, "LVMDB_A5")), row(28, edge=(9, 40, 75)), row(28, edge=(9, 40, 75)),
+                      row(167, node=(122, "PLTS_A4"))])
+    assert got[28][1] == [{"kind": "feeder", "edge_id": 9, "from_id": 40, "from": "FACTORY_AB", "to_id": 75,
+                           "to": "LVMDB_A5"}]
+    assert got[167][1] == [{"kind": "node", "node_id": 122, "node": "PLTS_A4"}]

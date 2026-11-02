@@ -351,6 +351,34 @@ def node_now(tenant, params):
     return ("now", tenant.id, nid, tuple(codes), at), compute, ("minute",)
 
 
+def nodes_now(tenant, params):
+    """The last reading of up to six quantities from every meter of many nodes, with where each sits
+    (plant/now.py, many): the single-line diagram's live figures."""
+    v = tenant.vocab
+    at = _at(params, tenant.tz)
+    try:
+        ids = sorted({int(x) for x in params.get("nodes", "").split(",") if x.strip()})
+    except ValueError as e:
+        raise PlantError("nodes must be node ids, separated by commas.") from e
+    if not ids or len(ids) > now.MAX_NODES:
+        raise PlantError(f"Give between 1 and {now.MAX_NODES} node ids.")
+    codes = list(dict.fromkeys(c.strip() for c in params.get("quantities", "").split(",") if c.strip()))
+    if not codes or len(codes) > 6:
+        raise PlantError("Give between 1 and 6 quantities.")
+    unknown = [c for c in codes if not v.quantity(c)]
+    if unknown:
+        raise PlantError(f"No quantity {', '.join(unknown)}; GET /api/vocabulary lists them.")
+    counters = [c for c in codes if v.quantity(c)["reading"] != "SAMPLE"]
+    if counters:
+        raise PlantError(f"{', '.join(counters)} is a running register, not a reading of the moment; "
+                         "its total over a window is GET /api/aggregate's.")
+
+    async def compute():
+        async with tenant.tx() as conn:
+            return await now.many(conn, tenant.id, v, tenant.tz, ids, at, codes)
+    return ("now-nodes", tenant.id, tuple(ids), tuple(codes), at), compute, ("minute",)
+
+
 def data_status(tenant, params):
     """Where each source stops and which meters are silent, at an instant (plant/status.py)."""
     at = _at(params, tenant.tz)

@@ -29,7 +29,8 @@ and two Compare widgets, power across two loads and energy across boards with an
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
 Last, the single-line diagram with figures: INCOMING_PLN three levels down (121 nodes, three batches of
 /api/aggregate) with each node's energy over a day, measured in bold and worked out in italics, a
-click on a figure putting its node on the channel, and the legend shown under the drawing on request.
+click on a figure putting its node on the channel, and the legend shown under the drawing on request;
+and FACTORY_AB with readings at the range's end, LVA5's on its feeder rather than on LVMDB_A5.
 """
 import argparse
 import asyncio
@@ -301,16 +302,20 @@ def units_and_compare(page, out, nodes):
 
 
 def sld_values(page, out, nodes):
-    """A plant section of INCOMING_PLN, three levels, with ACTIVE_ENERGY_DELIVERED at every node over a
+    """Two plant sections. INCOMING_PLN, three levels, with ACTIVE_ENERGY_DELIVERED at every node over a
     day: a figure at each drawn node, measured and worked-out ones both there, the legend out of the
-    drawing until asked for, and a click on a figure putting its node on the channel."""
+    drawing until asked for, and a click on a figure putting its node on the channel. FACTORY_AB, one
+    level, with PF_TOTAL and THD_VOLTAGE_LN at the range's end (dev's minute data has little else):
+    LVA5's readings on its feeder from FACTORY_AB, not on LVMDB_A5."""
+    def section(wid, y, node, depth, settings):
+        return {"id": wid, "type": "section", "title": wid, "x": 0, "y": y, "w": 24, "h": 16, "channel": "A",
+                "settings": {"node": nodes[node], "depth": depth, "direction": "down", "view": "diagram", **settings}}
     doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None, "channels": {}, "widgets": [
-        {"id": "sld", "type": "section", "title": "Diagram with energy", "x": 0, "y": 0, "w": 24, "h": 16,
-         "channel": "A", "settings": {"node": nodes[SLD_ROOT], "depth": 3, "direction": "down", "view": "diagram",
-                      "quantity": "ACTIVE_ENERGY_DELIVERED"}}]}
+        section("Diagram with energy", 0, SLD_ROOT, 3, {"quantity": "ACTIVE_ENERGY_DELIVERED"}),
+        section("Diagram with readings", 16, "FACTORY_AB", 1, {"live": ["PF_TOTAL", "THD_VOLTAGE_LN"]})]}
     f = out / "sld-values.json"
     f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-11-02T00:00:00Z",
-                             "title": "Diagram with energy", "format_version": 1, "document": doc}))
+                             "title": "Diagram with figures", "format_version": 1, "document": doc}))
     discard = page.locator(".toolbar button:has-text('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
         discard.click()
@@ -319,30 +324,44 @@ def sld_values(page, out, nodes):
     page.wait_for_selector("text=Dashboards · PRS")
     page.set_input_files(".file-button input", str(f))
     page.wait_for_url(lambda u: "/dashboards/" in u)
-    sld = ".widget .sld"
-    page.wait_for_selector(f"{sld} .sld-values text", timeout=180_000)
+    energy = ".widget:has(header :text('Diagram with energy'))"
+    readings = ".widget:has(header :text('Diagram with readings'))"
+    page.wait_for_selector(f"{energy} .sld-values text", timeout=180_000)
+    page.wait_for_selector(f"{readings} .sld-values text.live", timeout=180_000)
     page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
     found = []
-    drawn = page.evaluate("""() => new Set([...document.querySelectorAll('.sld svg:not(.sld-values) [data-node]')]
-        .map(e => e.getAttribute('data-node'))).size""")
-    figures = page.locator(f"{sld} .sld-values text")
+    figures = page.locator(f"{energy} .sld-values text")
     if figures.count() < 100:
-        found.append(f"sld values: {figures.count()} figures on a diagram of {drawn} named nodes")
+        found.append(f"sld values: {figures.count()} figures on {SLD_ROOT}'s diagram")
     for kind in ("measured", "solved"):
-        if not page.locator(f"{sld} .sld-values text.{kind}").count():
+        if not page.locator(f"{energy} .sld-values text.{kind}").count():
             found.append(f"sld values: no {kind} figure")
     if page.locator(".widget .sld-legend").count():
         found.append("sld values: the legend is shown before it was asked for")
-    if page.locator(f"{sld} svg :text('Legend:')").count():
+    if page.locator(".widget .sld svg :text('Legend:')").count():
         found.append("sld values: the drawing has a legend in it")
-    page.click(".widget .foot button:text-is('Legend')")
-    page.wait_for_selector(".widget .sld-legend")
+
+    feeder = page.locator(f"{readings} .sld-values text.live[data-feeder='FACTORY_AB>LVMDB_A5']")
+    if feeder.count() != 2 or "LVA5" not in (feeder.first.locator("title").text_content() or ""):
+        found.append(f"sld readings: LVA5 isn't on its feeder ({feeder.count()} figures there)")
+    on_node = page.locator(f"{readings} .sld-values text:not([data-feeder])[data-node='LVMDB_A5'] title")
+    on_node = on_node.all_text_contents()
+    if any("LVA5" in t for t in on_node):
+        found.append("sld readings: LVA5's readings are on LVMDB_A5's node as well as its feeder")
+    page.locator(f"{readings}").scroll_into_view_if_needed()
+    page.click(f"{readings} .foot button:text-is('Actual size')")
+    page.screenshot(path=str(out / "10c-sld-readings.png"))
+
+    page.locator(f"{energy}").scroll_into_view_if_needed()
+    page.click(f"{energy} .foot button:text-is('Legend')")
+    page.wait_for_selector(f"{energy} .sld-legend")
     page.screenshot(path=str(out / "10-sld-values.png"))
-    page.click(".widget .foot button:text-is('Actual size')")
-    page.locator(f"{sld} .sld-values text.measured").first.scroll_into_view_if_needed()
+    page.click(f"{energy} .foot button:text-is('Actual size')")
+    page.locator(f"{energy} .sld-values text.measured").first.scroll_into_view_if_needed()
     page.screenshot(path=str(out / "10b-sld-values-actual.png"))
-    code = page.locator(f"{sld} .sld-values text.solved").first.get_attribute("data-node")
-    page.locator(f"{sld} .sld-values text.solved").first.click()
+    solved = page.locator(f"{energy} .sld-values text.solved").first
+    code = solved.get_attribute("data-node")
+    solved.click()
     page.wait_for_selector(f".channel:has-text('{code}')")
     return found
 
@@ -525,7 +544,7 @@ def main():
     su = dict(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, user=raw["DB_USER"],
               password=raw["DB_PASSWORD"], sslmode=cfg.db_sslmode)
     nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE, METERS_NODE, UNMETERED, "LVMDP_SPINNING_1", "LVMDB_A1",
-                                                  SLD_ROOT))
+                                                  SLD_ROOT, "FACTORY_AB"))
     run = uuid.uuid4().hex[:8]
     email = f"web-check+{run}@example.com"
     out = pathlib.Path(a.out)

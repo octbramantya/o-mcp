@@ -572,7 +572,21 @@ Here the diagram is drawn from the graph, so the layout says where each value go
      2026-10-20, `INCOMING_PLN` three levels down: three calls of 1.8 to 3.1 s, 42 of 121 nodes
      without a figure. `tools/web_check.py` checks it.
   3. A batched `/api/now` (several nodes in one call), then live readings on the nodes and on the
-     feeders whose meter sits on the edge.
+     feeders whose meter sits on the edge. **Built 2026-11-02:** `GET /api/now/nodes` (§7) and the
+     plant section's setting "Readings at the range's end" (`live`, up to three sampled quantities).
+     - **Where a meter sits** (one place per meter): on a feeder into a drawn node when it has a
+       row on that edge (LVA5 on `FACTORY_AB → LVMDB_A5`, though its THD row is on the node, and
+       the six WTP flow meters); otherwise on each node where it has a ×1 row. A row with another
+       multiplier corrects the arithmetic and isn't where the meter is, so PLTSC (×⅓ on
+       `LVMDB_A4`, 048) shows on `PLTS_A4` only.
+     - A node's rows are its total, if asked for, then its readings. Readings are upright, and
+       several meters at one place are joined with ·. A feeder's rows are its readings. Feeders get
+       rows only when a meter sits on a drawn feeder, and then every feeder of the drawing gets
+       them, since row heights are per level. A meter on a feeder the drawing doesn't show (a second
+       parent) is counted in the foot.
+     - The readings are minute data, read like the Now widget, and production keeps 14 days of it:
+       a range ending earlier has no readings. Dev's minute data holds only the solver's
+       quantities (`dev_refresh.sh --raw`), so on dev only `PF_TOTAL` and `THD_VOLTAGE_LN` show.
   4. `tools/sld.py` filling its own value rows, for a static diagram with figures.
 
 ## 6. Database connections
@@ -771,6 +785,7 @@ the values are.
 | `GET /api/readings` | `node`, `quantities` (≤ 8), `start`, `end` (≤ 92 days), `interval`, `device` | `o-mcp/readings` v1 on the meters in effect on the window's last day, at most 10,000 points |
 | `GET /api/sankey`, `GET /api/diagnostics` | `start`, `end` (≤ 92 days), `quantity`, `node_detail` | `graph.sankey`'s links; `graph.sankey_diagnostics` with node ids, and `graph.v_property_gaps` |
 | `GET /api/now` | `node`, `at` (default now), `quantities` | each of the node's meters' last minute reading in the 15 minutes before `at`, instantaneous values by default, power factor decoded (`plant/now.py`) |
+| `GET /api/now/nodes` | `nodes` (≤ 300 ids), `quantities` (1 to 6, sampled only), `at` (default now) | the same readings from every meter of the nodes or on a feeder into one of them, each meter with where it sits: on the feeder when it has a row on that edge, else on its ×1 nodes (`plant/now.py`, `many`). The single-line diagram's live figures |
 | `GET /api/categories` | `as_of`, `quantity` | the sankey's categories (`graph.category`, `FUNCTIONAL`) and the nodes in each on `as_of`, with how each was found and its weight (`graph.sankey_nodes` over that one day). The side bar's Categories view |
 | `GET /api/status` | `at` (default now) | the latest minute and 15-minute data in the last 24 h, the daily summary's last refresh, and the meters the graph reads that have had no 15-minute data for over 2 hours, apart from those on nodes the site turned off (`plant/status.py`) |
 

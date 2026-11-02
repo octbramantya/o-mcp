@@ -102,6 +102,21 @@ export interface Now {
   findings: Finding[];
 }
 
+/** Where a meter sits: on a node, or on a feeder into one (plant/now.py, places). */
+export type MeterPlace =
+  | { kind: 'node'; node_id: number; node: string }
+  | { kind: 'feeder'; edge_id: number; from_id: number; from: string; to_id: number; to: string };
+
+/** GET /api/now/nodes: the last reading of a few quantities from every meter of many nodes. */
+export interface NowNodes {
+  at: string;
+  lookback_minutes: number;
+  quantities: { code: string; unit: string | null; decoded: boolean }[];
+  devices: { device_id: number; code: string; name: string; on: MeterPlace[];
+    readings: { quantity: string; value: number | null; at: string }[] }[];
+  findings: { code: string; device_id: number; message: string }[];
+}
+
 export interface Categories {
   tenant: number;
   as_of: string;

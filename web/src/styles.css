@@ -232,6 +232,7 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .sld-values .measured { fill: var(--text); font-weight: bold; }
 .sld-values .solved { fill: var(--text); font-style: italic; }
 .sld-values .none { fill: var(--muted); font-style: italic; }
+.sld-values .live { fill: var(--text); }
 .sld.linked .sld-values [data-node]:hover { text-decoration: underline; }
 .sld-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 4px 8px; font-size: 11px; }
 .sld-legend .swatch { display: inline-block; width: 18px; height: 4px; vertical-align: middle; }

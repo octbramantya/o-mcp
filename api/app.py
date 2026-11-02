@@ -698,6 +698,7 @@ def build(config):
         Route("/api/diagnostics", _read(reads.diagnostics), methods=["GET"]),
         Route("/api/categories", _read(reads.categories), methods=["GET"]),
         Route("/api/now", _read(reads.node_now), methods=["GET"]),
+        Route("/api/now/nodes", _read(reads.nodes_now), methods=["GET"]),
         Route("/api/status", _read(reads.data_status), methods=["GET"]),
     ]
     app = Starlette(routes=routes, lifespan=lifespan,

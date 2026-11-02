@@ -163,6 +163,7 @@ def test_accounts_sessions_and_tenants(env, client):
 DAY = "2026-10-21"      # a site day with minute data, 15-minute buckets and the daily summary on dev
 OLD = "2026-10-19"      # before dev's minute data
 PLN, A5 = 61, 75        # INCOMING_PLN, LVMDB_A5
+A4, PLTS_A4, FACTORY_AB = 74, 122, 40
 
 
 def values(c, nodes, start, end, quantity="ACTIVE_ENERGY_DELIVERED"):
@@ -564,6 +565,25 @@ def test_now_and_status(env, client):
     # Long after dev's data ends, nothing is "now": each meter says so.
     late = c.get("/api/now", params={"node": A5}).json()
     assert {f["code"] for f in late["findings"]} == {"NO_RECENT_READING"}
+
+    # Many nodes at once, each meter where it sits: LVA5 on its feeder from FACTORY_AB, not on A5;
+    # PLTSC on PLTS_A4 only, not on A4, where its x1/3 row corrects the arithmetic (048). Dev's minute
+    # data holds only the solver's quantities, PF_TOTAL and THD_VOLTAGE_LN among them; production's has
+    # power, current and voltage too.
+    q = {"nodes": f"{A5},{A4},{PLTS_A4}", "at": at, "quantities": "THD_VOLTAGE_LN,PF_TOTAL"}
+    m = c.get("/api/now/nodes", params=q).json()
+    on = {d["code"]: d["on"] for d in m["devices"]}
+    assert on["LVA5"] == [{"kind": "feeder", "edge_id": on["LVA5"][0]["edge_id"], "from_id": FACTORY_AB,
+                           "from": "FACTORY_AB", "to_id": A5, "to": "LVMDB_A5"}]
+    assert on["PLTSC"] == [{"kind": "node", "node_id": PLTS_A4, "node": "PLTS_A4"}]
+    assert [x["code"] for x in m["quantities"]] == ["THD_VOLTAGE_LN", "PF_TOTAL"] and m["quantities"][1]["decoded"]
+    lva5 = next(d for d in m["devices"] if d["code"] == "LVA5")
+    assert [r["quantity"] for r in lva5["readings"]] == ["THD_VOLTAGE_LN", "PF_TOTAL"]
+    assert 0 <= lva5["readings"][1]["value"] <= 1
+    for bad in ({"nodes": "", "quantities": "ACTIVE_POWER"}, {"nodes": str(A5), "quantities": ""},
+                {"nodes": str(A5), "quantities": "ACTIVE_ENERGY_DELIVERED"},
+                {"nodes": ",".join(map(str, range(1, 302))), "quantities": "ACTIVE_POWER"}):
+        assert c.get("/api/now/nodes", params=bad).status_code == 400, bad
 
     # The data's status at noon: every source has data, and most meters report.
     s = c.get("/api/status", params={"at": at}).json()
