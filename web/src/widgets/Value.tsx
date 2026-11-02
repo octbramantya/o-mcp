@@ -14,6 +14,7 @@ import { Field, Findings, fmt, Hint, NodeList, Pending } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
+import { Tip } from '../ui/Tip';
 
 interface S {
   quantity: string;
@@ -83,8 +84,8 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
                   <thead>
                     <tr>
                       <th>Node</th><th>Meter</th><th className="num">Min{unit}</th><th className="num">Avg</th>
-                      <th className="num" title="95th percentile: the value the readings stayed at or below 95% of the time">P95</th>
-                      <th className="num">Max</th><th className="num" title="Readings the figures rest on, of those expected">Readings</th>
+                      <th className="num"><Tip tip="95th percentile: the value the readings stayed at or below 95% of the time">P95</Tip></th>
+                      <th className="num">Max</th><th className="num"><Tip tip="Readings the figures rest on, of those expected">Readings</Tip></th>
                     </tr>
                   </thead>
                   <tbody>

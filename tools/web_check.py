@@ -26,6 +26,7 @@ read for it, a meter on another board among them; Back; a search by device; a no
 Find on a dashboard opening Reference without moving the channel; and a saved Meters widget drawn
 as a placeholder pointing at Reference. Both searches by keyboard: Reference's matches by the arrow
 keys and Enter while typing, "N more", and Escape clearing either field.
+Then the content-bearing hints as tooltips, by hover and by keyboard (an Aggregate's P95 and Readings).
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
@@ -375,6 +376,14 @@ def sld_values(page, out, nodes):
         found.append("sld values: the legend is shown before it was asked for")
     if page.locator(".widget .sld svg :text('Legend:')").count():
         found.append("sld values: the drawing has a legend in it")
+    missing = page.locator(f"{energy} .tip-trigger:has-text('without a figure')")
+    if missing.count():
+        missing.hover()
+        try:
+            page.get_by_role("tooltip").filter(has_text="for why").wait_for(timeout=3000)
+        except Exception:
+            found.append("sld values: 'without a figure' shows no tooltip")
+        page.mouse.move(5, 5)
 
     feeder = page.locator(f"{readings} .sld-values text.live[data-feeder='FACTORY_AB>LVMDB_A5']")
     if feeder.count() != 2 or "LVA5" not in (feeder.first.locator("title").text_content() or ""):
@@ -406,6 +415,52 @@ def sld_values(page, out, nodes):
     code = solved.get_attribute("data-node")
     solved.click()
     page.wait_for_selector(f".channel:has-text('{code}')")
+    return found
+
+
+def tooltips(page, out, nodes):
+    """The hints that carry content are tooltips (design/frontend-aria.md phase 10): an Aggregate of
+    power at two loads shows P95's on hover, Escape hides it, and Tab from P95 to Readings shows that
+    one's by keyboard; a page with no `title` beside either."""
+    a, b = (nodes[c] for c in TOOLTIP_NODES)
+    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None, "channels": {}, "widgets": [
+        {"id": "spread", "type": "value", "title": "Power spread", "x": 0, "y": 0, "w": 16, "h": 6, "channel": None,
+         "settings": {"quantity": "ACTIVE_POWER", "nodes": [a, b]}}]}
+    f = out / "tooltips.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-11-02T00:00:00Z",
+                             "title": "Tooltips", "format_version": 1, "document": doc}))
+    discard = page.locator(".toolbar button:text-is('Discard')")
+    if discard.count():                   # an earlier step left the dashboard changed
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.wait_for_selector("text=Dashboards · PRS")
+    page.set_input_files(".file-button input", str(f))
+    page.wait_for_url(lambda u: "/dashboards/" in u)
+    p95 = page.locator(".widget th .tip-trigger:text-is('P95')")
+    p95.wait_for(timeout=180_000)
+    found = []
+    tip = page.get_by_role("tooltip")
+    p95.hover()
+    try:
+        tip.wait_for(timeout=3000)
+        if "95th percentile" not in tip.inner_text():
+            found.append(f"tooltip: P95's reads {tip.inner_text()!r}")
+        page.screenshot(path=str(out / "11-tooltip.png"))
+        page.keyboard.press("Escape")
+        tip.wait_for(state="detached", timeout=3000)
+    except Exception as e:
+        found.append(f"tooltip: P95's on hover: {e}".splitlines()[0])
+    page.mouse.move(5, 5)
+    p95.focus()
+    page.keyboard.press("Tab")
+    try:
+        tip.wait_for(timeout=3000)
+        if "Readings the figures rest on" not in tip.inner_text():
+            found.append(f"tooltip: Tab to Readings shows {tip.inner_text()!r}")
+    except Exception:
+        found.append("tooltip: Tab to Readings shows no tooltip")
+    page.keyboard.press("Escape")
     return found
 
 
@@ -808,6 +863,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += reference(page, out, nodes)
     found += retired_and_inspect(page, out, nodes)
     found += units_and_compare(page, out, nodes)
+    found += tooltips(page, out, nodes)
     found += calendar(page, out)
     found += sld_values(page, out, nodes)
     found += controls(page, out)

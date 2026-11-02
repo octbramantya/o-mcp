@@ -24,6 +24,7 @@ import type { SettingsProps, View as Window, WidgetProps, WidgetType } from './c
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
 import { quantityLabel, useOffered } from './Value';
+import { Tip } from '../ui/Tip';
 
 interface S {
   node: number | null;
@@ -234,7 +235,7 @@ function download(doc: Subgraph, opts: Options, figs: Placed[], caption: string)
 /** How many drawn nodes have no figure; each says why in its tooltip. */
 function Missing({ totals }: { totals: Totals }) {
   const n = [...totals.rows.values()].filter((r) => r.total === null || r.total === undefined).length;
-  return n ? <> · <span title="Hover a node's — for why">{n} without a figure</span></> : null;
+  return n ? <> · <Tip tip="Hover a node's — for why">{n} without a figure</Tip></> : null;
 }
 
 /** What the drawing's symbols mean, as tools/sld.py's legend says it, outside the drawing. */

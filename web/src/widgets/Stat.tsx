@@ -19,6 +19,7 @@ import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
 import { useHeldView } from './fresh';
 import { OfferedSelect } from './Value';
+import { Tip } from '../ui/Tip';
 
 type Statistic = 'last' | 'mean' | 'min' | 'p95' | 'max';
 
@@ -130,7 +131,7 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
               <div className="stat-caption muted">
                 <NodeName id={node} /> · {a.quantity.code} · {what}
                 {a.statistic === 'SPREAD' && metered.length > 1 && row && ` · ${row.device}`}
-                {warn.length > 0 && <span className="warn" title={warn.join('\n')}> · ⚠ {warn.length}</span>}
+                {warn.length > 0 && <> · <Tip className="warn" tip={warn.join('\n')}>⚠ {warn.length}</Tip></>}
               </div>
             </div>
             {settings.sparkline && points.length > 1 && <EChart option={option(points, a.statistic !== 'TOTAL' || !!kind.from)} />}
