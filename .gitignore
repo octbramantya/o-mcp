@@ -31,3 +31,6 @@ design/graph-reconcile.md
 
 # Dashboard frontend reference (notes from a third-party trading terminal); local only
 design/sb-dashboard/
+
+# React Aria migration working list (frontend.md decision 30); local only
+design/frontend-aria.md

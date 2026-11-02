@@ -401,6 +401,49 @@ def calendar(page, out):
     return found
 
 
+def add_widget(page, kind):
+    """Add a widget of `kind` to the dashboard in edit mode; the new one is the last."""
+    page.locator(".toolbar select").filter(has_text="Add a widget").select_option(kind)
+    return page.locator(".widget").last
+
+
+def controls(page, out):
+    """The React Aria controls (design/frontend-aria.md), by keyboard: on a new blank dashboard, a
+    Stat's node picker offers matches as you type, Escape closes the list and clears the field, and
+    the arrow keys and Enter pick one."""
+    found = []
+    discard = page.locator(".toolbar button:text-is('Discard')")
+    if discard.count():                   # an earlier step left the dashboard changed
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.click("text=New blank dashboard")
+    page.wait_for_selector(".toolbar")
+    if page.locator(".toolbar button:text-is('Edit')").count():
+        page.click(".toolbar button:text-is('Edit')")
+    stat = add_widget(page, "stat")
+    stat.locator("header button:text-is('Settings')").click()
+    box = stat.get_by_role("combobox", name="Find a node")
+    box.fill("LVMDB_A")
+    page.wait_for_selector("[role=listbox] [role=option]:has-text('LVMDB_A5')")
+    box.press("Escape")
+    page.wait_for_selector("[role=listbox]", state="detached")
+    if box.input_value():
+        found.append(f"node picker: Escape left {box.input_value()!r} in the field")
+    box.fill("LVMDB_A5")
+    page.wait_for_selector("[role=listbox] [role=option]:has-text('LVMDB_A5')")
+    box.press("ArrowDown")
+    box.press("Enter")
+    page.wait_for_selector("[role=listbox]", state="detached")
+    if not stat.locator(".field b:text-is('LVMDB_A5')").count():
+        found.append("node picker: Enter didn't pick LVMDB_A5")
+    if box.input_value():
+        found.append(f"node picker: the field kept {box.input_value()!r} after a pick")
+    page.screenshot(path=str(out / "9-controls.png"))
+    page.click(".toolbar button:text-is('Done editing')")
+    return found
+
+
 def drive(page, url, email, temp, out, problems, nodes):
     def settle():
         page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
@@ -462,8 +505,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.hover(".widget:has-text('Energy flow') header")
     edit.click()
     page.wait_for_selector(".toolbar button:text-is('Done editing')")
-    page.locator(".toolbar select").filter(has_text="Add a widget").select_option("stat")
-    stat = page.locator(".widget").last
+    stat = add_widget(page, "stat")
     stat.locator("header select").select_option("A")
     page.click(".toolbar button:text-is('Done editing')")
     page.wait_for_selector(".widget:has-text('ACTIVE_ENERGY_DELIVERED · total') .stat .chart canvas")
@@ -536,6 +578,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += units_and_compare(page, out, nodes)
     found += calendar(page, out)
     found += sld_values(page, out, nodes)
+    found += controls(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 

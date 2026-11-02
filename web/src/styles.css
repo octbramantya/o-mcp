@@ -148,8 +148,11 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .time-field .calendar { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 
 .canvas { min-height: 200px; }
-.widget { height: 100%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--border); border-radius: 4px; overflow: hidden; }
-.widget header { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-bottom: 1px solid var(--border); min-height: 28px; }
+/* clip, not hidden: a hidden box can still be scrolled by focus, which shifted a narrow widget's
+   content sideways and, as a scroll, closed any list open in it */
+.widget { height: 100%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-top: 3px solid var(--border); border-radius: 4px; overflow: clip; }
+.widget header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding: 3px 6px; border-bottom: 1px solid var(--border); min-height: 28px; }
+.widget header .title-input { flex: 1 1 80px; min-width: 0; }
 .widget header.editing { cursor: move; background: var(--panel-2); }
 .widget header .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .widget header .actions { margin-left: auto; display: flex; gap: 4px; }
@@ -174,11 +177,6 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .filters input { flex: 1; min-width: 100px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field > span { font-weight: 600; font-size: 12px; }
-.picker { position: relative; }
-.picker input { width: 100%; }
-.picker-list { position: absolute; left: 0; right: 0; z-index: 10; list-style: none; margin: 2px 0 0; padding: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; max-height: 240px; overflow: auto; }
-.picker-list button { width: 100%; text-align: left; background: none; border: none; }
-.picker-list button:hover { background: var(--panel-2); }
 .chips { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .tree { list-style: none; margin: 0; padding: 4px 8px; }
 .tree li { white-space: nowrap; padding: 1px 0; }
@@ -240,3 +238,25 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .sld-legend .swatch.lv { background: var(--sld-lv); }
 .file-button { display: inline-block; cursor: pointer; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
 .file-button input { display: none; }
+
+/* controls: React Aria Components behind web/src/ui/ (design/frontend-aria.md). Styled on our own
+   class names and RAC's state attributes, never on its react-aria-* defaults. Its popovers render in
+   a portal at the end of body, so nothing here is scoped under a page's container. */
+.popover-surface { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.35); color: var(--text); font-size: 13px; outline: none; }
+.list-popover { min-width: var(--trigger-width); max-height: 320px; overflow: auto; padding: 2px; }
+.listbox { outline: none; }
+.option { padding: 3px 8px; border-radius: 3px; cursor: default; outline: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.option[data-focused], .option[data-hovered] { background: var(--panel-2); }
+.option[data-selected] { color: var(--accent); }
+.option[data-focus-visible] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.option[data-disabled] { opacity: 0.5; }
+.listbox-header { padding: 6px 8px 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.combobox { position: relative; }
+.combobox-input { width: 100%; }
+.select { display: inline-flex; min-width: 0; }
+.select-button { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; text-align: left; }
+.select-button[data-focus-visible] { outline: 2px solid var(--accent); outline-offset: -1px; }
+.select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-value[data-placeholder] { color: var(--muted); }
+.select .chevron { color: var(--muted); font-size: 10px; }
+.field .select, .field .select-button { width: 100%; }

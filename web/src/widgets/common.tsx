@@ -6,10 +6,12 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNodes, useVocabulary } from '../api/hooks';
 import type { Finding } from '../api/types';
 import type { Meters } from '../types/formats/meters';
+import type { Match } from '../ui/ComboBox';
+import { ComboBox } from '../ui/ComboBox';
 
 echarts.use([BarChart, LineChart, SankeyChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -33,29 +35,16 @@ export function NodeName({ id }: { id: number }) {
   return <span title={n.name ?? undefined}><b>{n.code}</b> {n.name && <span className="muted">{n.name}</span>}</span>;
 }
 
+/** Today's nodes by code or name, 12 at most, as you type. */
 export function NodePicker({ onPick, placeholder = 'Find a node…' }: { onPick: (id: number) => void; placeholder?: string }) {
   const nodes = useNodes().data;
-  const [text, setText] = useState('');
-  const t = text.trim().toLowerCase();
-  const hits = t && nodes
-    ? nodes.list.filter((n) => n.code.toLowerCase().includes(t) || (n.name ?? '').toLowerCase().includes(t)).slice(0, 12)
-    : [];
-  return (
-    <div className="picker">
-      <input value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} />
-      {hits.length > 0 && (
-        <ul className="picker-list">
-          {hits.map((n) => (
-            <li key={n.id}>
-              <button type="button" onClick={() => { onPick(n.id); setText(''); }}>
-                <b>{n.code}</b> <span className="muted">{n.name}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  const matches = (text: string): Match[] => {
+    const t = text.trim().toLowerCase();
+    return (nodes?.list ?? [])
+      .filter((n) => n.code.toLowerCase().includes(t) || (n.name ?? '').toLowerCase().includes(t)).slice(0, 12)
+      .map((n) => ({ id: n.id, text: n.name ? `${n.code} ${n.name}` : n.code, label: <><b>{n.code}</b> <span className="muted">{n.name}</span></> }));
+  };
+  return <ComboBox matches={matches} onPick={onPick} label="Find a node" placeholder={placeholder} />;
 }
 
 export function NodeList({ ids, onChange, max }: { ids: number[]; onChange: (ids: number[]) => void; max: number }) {
