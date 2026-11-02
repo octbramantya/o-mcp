@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Readings as R } from '../types/formats/readings';
 import { show } from '../time/range';
+import { MultiPick } from '../ui/MultiPick';
 import { INTERVALS } from '../ui/options';
 import { Select } from '../ui/Select';
 import type { Axes, Line, Point } from './chart';
@@ -70,11 +71,9 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         {settings.node !== null && <div><NodeName id={settings.node} /></div>}
         <NodePicker onPick={(node) => setSettings({ ...settings, node })} />
       </Field>
-      <Field label="Quantities (up to 8)">
-        <select multiple size={8} value={settings.quantities}
-                onChange={(e) => setSettings({ ...settings, quantities: [...e.target.selectedOptions].map((o) => o.value).slice(0, 8) })}>
-          {all.map((q) => <option key={q.code} value={q.code}>{q.code} ({q.unit})</option>)}
-        </select>
+      <Field label="Quantities (up to 8)" group>
+        <MultiPick label="Quantities" max={8} value={settings.quantities} onChange={(quantities) => setSettings({ ...settings, quantities })}
+                   items={all.map((q) => ({ id: q.code, label: `${q.code} (${q.unit})` }))} />
       </Field>
       <Field label="Interval">
         <Select<S['interval']> label="Interval" value={settings.interval} options={INTERVALS}

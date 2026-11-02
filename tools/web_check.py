@@ -415,7 +415,8 @@ def controls(page, out):
     on Escape with focus back on their button, and the range on a click outside; leaving a changed
     dashboard and deleting one ask first, in a dialog that Escape or Cancel answers no; the arrow keys
     change the channel a click fills and move along the Activity Bar; a select opens on Enter, picks with
-    the arrow keys and Enter, and Escape leaves it as it was."""
+    the arrow keys and Enter, and Escape leaves it as it was; a Readings widget's quantities filter as you
+    type, check by keyboard, stop at 8, and Escape clears the filter, not the choice."""
     found = []
     discard = page.locator(".toolbar button:text-is('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
@@ -482,6 +483,33 @@ def controls(page, out):
     options.wait_for(state="detached")
     if line.inner_text().split("\n")[0] != "None":
         found.append("select: Escape changed the choice")
+
+    # a multiple choice: the filter narrows the list, the arrow keys and Enter check an item while
+    # typing, the cap of 8 disables the rest, and Escape clears the filter but never the choice
+    readings = add_widget(page, "readings")
+    readings.locator("header button:text-is('Settings')").click()
+    pick = readings.get_by_role("listbox", name="Quantities")
+    chosen = readings.locator(".multi-chosen")
+    filt = readings.get_by_role("searchbox", name="Filter quantities")
+    filt.fill("thd")
+    texts = pick.get_by_role("option").all_inner_texts()
+    if not texts or any("THD" not in t for t in texts):
+        found.append(f"multiple choice: the filter 'thd' shows {texts[:4]}")
+    filt.press("ArrowDown")
+    filt.press("Enter")
+    if not chosen.inner_text().startswith("2 of 8"):
+        found.append(f"multiple choice: ArrowDown and Enter didn't check the first match ({chosen.inner_text()!r})")
+    filt.press("Escape")
+    if filt.input_value() or not chosen.inner_text().startswith("2 of 8"):
+        found.append(f"multiple choice: Escape left {filt.input_value()!r} in the filter"
+                     f" or changed the choice ({chosen.inner_text()!r})")
+    for _ in range(6):
+        pick.locator("[role=option][aria-selected=false]").first.click()
+    open_ = pick.locator("[role=option][aria-selected=false]:not([aria-disabled=true])").count()
+    if not chosen.inner_text().startswith("8 of 8") or open_:
+        found.append(f"multiple choice: at 8 ({chosen.inner_text()!r}) {open_} unchecked items can still be checked")
+    readings.scroll_into_view_if_needed()
+    page.screenshot(path=str(out / "9e-multiple.png"))
     page.click(".toolbar button:text-is('Done editing')")
 
     # the range and the silent meters: each opens a dialog that Escape closes, focus back on its button

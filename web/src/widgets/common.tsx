@@ -82,7 +82,9 @@ export function QuantitySelect({ value, onChange, kind }: { value: string; onCha
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+/** A setting with its name above it. `group` for a control of several parts (a filter and a list), which a `<label>` would turn every click inside into a click on its first field. */
+export function Field({ label, children, group }: { label: string; children: ReactNode; group?: boolean }) {
+  if (group) return <div className="field" role="group" aria-label={label}><span>{label}</span>{children}</div>;
   return <label className="field"><span>{label}</span>{children}</label>;
 }
 

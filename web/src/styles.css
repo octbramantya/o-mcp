@@ -273,6 +273,15 @@ button.danger { background: var(--danger); color: #fff; border-color: var(--dang
 .check-box { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border: 1px solid var(--border); border-radius: 3px; background: var(--panel-2); font-size: 10px; line-height: 1; }
 .check[data-selected] .check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .check[data-focus-visible] .check-box { outline: 2px solid var(--accent); outline-offset: 1px; }
+.multi-pick { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.search-field { display: flex; align-items: center; gap: 2px; }
+.search-input { flex: 1; min-width: 0; }
+.search-field[data-empty] .search-clear { visibility: hidden; }
+.multi-list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 4px; padding: 2px; background: var(--panel-2); }
+.multi-option { display: flex; align-items: center; gap: 6px; }
+.multi-option[data-selected] { color: var(--text); }
+.multi-option[data-selected] .check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.multi-chosen { overflow-wrap: anywhere; }
 .menu-popover { max-height: min(480px, 70vh); max-width: min(360px, calc(100vw - 16px)); }
 .menu { outline: none; }
 .menu-item { display: flex; flex-direction: column; white-space: normal; padding: 4px 8px; }

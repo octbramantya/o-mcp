@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 import type { Now as N } from '../api/types';
 import { show } from '../time/range';
+import { MultiPick } from '../ui/MultiPick';
 import { Field, Findings, fmt, Hint, NodeName, NodePicker, Pending, useQuantities } from './common';
 import type { SettingsProps, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
@@ -65,11 +66,9 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
         {settings.node !== null && <div><NodeName id={settings.node} /></div>}
         <NodePicker onPick={(node) => setSettings({ ...settings, node })} />
       </Field>
-      <Field label="Quantities (none chosen: every instantaneous value)">
-        <select multiple size={10} value={settings.quantities}
-                onChange={(e) => setSettings({ ...settings, quantities: [...e.target.selectedOptions].map((o) => o.value) })}>
-          {all.map((q) => <option key={q.code} value={q.code}>{q.code} ({q.unit})</option>)}
-        </select>
+      <Field label="Quantities (none chosen: every instantaneous value)" group>
+        <MultiPick label="Quantities" value={settings.quantities} onChange={(quantities) => setSettings({ ...settings, quantities })}
+                   items={all.map((q) => ({ id: q.code, label: `${q.code} (${q.unit})` }))} empty="None chosen: every instantaneous value" />
       </Field>
     </>
   );
