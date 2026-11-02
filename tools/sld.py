@@ -5,6 +5,7 @@
     tools/sld.py INCOMING_PLN --depth 2 --as-of 2026-09-01
     tools/sld.py LVMDB_TEXTURE -d 2 -o texture.svg
     tools/sld.py --json data.json -o out.svg       # render a saved query result, no database
+    tools/sld.py --json data.json --no-legend --rows 1 --feeder-rows 1 --anchors anchors.json
 
 Read-only. The query is tools/sld.sql, which returns one o-mcp/subgraph v1 document (defined in
 design/subgraph-format.md); --save-json writes that document, --json renders one. The query runs
@@ -24,6 +25,11 @@ and as "? A" on its breaker; a deliberate blank shows nothing. A node with sever
 bus node is drawn fanning out from a bar, labelled "implicit bus" when the document has an
 IMPLICIT_BUS finding for it (never for a tank), and a parent that fits none of the above is named
 "also fed by".
+
+Value rows (design/frontend.md §5, "The single-line diagram with values"): --rows N leaves room for
+N lines of figures at each node (under a leaf's type line, above a bar, beside a source) and
+--feeder-rows M for M lines on each feeder, just above where it lands. Nothing is written in them;
+--anchors writes where each line goes, for whatever fills them. With both 0 the drawing is as before.
 """
 import argparse
 import datetime
@@ -43,8 +49,9 @@ INK, MUTED, MV, LV, WARN, PAPER = "#1f2937", "#6b7280", "#b91c1c", "#1d4ed8", "#
 
 SLOT = 160          # horizontal space per leaf or per feeder
 MARGIN = 60
-TOP = 80            # title block
+TOP = 70            # title block
 BAR_GAP = 36        # between stacked busbars
+ROW_NODE, ROW_BAR, ROW_FEED = 15, 14, 14    # a value row under a leaf or beside a source, above a bar, on a feeder
 EDGE_TX, EDGE_INJ, EDGE_PLAIN, STUB = 150, 120, 70, 24    # feeder section heights
 INJECTION_TYPES = {"PV_INJECTION", "GENERATOR_INFEED"}
 SCHEMA, VERSION = "o-mcp/subgraph", 1     # design/subgraph-format.md
@@ -325,8 +332,22 @@ def short(s, n=24):
 class Svg:
     """Three layers so that symbols sit on lines and text sits on both."""
 
-    def __init__(self):
+    def __init__(self, rows=0, feeder_rows=0):
         self.layers = {"l": [], "s": [], "t": []}
+        self.rows, self.feeder_rows = rows, feeder_rows
+        self.anchors = []
+
+    def node_rows(self, code, x, y, step, anchor):
+        """Reserve the value rows of a node, the first at y. Returns the last row's y (y - step if none)."""
+        for i in range(self.rows):
+            self.anchors.append({"kind": "node", "node": code, "row": i, "x": x, "y": y + i * step, "anchor": anchor})
+        return y + (self.rows - 1) * step
+
+    def feeder_band(self, e, x, y1):
+        """Reserve the value rows of a feeder in the band just above y1, where it lands."""
+        for i in range(self.feeder_rows):
+            self.anchors.append({"kind": "feeder", "from": e["from"], "to": e["to"], "row": i, "x": x + 6,
+                                 "y": y1 - 6 - (self.feeder_rows - 1 - i) * ROW_FEED, "anchor": "start"})
 
     def svg(self):
         return self.layers["l"] + self.layers["s"] + self.layers["t"]
@@ -399,17 +420,20 @@ class Svg:
 
 
 def symbols(svg, x, y0, y1, e, attrs, hv, lv, gaps=()):
-    """The equipment on one feeder, bottom-aligned at y1: transformer and LV main, or a breaker."""
+    """The equipment on one feeder, bottom-aligned above its value rows, which end at y1:
+    transformer and LV main, or a breaker."""
     dash = None if e["carries_flow"] else "5 4"
+    lift = svg.feeder_rows * ROW_FEED
+    svg.feeder_band(e, x, y1)
     if e["edge_type"] == "TRANSFORMER":
-        top = y1 - EDGE_TX + 25
+        top = y1 - lift - EDGE_TX + 25
         svg.line(x, y0, x, top, hv, 2, dash)
         y = svg.transformer(x, top, attrs, hv, lv, gaps)
         svg.line(x, y, x, y + 20, lv)
         y = svg.breaker(x, y + 20, attrs.get("main_breaker_a"), lv, "main_breaker_a" in gaps)
         svg.line(x, y, x, y1, lv)
     elif attrs.get("main_breaker_a") is not None or "main_breaker_a" in gaps:
-        b = y1 - 36
+        b = y1 - lift - 36
         svg.line(x, y0, x, b, lv, 2, dash)
         y = svg.breaker(x, b, attrs.get("main_breaker_a"), lv, "main_breaker_a" in gaps)
         svg.line(x, y, x, y1, lv, 2, dash)
@@ -451,12 +475,12 @@ def warnings(lay, c):
 
 
 def labels(svg, lay, c, y, x):
-    """Code, name, type under a leaf. Returns the bottom."""
+    """Code, name, type and the value rows under a leaf. Returns the bottom."""
     n = lay.nodes[c]
     svg.text(x, y, n["code"], 12, INK, weight="bold", halo=True)
     svg.text(x, y + 15, short(n["name"]), 10, MUTED, halo=True)
     svg.text(x, y + 30, type_line(n), 10, MUTED, halo=True)
-    y += 30
+    y = svg.node_rows(c, x, y + 30 + ROW_NODE, ROW_NODE, "middle")
     for w in warnings(lay, c):
         y += 15
         svg.text(x, y, w, 10, WARN, italic=True, halo=True)
@@ -464,15 +488,18 @@ def labels(svg, lay, c, y, x):
 
 
 def bar_label(svg, lay, c, y, x, anchor):
-    """Two lines above a bar that has children, clear of its feeders and of the bar below."""
+    """Two lines and the value rows above a bar that has children, clear of its feeders and of the
+    bar below."""
     n = lay.nodes[c]
+    lift = svg.rows * ROW_BAR
     first = [(n["code"], INK, "bold", False)]
     first += [(" · " + w, WARN, "normal", True) for w in warnings(lay, c)]
     second = [(type_line(n), MUTED, "normal", False)]
     if lay.more(c) > 0:
         second.append((f" · +{lay.more(c)} not shown here", WARN, "normal", True))
-    svg.spans(x, y - 20, first, 12, anchor, halo=True)
-    svg.spans(x, y - 7, second, 10, anchor, halo=True)
+    svg.spans(x, y - 20 - lift, first, 12, anchor, halo=True)
+    svg.spans(x, y - 7 - lift, second, 10, anchor, halo=True)
+    svg.node_rows(c, x, y - 7 - lift + ROW_BAR, ROW_BAR, anchor)
 
 
 def draw_feeder(svg, lay, m, e, kind, x, top, anchor, has_stub, out_y):
@@ -499,18 +526,21 @@ def draw_feeder(svg, lay, m, e, kind, x, top, anchor, has_stub, out_y):
         yb = svg.source(x, gy, e["from_type"], lv)
         svg.text(x + 24, gy + 10, e["from"], 11, INK, "start", "bold", halo=True)
         svg.text(x + 24, gy + 23, f"{e['from_type']} · {e['edge_type']}", 9, MUTED, "start", halo=True)
+        svg.node_rows(e["from"], x + 24, gy + 23 + ROW_NODE, ROW_NODE, "start")
         symbols(svg, x, yb, anchor, e, e["from_attrs"] or {}, lv, lv, lay.gaps[e["from"]])
     if y_end > anchor:   # down to a lower bar of a stack, crossing the bars above without a dot
         svg.line(x, anchor, x, y_end, lv, 2, None if e["carries_flow"] else "5 4")
 
 
-def render(data):
+def render(data, legend=True, rows=0, feeder_rows=0):
+    """The SVG text, and the anchors of the value rows (none when rows and feeder_rows are 0)."""
     lay = Layout(data)
     N, D, root = lay.nodes, lay.depth, lay.root
     W = max(MARGIN * 2 + SLOT * lay.slots, 980)
-    svg = Svg()
+    svg = Svg(rows, feeder_rows)
     out_y, label_bottom, conn_y = {}, {}, {}
-    y = TOP
+    y = TOP + rows * ROW_BAR
+    bar_gap = BAR_GAP + rows * ROW_BAR
 
     for d in range(D + 1):
         units = lay.levels.get(d, [])
@@ -545,6 +575,7 @@ def render(data):
         else:
             E = EDGE_PLAIN
         E += STUB if has_stub else 0
+        E += (rows * ROW_BAR + feeder_rows * ROW_FEED) if feeds else 0
         anchor = y + E
         bottom = anchor
 
@@ -552,7 +583,7 @@ def render(data):
         for u in units:
             if N[lay.members[u][0]]["class"] == "BUS":
                 for i, m in enumerate(lay.members[u]):
-                    bars[m] = out_y[m] = anchor + i * BAR_GAP
+                    bars[m] = out_y[m] = anchor + i * bar_gap
 
         for _u, m, e, k, x in feeds:
             draw_feeder(svg, lay, m, e, k, x, y, anchor, has_stub, out_y)
@@ -589,16 +620,18 @@ def render(data):
             bottom = max(bottom, stub_more(svg, lay, m, cx, label_bottom[m]))
         y = bottom + 30
 
-    H = y + 73
-    util = f" · {data['utility']}" if data.get("utility") else ""
+    H = y + (73 if legend else 0)
     head = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W:g}" height="{H:g}" viewBox="0 0 {W:g} {H:g}"'
             ' font-family="Helvetica, Arial, sans-serif">',
             f'<rect width="{W:g}" height="{H:g}" fill="{PAPER}"/>']
     frame = Svg()
     frame.text(MARGIN - 20, 34, f"SLD — {root}, depth {D}", 18, INK, "start", "bold")
-    frame.text(MARGIN - 20, 54, f"tenant {data['tenant']} · as_of {data['as_of']}{util} · "
-               "source: graph.node / graph.edge (effective window)", 12, MUTED, "start")
-    ly = H - 63
+    if legend:
+        draw_legend(frame, H - 63)
+    return "\n".join(head + frame.svg() + svg.svg() + ["</svg>"]), svg.anchors
+
+
+def draw_legend(frame, ly):
     frame.text(MARGIN - 20, ly, "Legend:", 11, INK, "start", "bold")
     frame.line(MARGIN + 35, ly - 4, MARGIN + 60, ly - 4, MV, 4)
     frame.text(MARGIN + 66, ly, "≥ 1 kV", 11, MV, "start")
@@ -611,7 +644,6 @@ def render(data):
     frame.text(MARGIN + 35, ly + 36, "? / missing = a gap in graph.v_property_gaps  ·  2 live parents = connected to "
                "two bars, which the plant may not be  ·  implicit bus = several children but no bus node", 11, WARN,
                "start")
-    return "\n".join(head + frame.svg() + svg.svg() + ["</svg>"])
 
 
 def stub_more(svg, lay, c, x, y):
@@ -636,8 +668,9 @@ def root_source(svg, lay, m, x, y):
     extra += [f"tariff {a['tariff_code']}"] if "tariff_code" in a else []
     if extra:
         svg.text(x + 34, y + 47, " · ".join(extra), 11, MUTED, "start")
-    svg.line(x, y + 44, x, y + 80, col)
-    b = y + 80
+    svg.node_rows(m, x + 34, y + (62 if extra else 47), ROW_NODE, "start")
+    b = y + 80 + svg.rows * ROW_NODE
+    svg.line(x, y + 44, x, b, col)
     if a.get("main_breaker_a") is not None:
         b = svg.breaker(x, b, a["main_breaker_a"], col, "main_breaker_a" in lay.gaps[m])
     return b
@@ -655,10 +688,16 @@ def main():
     ap.add_argument("-o", "--out", help="SVG path (default logs/<label>/sld_<root>_d<depth>_<as_of>.svg)")
     ap.add_argument("--json", help="render this saved o-mcp/subgraph v1 document instead of querying")
     ap.add_argument("--save-json", help="also write the o-mcp/subgraph v1 document here")
+    ap.add_argument("--no-legend", action="store_true", help="leave the legend out")
+    ap.add_argument("--rows", type=int, default=0, help="value rows at each node, 0 to 3 (default 0)")
+    ap.add_argument("--feeder-rows", type=int, default=0, help="value rows on each feeder, 0 to 3 (default 0)")
+    ap.add_argument("--anchors", help="write where each value row goes here (JSON)")
     args = ap.parse_args()
 
     if args.depth < 1:
         ap.error("--depth must be at least 1")
+    if not (0 <= args.rows <= 3 and 0 <= args.feeder_rows <= 3):
+        ap.error("--rows and --feeder-rows must be 0 to 3")
     datetime.date.fromisoformat(args.as_of)
 
     if args.json:
@@ -675,7 +714,10 @@ def main():
     out = pathlib.Path(args.out) if args.out else (
         ROOT_DIR / "logs" / label / f"sld_{doc['query']['root']}_d{data['depth']}_{data['as_of']}.svg")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render(data))
+    svg, anchors = render(data, legend=not args.no_legend, rows=args.rows, feeder_rows=args.feeder_rows)
+    out.write_text(svg)
+    if args.anchors:
+        pathlib.Path(args.anchors).write_text(json.dumps(anchors, indent=1) + "\n")
     print(out)
 
 

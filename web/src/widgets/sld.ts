@@ -5,6 +5,8 @@
 //
 // Two additions for the frontend, both off by default so the comparison holds: a palette in place
 // of the fixed colours, and data-node on each drawn node's code, so a click can find the node.
+// The value rows and their anchors are tools/sld.py's own (--rows, --feeder-rows, --anchors), and the
+// test compares them too.
 import type { Subgraph } from '../types/formats/subgraph';
 
 export interface Palette { ink: string; muted: string; mv: string; lv: string; warn: string; paper: string }
@@ -12,8 +14,9 @@ export const PRINT: Palette = { ink: '#1f2937', muted: '#6b7280', mv: '#b91c1c',
 
 const SLOT = 160;          // horizontal space per leaf or per feeder
 const MARGIN = 60;
-const TOP = 80;            // title block
+const TOP = 70;            // title block
 const BAR_GAP = 36;        // between stacked busbars
+const [ROW_NODE, ROW_BAR, ROW_FEED] = [15, 14, 14];   // a value row under a leaf or beside a source, above a bar, on a feeder
 const [EDGE_TX, EDGE_INJ, EDGE_PLAIN, STUB] = [150, 120, 70, 24];    // feeder section heights
 const INJECTION_TYPES = new Set(['PV_INJECTION', 'GENERATOR_INFEED']);
 
@@ -29,6 +32,10 @@ interface Data {
   nodes: Node[]; edges: Edge[]; parents: Node[]; up_edges: Edge[]; findings: Subgraph['findings'];
 }
 type Kind = 'tree' | 'stub' | 'inject';
+
+/** Where one value row goes: x, y and text-anchor as an SVG text takes them. */
+export type Anchor = { row: number; x: number; y: number; anchor: 'start' | 'middle' | 'end' } & (
+  { kind: 'node'; node: string } | { kind: 'feeder'; from: string; to: string });
 type Feeder = [string, Edge, Kind];
 
 // -- Python's ways, where JavaScript's differ ---------------------------------------------------------
@@ -351,7 +358,23 @@ class Svg {
   s: string[] = [];
   t: string[] = [];
 
-  constructor(readonly p: Palette, readonly links: boolean) {}
+  anchors: Anchor[] = [];
+
+  constructor(readonly p: Palette, readonly links: boolean, readonly rows = 0, readonly feederRows = 0) {}
+
+  /** Reserve the value rows of a node, the first at y. Returns the last row's y (y - step if none). */
+  nodeRows(code: string, x: number, y: number, step: number, anchor: Anchor['anchor']) {
+    for (let i = 0; i < this.rows; i++) this.anchors.push({ kind: 'node', node: code, row: i, x, y: y + i * step, anchor });
+    return y + (this.rows - 1) * step;
+  }
+
+  /** Reserve the value rows of a feeder in the band just above y1, where it lands. */
+  feederBand(e: Edge, x: number, y1: number) {
+    for (let i = 0; i < this.feederRows; i++) {
+      this.anchors.push({ kind: 'feeder', from: e.from, to: e.to, row: i, x: x + 6,
+        y: y1 - 6 - (this.feederRows - 1 - i) * ROW_FEED, anchor: 'start' });
+    }
+  }
 
   svg() {
     return [...this.l, ...this.s, ...this.t];
@@ -426,18 +449,21 @@ class Svg {
   }
 }
 
-/** The equipment on one feeder, bottom-aligned at y1: transformer and LV main, or a breaker. */
+/** The equipment on one feeder, bottom-aligned above its value rows, which end at y1: transformer and
+ * LV main, or a breaker. */
 function symbols(svg: Svg, x: number, y0: number, y1: number, e: Edge, attrs: Attrs, hv: string, lv: string, gaps: Set<string>) {
   const dash = e.carries_flow ? null : '5 4';
+  const lift = svg.feederRows * ROW_FEED;
+  svg.feederBand(e, x, y1);
   if (e.edge_type === 'TRANSFORMER') {
-    const top = y1 - EDGE_TX + 25;
+    const top = y1 - lift - EDGE_TX + 25;
     svg.line(x, y0, x, top, hv, 2, dash);
     let y = svg.transformer(x, top, attrs, hv, lv, gaps);
     svg.line(x, y, x, y + 20, lv);
     y = svg.breaker(x, y + 20, get(attrs, 'main_breaker_a'), lv, gaps.has('main_breaker_a'));
     svg.line(x, y, x, y1, lv);
   } else if (nonNull(get(attrs, 'main_breaker_a')) || gaps.has('main_breaker_a')) {
-    const b = y1 - 36;
+    const b = y1 - lift - 36;
     svg.line(x, y0, x, b, lv, 2, dash);
     const y = svg.breaker(x, b, get(attrs, 'main_breaker_a'), lv, gaps.has('main_breaker_a'));
     svg.line(x, y, x, y1, lv, 2, dash);
@@ -477,14 +503,14 @@ function warnings(lay: Layout, c: string) {
   return w;
 }
 
-/** Code, name, type under a leaf. Returns the bottom. */
+/** Code, name, type and the value rows under a leaf. Returns the bottom. */
 function labels(svg: Svg, lay: Layout, c: string, y: number, x: number) {
   const n = lay.nodes.get(c)!;
   const p = svg.p;
   svg.text(x, y, n.code, 12, p.ink, 'middle', 'bold', false, true, n.code);
   svg.text(x, y + 15, short(n.name), 10, p.muted, 'middle', 'normal', false, true);
   svg.text(x, y + 30, typeLine(n), 10, p.muted, 'middle', 'normal', false, true);
-  y += 30;
+  y = svg.nodeRows(c, x, y + 30 + ROW_NODE, ROW_NODE, 'middle');
   for (const w of warnings(lay, c)) {
     y += 15;
     svg.text(x, y, w, 10, p.warn, 'middle', 'normal', true, true);
@@ -492,15 +518,18 @@ function labels(svg: Svg, lay: Layout, c: string, y: number, x: number) {
   return y;
 }
 
-/** Two lines above a bar that has children, clear of its feeders and of the bar below. */
-function barLabel(svg: Svg, lay: Layout, c: string, y: number, x: number, anchor: string) {
+/** Two lines and the value rows above a bar that has children, clear of its feeders and of the bar
+ * below. */
+function barLabel(svg: Svg, lay: Layout, c: string, y: number, x: number, anchor: 'start' | 'end') {
   const n = lay.nodes.get(c)!;
+  const lift = svg.rows * ROW_BAR;
   const p = svg.p;
   const first: Span[] = [[n.code, p.ink, 'bold', false], ...warnings(lay, c).map((w): Span => [' · ' + w, p.warn, 'normal', true])];
   const second: Span[] = [[typeLine(n), p.muted, 'normal', false]];
   if (lay.more(c) > 0) second.push([` · +${lay.more(c)} not shown here`, p.warn, 'normal', true]);
-  svg.spans(x, y - 20, first, 12, anchor, true, n.code);
-  svg.spans(x, y - 7, second, 10, anchor, true);
+  svg.spans(x, y - 20 - lift, first, 12, anchor, true, n.code);
+  svg.spans(x, y - 7 - lift, second, 10, anchor, true);
+  svg.nodeRows(c, x, y - 7 - lift + ROW_BAR, ROW_BAR, anchor);
 }
 
 /** One incoming feeder of m, from above down to m's bar or glyph. */
@@ -526,6 +555,7 @@ function drawFeeder(svg: Svg, lay: Layout, m: string, e: Edge, kind: Kind, x: nu
     const yb = svg.source(x, gy, e.from_type, lv);
     svg.text(x + 24, gy + 10, e.from, 11, p.ink, 'start', 'bold', false, true, e.from);
     svg.text(x + 24, gy + 23, `${str(e.from_type)} · ${str(e.edge_type)}`, 9, p.muted, 'start', 'normal', false, true);
+    svg.nodeRows(e.from, x + 24, gy + 23 + ROW_NODE, ROW_NODE, 'start');
     symbols(svg, x, yb, anchor, e, e.from_attrs ?? {}, lv, lv, lay.gaps.get(e.from) ?? new Set());
   }
   if (yEnd > anchor) {   // down to a lower bar of a stack, crossing the bars above without a dot
@@ -557,8 +587,9 @@ function rootSource(svg: Svg, lay: Layout, m: string, x: number, y: number) {
     ...(has(a, 'tariff_code') ? [`tariff ${str(a.tariff_code)}`] : []),
   ];
   if (extra.length) svg.text(x + 34, y + 47, extra.join(' · '), 11, p.muted, 'start');
-  svg.line(x, y + 44, x, y + 80, col);
-  let b = y + 80;
+  svg.nodeRows(m, x + 34, y + (extra.length ? 62 : 47), ROW_NODE, 'start');
+  let b = y + 80 + svg.rows * ROW_NODE;
+  svg.line(x, y + 44, x, b, col);
   if (nonNull(get(a, 'main_breaker_a'))) b = svg.breaker(x, b, a.main_breaker_a, col, lay.gaps.get(m)?.has('main_breaker_a') ?? false);
   return b;
 }
@@ -567,20 +598,33 @@ export interface Options {
   palette?: Palette;
   /** data-node="CODE" on each node's code, for clicks. */
   links?: boolean;
+  /** The legend under the drawing (default true). */
+  legend?: boolean;
+  /** Value rows at each node and on each feeder, 0 to 3 (default 0). */
+  rows?: number;
+  feederRows?: number;
 }
 
+export interface Drawing { svg: string; width: number; height: number; anchors: Anchor[] }
+
 /** The diagram as SVG text, as tools/sld.py draws it. Every string in it is escaped. */
-export function render(doc: Subgraph, { palette = PRINT, links = false }: Options = {}): string {
+export function render(doc: Subgraph, options: Options = {}): string {
+  return draw(doc, options).svg;
+}
+
+/** The diagram, its size, and where its value rows go (none when rows and feederRows are 0). */
+export function draw(doc: Subgraph, { palette = PRINT, links = false, legend = true, rows = 0, feederRows = 0 }: Options = {}): Drawing {
   const data = fromV1(doc);
   const p = palette;
   const lay = new Layout(data, p);
   const [N, D, root] = [lay.nodes, lay.depth, lay.root];
   const W = Math.max(MARGIN * 2 + SLOT * lay.slots, 980);
-  const svg = new Svg(p, links);
+  const svg = new Svg(p, links, rows, feederRows);
   const outY = new Map<string, number>();
   const labelBottom = new Map<string, number>();
   const connY = new Map<string, number>();
-  let y = TOP;
+  let y = TOP + rows * ROW_BAR;
+  const barGap = BAR_GAP + rows * ROW_BAR;
 
   for (let d = 0; d <= D; d++) {
     const units = lay.levels.get(d) ?? [];
@@ -615,6 +659,7 @@ export function render(doc: Subgraph, { palette = PRINT, links = false }: Option
     else if (feeds.some(([, , , k]) => k === 'inject')) E = EDGE_INJ;
     else E = EDGE_PLAIN;
     E += hasStub ? STUB : 0;
+    E += feeds.length ? rows * ROW_BAR + feederRows * ROW_FEED : 0;
     const anchor = y + E;
     let bottom = anchor;
 
@@ -622,8 +667,8 @@ export function render(doc: Subgraph, { palette = PRINT, links = false }: Option
     for (const u of units) {
       if (N.get(lay.members.get(u)![0])!.class === 'BUS') {
         lay.members.get(u)!.forEach((m, i) => {
-          bars.set(m, anchor + i * BAR_GAP);
-          outY.set(m, anchor + i * BAR_GAP);
+          bars.set(m, anchor + i * barGap);
+          outY.set(m, anchor + i * barGap);
         });
       }
     }
@@ -668,15 +713,17 @@ export function render(doc: Subgraph, { palette = PRINT, links = false }: Option
     y = bottom + 30;
   }
 
-  const H = y + 73;
-  const util = data.utility ? ` · ${data.utility}` : '';
+  const H = y + (legend ? 73 : 0);
   const head = [`<svg xmlns="http://www.w3.org/2000/svg" width="${g(W)}" height="${g(H)}" viewBox="0 0 ${g(W)} ${g(H)}"`
     + ' font-family="Helvetica, Arial, sans-serif">', `<rect width="${g(W)}" height="${g(H)}" fill="${p.paper}"/>`];
   const frame = new Svg(p, false);
   frame.text(MARGIN - 20, 34, `SLD — ${root}, depth ${D}`, 18, p.ink, 'start', 'bold');
-  frame.text(MARGIN - 20, 54, `tenant ${data.tenant} · as_of ${data.as_of}${util} · `
-    + 'source: graph.node / graph.edge (effective window)', 12, p.muted, 'start');
-  const ly = H - 63;
+  if (legend) drawLegend(frame, H - 63);
+  return { svg: [...head, ...frame.svg(), ...svg.svg(), '</svg>'].join('\n'), width: W, height: H, anchors: svg.anchors };
+}
+
+function drawLegend(frame: Svg, ly: number) {
+  const p = frame.p;
   frame.text(MARGIN - 20, ly, 'Legend:', 11, p.ink, 'start', 'bold');
   frame.line(MARGIN + 35, ly - 4, MARGIN + 60, ly - 4, p.mv, 4);
   frame.text(MARGIN + 66, ly, '≥ 1 kV', 11, p.mv, 'start');
@@ -688,5 +735,4 @@ export function render(doc: Subgraph, { palette = PRINT, links = false }: Option
     + 'a bar without a dot is not', 11, p.muted, 'start');
   frame.text(MARGIN + 35, ly + 36, '? / missing = a gap in graph.v_property_gaps  ·  2 live parents = connected to '
     + 'two bars, which the plant may not be  ·  implicit bus = several children but no bus node', 11, p.warn, 'start');
-  return [...head, ...frame.svg(), ...svg.svg(), '</svg>'].join('\n');
 }

@@ -1,22 +1,49 @@
 // One node and what it feeds, or what feeds it (GET /api/section), on the range's last day
 // (decision 20): what it feeds as a single-line diagram (sld.ts, tools/sld.py's drawing) or an
 // indented tree, what feeds it as the tree. Clicking a node puts it on the widget's channel.
-import { useQuery } from '@tanstack/react-query';
+//
+// The diagram can carry one total per node over the range (GET /api/aggregate, design/frontend.md §5,
+// "The single-line diagram with values"): the drawing leaves a value row at each node and says where,
+// and the figures are a second SVG over it in the same coordinates, so a refresh redraws only them.
+import { useQueries, useQuery } from '@tanstack/react-query';
 import type { MouseEvent } from 'react';
 import { useMemo, useState } from 'react';
 import { get } from '../api/client';
+import { useVocabulary } from '../api/hooks';
+import type { Aggregate } from '../types/formats/aggregate';
 import type { Subgraph } from '../types/formats/subgraph';
+import { show } from '../time/range';
 import { Field, Findings, Hint, NodeName, NodePicker, Pending } from './common';
-import type { Palette } from './sld';
-import { render } from './sld';
-import type { SettingsProps, WidgetProps, WidgetType } from './contract';
+import type { Anchor, Palette } from './sld';
+import { draw } from './sld';
+import type { SettingsProps, View as Window, WidgetProps, WidgetType } from './contract';
 import { nodeOf } from './contract';
+import { useHeldView } from './fresh';
+import { quantityLabel } from './Value';
 
 interface S {
   node: number | null;
   depth: number;
   direction: 'down' | 'up';
   view: 'diagram' | 'tree';
+  /** A total to show at each node of the diagram (a counter the solver resolves, or derived); null for none.
+   * Absent in dashboards saved before 2026-11-02. */
+  quantity?: string | null;
+}
+
+const BATCH = 50;    // /api/aggregate's limit on node ids
+
+/** Where a total came from, for its tooltip; Aggregate's words. */
+const ORIGIN: Record<string, string> = {
+  MEASURED: 'measured', ROLLUP: 'from its children', IN_EDGES: 'from its feeders', OUT_EDGES: 'from what it feeds',
+  CHILDREN: 'from its children', INHERITED: "its feeder's", DERIVED: 'derived', NONE: 'no value', NO_METER: 'no meter',
+};
+
+/** A figure short enough for a diagram: whole numbers from 100 up, else two significant decimals. */
+function figure(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '—';
+  const digits = Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2;
+  return v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
 type N = Subgraph['nodes'][number];
@@ -52,11 +79,101 @@ function palette(): Palette {
   return { ink: v('--text'), muted: v('--muted'), mv: v('--sld-mv'), lv: v('--sld-lv'), warn: v('--warn'), paper: v('--panel') };
 }
 
+/** The totals of one quantity at the drawn nodes over the window, in batches of BATCH node ids. */
+function useTotals(quantity: string | null, ids: number[], live: Window) {
+  const [view, track] = useHeldView(live, [quantity, ids]);
+  const batches: number[][] = [];
+  for (let i = 0; i < ids.length; i += BATCH) batches.push(ids.slice(i, i + BATCH));
+  const qs = useQueries({
+    queries: batches.map((nodes) => ({
+      queryKey: ['plant', view.tenant, 'aggregate', quantity, nodes, view.start, view.end, view.tick],
+      queryFn: ({ signal }: { signal: AbortSignal }) => get<Aggregate>('/api/aggregate', {
+        quantity, nodes: nodes.join(','), start: view.start, end: view.end,
+      }, signal),
+      enabled: quantity !== null,
+      placeholderData: (prev: Aggregate | undefined) => prev,
+    })),
+  });
+  track(...qs.map((q) => q.data));
+  if (quantity === null) return null;
+  const done = qs.filter((q) => q.data).map((q) => q.data!);
+  const all = [...new Map(done.flatMap((r) => r.findings).map((f) => [`${f.code} ${f.node_id} ${f.message}`, f])).values()];
+  // a finding about one node goes with its figure; the rest (the window's) are listed under the drawing
+  const about = new Map<number, string[]>();
+  for (const f of all) if (f.node_id !== undefined) about.set(f.node_id, [...(about.get(f.node_id) ?? []), f.message]);
+  return {
+    rows: new Map(done.flatMap((r) => r.rows).map((r) => [r.node_id, r])),
+    first: done[0] ?? null,
+    about,
+    findings: all.filter((f) => f.node_id === undefined),
+    error: qs.find((q) => q.isError)?.error as Error | undefined,
+    loading: qs.some((q) => !q.data || q.isPlaceholderData),
+  };
+}
+
+type Totals = NonNullable<ReturnType<typeof useTotals>>;
+
+/** The figures, in the drawing's coordinates: a measured total in bold, one worked out on the graph in
+ * italics, its origin in the tooltip. */
+function Values({ anchors, ids, totals, width, height }: {
+  anchors: Anchor[]; ids: Map<string, number>; totals: Totals; width: number; height: number;
+}) {
+  const unit = totals.first?.quantity.unit ? ` ${totals.first.quantity.unit}` : '';
+  return (
+    <svg className="sld-values" viewBox={`0 0 ${width} ${height}`} aria-hidden={false}>
+      {anchors.map((a, i) => {
+        if (a.kind !== 'node') return null;
+        const id = ids.get(a.node);
+        const r = id === undefined ? undefined : totals.rows.get(id);
+        if (!r) return null;
+        const has = r.total !== null && r.total !== undefined;
+        const how = ORIGIN[r.origin] ?? r.origin;
+        const notes = totals.about.get(r.node_id) ?? [];
+        return (
+          <text key={i} x={a.x} y={a.y} textAnchor={a.anchor} data-node={a.node}
+                className={!has ? 'none' : r.origin === 'MEASURED' ? 'measured' : 'solved'}>
+            <title>{[`${a.node}: ${has ? `${figure(r.total)}${unit}, ${how}` : how}`, ...notes].join('\n')}</title>
+            {has ? `${figure(r.total)}${unit}` : '—'}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** How many drawn nodes have no figure; each says why in its tooltip. */
+function Missing({ totals }: { totals: Totals }) {
+  const n = [...totals.rows.values()].filter((r) => r.total === null || r.total === undefined).length;
+  return n ? <> · <span title="Hover a node's — for why">{n} without a figure</span></> : null;
+}
+
+/** What the drawing's symbols mean, as tools/sld.py's legend says it, outside the drawing. */
+function Legend({ values }: { values: boolean }) {
+  return (
+    <div className="sld-legend muted">
+      <span><i className="swatch mv" /> ≥ 1 kV</span> <span><i className="swatch lv" /> &lt; 1 kV</span>
+      <span>☒ breaker · ▼ load · ▽ sink · ▢ conversion, treatment or storage · PV / G source · dashed = carries no flow</span>
+      <span>feeders above a bar, loads below · ● connected to this bar; a line crossing a bar without a dot is not</span>
+      <span className="warn">? or missing = a property not yet recorded · 2 live parents = connected to two bars,
+        which the plant may not be · implicit bus = several children but no bus node</span>
+      {values && <span><b>bold</b> = measured · <i>italic</i> = worked out on the graph · — = no figure (hover for why)</span>}
+    </div>
+  );
+}
+
 /** The drawing at its own size, or fitted to the widget's width; a click on a node's code picks it. */
-function Diagram({ doc, select }: { doc: Subgraph; select: WidgetProps<S>['select'] }) {
+function Diagram({ doc, select, quantity, view }: {
+  doc: Subgraph; select: WidgetProps<S>['select']; quantity: string | null; view: Window;
+}) {
   const [fit, setFit] = useState(true);
-  const svg = useMemo(() => render(doc, { palette: palette(), links: true }), [doc]);
-  const ids = new Map(doc.nodes.map((n) => [n.code, n.id]));
+  const [legend, setLegend] = useState(false);
+  const d = useMemo(
+    () => draw(doc, { palette: palette(), links: true, legend: false, rows: quantity ? 1 : 0 }),
+    [doc, quantity]);
+  const ids = useMemo(() => new Map(doc.nodes.map((n) => [n.code, n.id])), [doc]);
+  const drawn = useMemo(() => [...new Set(d.anchors.flatMap((a) => (a.kind === 'node' && ids.has(a.node) ? [ids.get(a.node)!] : [])))],
+    [d, ids]);
+  const totals = useTotals(quantity, drawn, view);
   const pick = (e: MouseEvent) => {
     const code = (e.target as Element).closest('[data-node]')?.getAttribute('data-node');
     const id = code ? ids.get(code) : undefined;
@@ -64,11 +181,24 @@ function Diagram({ doc, select }: { doc: Subgraph; select: WidgetProps<S>['selec
   };
   return (
     <>
-      <div className={`scroll sld${fit ? ' fit' : ''}${select ? ' linked' : ''}`} onClick={pick} dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className={`scroll sld${fit ? ' fit' : ''}${select ? ' linked' : ''}`} onClick={pick}>
+        <div className="sld-stage">
+          <div dangerouslySetInnerHTML={{ __html: d.svg }} />
+          {totals && <Values anchors={d.anchors} ids={ids} totals={totals} width={d.width} height={d.height} />}
+        </div>
+      </div>
+      {legend && <Legend values={totals !== null} />}
       <div className="foot muted">
-        <button type="button" className="link" onClick={() => setFit(!fit)}>{fit ? 'Actual size' : 'Fit to width'}</button>
+        As of {doc.query.as_of}
+        {totals?.first && <> · {totals.first.quantity.code} {show(totals.first.window.start)} to {show(totals.first.window.end)}</>}
+        {totals && !totals.loading && <Missing totals={totals} />}
+        {totals?.loading && !totals.error && <> · <span className="loading">loading figures…</span></>}
+        {totals?.error && <> · <span className="error">figures: {totals.error.message}</span></>}
+        {' · '}<button type="button" className="link" onClick={() => setFit(!fit)}>{fit ? 'Actual size' : 'Fit to width'}</button>
+        {' · '}<button type="button" className="link" onClick={() => setLegend(!legend)}>{legend ? 'Hide legend' : 'Legend'}</button>
         {select && ' · click a node to put it on the channel'}
       </div>
+      {totals && <Findings findings={totals.findings.map((f) => ({ code: f.code, message: f.message }))} />}
     </>
   );
 }
@@ -89,7 +219,7 @@ function View({ settings, entity, select, view }: WidgetProps<S>) {
       <Pending q={q}>
         {(doc) => (
           <div className="stack">
-            <Diagram doc={doc} select={select} />
+            <Diagram doc={doc} select={select} quantity={settings.quantity ?? null} view={view} />
             <Findings findings={doc.findings.filter((f) => f.code !== 'PROPERTY_GAP').map((f) => ({ code: f.code, message: f.message }))} />
           </div>
         )}
@@ -140,6 +270,11 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
           <option value="up">What feeds it, back to the sources</option>
         </select>
       </Field>
+      {settings.view === 'diagram' && settings.direction === 'down' && (
+        <Field label="Figures on the diagram, over the range">
+          <TotalSelect value={settings.quantity ?? null} onChange={(quantity) => setSettings({ ...settings, quantity })} />
+        </Field>
+      )}
       <Field label="Levels">
         <input type="number" min={1} max={12} value={settings.depth}
                onChange={(e) => setSettings({ ...settings, depth: Math.min(12, Math.max(1, Number(e.target.value) || 1)) })} />
@@ -148,10 +283,26 @@ function Settings({ settings, setSettings }: SettingsProps<S>) {
   );
 }
 
+/** The totals the solver gives every node: counters with a rule, and the derived quantities. */
+function TotalSelect({ value, onChange }: { value: string | null; onChange: (q: string | null) => void }) {
+  const v = useVocabulary().data;
+  const totals = v ? [
+    ...v.quantities.filter((q) => q.node_value && q.reading === 'COUNTER').map((q) => ({ code: q.code, unit: q.unit })),
+    ...v.derived_quantities.map((q) => ({ code: q.code, unit: q.unit })),
+  ] : [];
+  return (
+    <select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">None</option>
+      {!v && value && <option value={value}>{value}</option>}
+      {totals.map((q) => <option key={q.code} value={q.code}>{quantityLabel(q.code, q.unit)}</option>)}
+    </select>
+  );
+}
+
 export const section: WidgetType<S> = {
   type: 'section', label: 'Plant section',
   description: 'A node and what it feeds, as a single-line diagram, or the path back to its sources, on the range\'s last day.',
   minW: 5, minH: 5, w: 8, h: 10,
-  defaults: { node: null, depth: 2, direction: 'down', view: 'diagram' },
+  defaults: { node: null, depth: 2, direction: 'down', view: 'diagram', quantity: null },
   View, Settings,
 };

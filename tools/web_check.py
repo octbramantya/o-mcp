@@ -27,6 +27,9 @@ as a placeholder pointing at Reference.
 Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
 listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
+Last, the single-line diagram with figures: INCOMING_PLN three levels down (121 nodes, three batches of
+/api/aggregate) with each node's energy over a day, measured in bold and worked out in italics, a
+click on a figure putting its node on the channel, and the legend shown under the drawing on request.
 """
 import argparse
 import asyncio
@@ -52,6 +55,7 @@ UNMETERED = "FLR_124"    # an unmetered panel on LVMDP_SPINNING_1 (056)
 INFO_NODE = "LVMDB_A5"   # its meter LVA5 is on its feeder edge from FACTORY_AB (energy) and on the board (THD)
 METERS_NODE = "LVMDB_A4"  # read by LVA4, and by PLTSC x 1/3 on active energy delivered (048)
 REF = ".side-bar .reference"
+SLD_ROOT = "INCOMING_PLN"   # three levels down: 121 nodes, more than one /api/aggregate call holds
 
 
 def remove(su, pattern):
@@ -296,6 +300,53 @@ def units_and_compare(page, out, nodes):
     return found
 
 
+def sld_values(page, out, nodes):
+    """A plant section of INCOMING_PLN, three levels, with ACTIVE_ENERGY_DELIVERED at every node over a
+    day: a figure at each drawn node, measured and worked-out ones both there, the legend out of the
+    drawing until asked for, and a click on a figure putting its node on the channel."""
+    doc = {"time": {"from": "2026-10-20", "to": "2026-10-21"}, "refresh": None, "channels": {}, "widgets": [
+        {"id": "sld", "type": "section", "title": "Diagram with energy", "x": 0, "y": 0, "w": 24, "h": 16,
+         "channel": "A", "settings": {"node": nodes[SLD_ROOT], "depth": 3, "direction": "down", "view": "diagram",
+                      "quantity": "ACTIVE_ENERGY_DELIVERED"}}]}
+    f = out / "sld-values.json"
+    f.write_text(json.dumps({"kind": "o-mcp/dashboard-export", "tenant": 3, "exported_at": "2026-11-02T00:00:00Z",
+                             "title": "Diagram with energy", "format_version": 1, "document": doc}))
+    discard = page.locator(".toolbar button:has-text('Discard')")
+    if discard.count():                   # an earlier step left the dashboard changed
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.wait_for_selector("text=Dashboards · PRS")
+    page.set_input_files(".file-button input", str(f))
+    page.wait_for_url(lambda u: "/dashboards/" in u)
+    sld = ".widget .sld"
+    page.wait_for_selector(f"{sld} .sld-values text", timeout=180_000)
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
+    found = []
+    drawn = page.evaluate("""() => new Set([...document.querySelectorAll('.sld svg:not(.sld-values) [data-node]')]
+        .map(e => e.getAttribute('data-node'))).size""")
+    figures = page.locator(f"{sld} .sld-values text")
+    if figures.count() < 100:
+        found.append(f"sld values: {figures.count()} figures on a diagram of {drawn} named nodes")
+    for kind in ("measured", "solved"):
+        if not page.locator(f"{sld} .sld-values text.{kind}").count():
+            found.append(f"sld values: no {kind} figure")
+    if page.locator(".widget .sld-legend").count():
+        found.append("sld values: the legend is shown before it was asked for")
+    if page.locator(f"{sld} svg :text('Legend:')").count():
+        found.append("sld values: the drawing has a legend in it")
+    page.click(".widget .foot button:text-is('Legend')")
+    page.wait_for_selector(".widget .sld-legend")
+    page.screenshot(path=str(out / "10-sld-values.png"))
+    page.click(".widget .foot button:text-is('Actual size')")
+    page.locator(f"{sld} .sld-values text.measured").first.scroll_into_view_if_needed()
+    page.screenshot(path=str(out / "10b-sld-values-actual.png"))
+    code = page.locator(f"{sld} .sld-values text.solved").first.get_attribute("data-node")
+    page.locator(f"{sld} .sld-values text.solved").first.click()
+    page.wait_for_selector(f".channel:has-text('{code}')")
+    return found
+
+
 def calendar(page, out):
     """From and To's calendars: each opens on the instant its field names and writes what is picked."""
     found = []
@@ -456,6 +507,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += retired_and_inspect(page, out, nodes)
     found += units_and_compare(page, out, nodes)
     found += calendar(page, out)
+    found += sld_values(page, out, nodes)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 
@@ -472,7 +524,8 @@ def main():
     raw = parse_env_file(a.env_file)
     su = dict(host=cfg.db_host, port=cfg.db_port, dbname=cfg.db_name, user=raw["DB_USER"],
               password=raw["DB_PASSWORD"], sslmode=cfg.db_sslmode)
-    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE, METERS_NODE, UNMETERED, "LVMDP_SPINNING_1", "LVMDB_A1"))
+    nodes = node_ids(su, TOOLTIP_NODES + (INFO_NODE, METERS_NODE, UNMETERED, "LVMDP_SPINNING_1", "LVMDB_A1",
+                                                  SLD_ROOT))
     run = uuid.uuid4().hex[:8]
     email = f"web-check+{run}@example.com"
     out = pathlib.Path(a.out)

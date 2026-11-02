@@ -532,6 +532,49 @@ leave the canvas for a fourth, Reference, below a divider.
   Reference, removed by hand, as the finder was. The template's Meters widget is gone and the
   plant section takes the full width.
 
+**The single-line diagram with values (planned 2026-11-02).** Grafana's SLD panel
+(`../prs_diags/docs/panel.json`) lays a Canvas over a draw.io SVG: 57 text elements at hand-set
+pixels, each bound to a column of a hand-written SQL pivot over fixed device ids. Every redraw of
+the plant (046, 052, 055) means moving boxes and editing SQL, and an unmetered node shows nothing.
+Here the diagram is drawn from the graph, so the layout says where each value goes.
+
+- **Captions, decided 2026-11-02:**
+  - The line under the title (tenant, as_of, utility, source) goes. The widget's foot says as of
+    when.
+  - The legend is optional. `tools/sld.py` draws it unless `--no-legend` is given. The frontend never
+    draws it in the SVG: a Legend toggle in the foot shows it as HTML under the drawing, where it
+    doesn't scale with the fit.
+- **Room for values, in both renderers** (decided 2026-11-02, so `tools/sld.py` can draw values
+  later). The diagram reserves value rows: `rows` under each node (below a leaf's type line, above a
+  bar between its type line and the bar, beside a source) and `feeder_rows` on each feeder, just
+  above where it lands. Feeder heights, stacked-bar gaps and the title block grow to fit. With both 0
+  the drawing doesn't change. Each renderer also returns the anchors (`node` or `feeder`, the codes,
+  the row, x, y, text-anchor). `sld.test.ts` compares the anchors as well as the SVG.
+- **Values sit on what they measure.** A node's solved total goes on the node. A meter that sits on
+  a feeder edge (device 28 on `FACTORY_AB → LVMDB_A5`) puts its readings on that feeder, not on the
+  node (decided 2026-11-02).
+- **Colours stay static.** No colouring or line width by flow (decided 2026-11-02). Measured and
+  worked-out values differ in type style only.
+- **The value layer** is a second SVG with the same `viewBox` over the drawing, so the fit scales
+  both. The drawing is redrawn only when the section changes; a refresh redraws only the values.
+- **Steps:**
+  1. Captions and legend; value rows and anchors in `tools/sld.py` and `sld.ts`, compared by the
+     test. **Built 2026-11-02:** `sld.test.ts` renders each of the ten fixtures twice, as drawn by
+     default and with `--no-legend --rows 2 --feeder-rows 1`, and requires the same SVG and anchors.
+     The title block is 10 px shorter; otherwise the default drawing is unchanged. A source drawn
+     at several boards (the gas engine at A1–A3) has an anchor at each.
+  2. Totals over the range (energy, volume, `PF_TRUE`) on the nodes, through `/api/aggregate`,
+     batched by 50 node ids (`INCOMING_PLN` at depth 3 reaches 121 nodes). **Built 2026-11-02:**
+     the plant section's setting "Figures on the diagram" (`quantity`, absent or null for none).
+     Bold = measured, italic = worked out on the graph, — = no figure. A finding about one node
+     (`NO_VALUE`, `NOT_IN_NETWORK`) goes in that figure's tooltip and the foot counts them; only the
+     window's findings are listed. A click on a figure picks its node, as on its code. On dev,
+     2026-10-20, `INCOMING_PLN` three levels down: three calls of 1.8 to 3.1 s, 42 of 121 nodes
+     without a figure. `tools/web_check.py` checks it.
+  3. A batched `/api/now` (several nodes in one call), then live readings on the nodes and on the
+     feeders whose meter sits on the edge.
+  4. `tools/sld.py` filling its own value rows, for a static diagram with figures.
+
 ## 6. Database connections
 
 The browser never reaches Postgres. The frontend's API does, through the same layers as the MCP

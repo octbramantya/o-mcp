@@ -224,5 +224,18 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 .sld.fit svg { width: 100%; height: auto; }
 .sld.linked [data-node] { cursor: pointer; }
 .sld.linked [data-node]:hover tspan:first-child { text-decoration: underline; }
+.sld-stage { position: relative; display: inline-block; vertical-align: top; }
+.sld.fit .sld-stage { display: block; }
+.sld .sld-stage > svg.sld-values { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.sld-values text { pointer-events: auto; font: 11px Helvetica, Arial, sans-serif; stroke: var(--panel); stroke-width: 4px;
+  stroke-linejoin: round; paint-order: stroke; }
+.sld-values .measured { fill: var(--text); font-weight: bold; }
+.sld-values .solved { fill: var(--text); font-style: italic; }
+.sld-values .none { fill: var(--muted); font-style: italic; }
+.sld.linked .sld-values [data-node]:hover { text-decoration: underline; }
+.sld-legend { display: flex; flex-wrap: wrap; gap: 2px 14px; padding: 4px 8px; font-size: 11px; }
+.sld-legend .swatch { display: inline-block; width: 18px; height: 4px; vertical-align: middle; }
+.sld-legend .swatch.mv { background: var(--sld-mv); }
+.sld-legend .swatch.lv { background: var(--sld-lv); }
 .file-button { display: inline-block; cursor: pointer; background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
 .file-button input { display: none; }

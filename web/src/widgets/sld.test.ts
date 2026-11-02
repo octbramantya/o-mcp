@@ -1,5 +1,6 @@
 // The port draws what tools/sld.py draws: each saved document (o-mcp/subgraph v1, from dev, as of
-// 2026-10-21) is rendered by both, and the SVGs must be the same text. Needs uv, as the repository's
+// 2026-10-21) is rendered by both, as drawn by default and without the legend but with value rows, and
+// the SVGs must be the same text and the value rows' anchors the same. Needs uv, as the repository's
 // Python does.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Subgraph } from '../types/formats/subgraph';
-import { g, render } from './sld';
+import { draw, g, render } from './sld';
 
 const ROOT = resolve(__dirname, '../../..');
 const FIXTURES = join(__dirname, 'sld-fixtures');
@@ -36,6 +37,17 @@ describe.skipIf(!hasUv())('render, against tools/sld.py', () => {
       execFileSync('uv', ['run', '--no-project', 'python', join(ROOT, 'tools/sld.py'), '--json', join(FIXTURES, f), '-o', svg]);
       const doc = JSON.parse(readFileSync(join(FIXTURES, f), 'utf8')) as Subgraph;
       expect(render(doc)).toBe(readFileSync(svg, 'utf8'));
+    });
+    it(`${f}, without the legend, with value rows and their anchors`, () => {
+      const svg = join(out, f.replace('.json', '.rows.svg'));
+      const anchors = join(out, f.replace('.json', '.anchors.json'));
+      execFileSync('uv', ['run', '--no-project', 'python', join(ROOT, 'tools/sld.py'), '--json', join(FIXTURES, f), '-o', svg,
+        '--no-legend', '--rows', '2', '--feeder-rows', '1', '--anchors', anchors]);
+      const doc = JSON.parse(readFileSync(join(FIXTURES, f), 'utf8')) as Subgraph;
+      const d = draw(doc, { legend: false, rows: 2, feederRows: 1 });
+      expect(d.svg).toBe(readFileSync(svg, 'utf8'));
+      expect(d.anchors).toEqual(JSON.parse(readFileSync(anchors, 'utf8')));
+      expect(d.anchors.length).toBeGreaterThan(0);
     });
   }
 });
