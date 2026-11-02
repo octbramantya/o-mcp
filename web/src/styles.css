@@ -26,17 +26,16 @@ a { color: var(--accent); }
 .muted { color: var(--muted); }
 .small { font-size: 11px; }
 .pad { padding: 8px; }
-.pad-x { padding: 0 8px; }
 .spacer { flex: 1; }
 .error { color: var(--danger); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px; vertical-align: middle; }
 
-button, select, input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
+button, input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; }
 button { cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: default; }
 button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 button.link { background: none; border: none; color: var(--accent); padding: 0 4px; }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* the frame */
 .frame { display: grid; height: 100%; grid-template: "top" auto "main" 1fr "bottom" auto / minmax(0, 1fr); }

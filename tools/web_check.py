@@ -26,15 +26,16 @@ read for it, a meter on another board among them; Back; a search by device; a no
 Find on a dashboard opening Reference without moving the channel; and a saved Meters widget drawn
 as a placeholder pointing at Reference. Both searches by keyboard: Reference's matches by the arrow
 keys and Enter while typing, "N more", and Escape clearing either field.
-Then the content-bearing hints as tooltips, by hover and by keyboard (an Aggregate's P95 and Readings).
-Last, units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
+Then units and Compare: a Readings widget of two units on a dual axis and one of three in panels,
 and two Compare widgets, power across two loads and energy across boards with an unmetered panel
-listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too.
-Last, the single-line diagram with figures: INCOMING_PLN three levels down (121 nodes, three batches of
+listed as "no meter"; hovering the dual-axis chart shows the panels' tooltip too. The content-bearing
+hints as tooltips, by hover and by keyboard (an Aggregate's P95 and Readings). From and To's calendars.
+The single-line diagram with figures: INCOMING_PLN three levels down (121 nodes, three batches of
 /api/aggregate) with each node's energy over a day, measured in bold and worked out in italics, a
 click on a figure putting its node on the channel, and the legend shown under the drawing on request;
 and FACTORY_AB with readings at the range's end, LVA5's on its feeder rather than on LVMDB_A5,
-exported as one SVG with its figures, legend and caption.
+exported as one SVG with its figures, legend and caption. Then the React Aria controls by keyboard
+(design/frontend-aria.md), and last their overlays at a 400 px phone screen.
 """
 import argparse
 import asyncio
@@ -751,6 +752,54 @@ def controls(page, out):
     return found
 
 
+def phone(page, out):
+    """The controls at a 400 px phone screen: the range and its calendar, Add a widget, a select's list,
+    the multiple choice and the Reference search each open inside the screen, and the page never
+    scrolls sideways."""
+    found = []
+    width = 400
+    page.set_viewport_size({"width": width, "height": 900})
+
+    def fits(loc, what, shot=None):
+        loc.wait_for()
+        box = loc.bounding_box()
+        if shot:
+            page.screenshot(path=str(out / shot))
+        left, right = box["x"], box["x"] + box["width"]
+        if left < 0 or right > width + 0.5:
+            found.append(f"phone: {what} spans x {left:.0f} to {right:.0f} on a {width} px screen")
+        wide = page.evaluate("document.documentElement.scrollWidth")
+        if wide > width:
+            found.append(f"phone: with {what} open the page is {wide} px wide")
+
+    page.click(".brand")
+    page.click("text=New blank dashboard")
+    page.wait_for_selector(".toolbar")
+    page.click(".toolbar .range-button")
+    fits(page.get_by_role("dialog", name="Time range"), "the time range", "12-phone-range.png")
+    page.get_by_role("button", name="Pick From date and time").click()
+    fits(page.get_by_role("dialog", name="From date and time"), "From's calendar", "12b-phone-calendar.png")
+    page.keyboard.press("Escape")
+    page.keyboard.press("Escape")
+    page.get_by_role("dialog", name="Time range").wait_for(state="detached")
+    if page.locator(".toolbar button:text-is('Edit')").count():
+        page.click(".toolbar button:text-is('Edit')")
+    page.click(".toolbar button:has-text('Add a widget')")
+    fits(page.get_by_role("menu"), "Add a widget's menu", "12c-phone-menu.png")
+    page.locator("[role=menuitem][data-key='readings']").click()
+    widget = page.locator(".widget").last
+    widget.locator("header button:text-is('Settings')").click()
+    fits(widget.get_by_role("listbox", name="Quantities"), "the quantities' list", "12d-phone-settings.png")
+    widget.locator(".select-button").first.click()
+    fits(page.get_by_role("listbox").last, "a select's list", "12e-phone-select.png")
+    page.keyboard.press("Escape")
+    page.click(".activity-bar button[aria-label='Reference'][aria-checked=false]")
+    page.fill(f"{REF} .ref-head input", "LVMDB")
+    fits(page.locator(f"{REF} [role=listbox]"), "Reference's matches", "12f-phone-reference.png")
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    return found
+
+
 def drive(page, url, email, temp, out, problems, nodes):
     def settle():
         page.wait_for_function("() => !document.querySelector('.loading')", timeout=180_000)
@@ -905,6 +954,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += calendar(page, out)
     found += sld_values(page, out, nodes)
     found += controls(page, out)
+    found += phone(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 
 
