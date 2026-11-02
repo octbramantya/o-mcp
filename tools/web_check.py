@@ -411,7 +411,8 @@ def controls(page, out):
     """The React Aria controls (design/frontend-aria.md), by keyboard: on a new blank dashboard, a
     Stat's node picker offers matches as you type, Escape closes the list and clears the field, and
     the arrow keys and Enter pick one; the range and the silent meters open from the keyboard, close
-    on Escape with focus back on their button, and the range on a click outside."""
+    on Escape with focus back on their button, and the range on a click outside; leaving a changed
+    dashboard and deleting one ask first, in a dialog that Escape or Cancel answers no."""
     found = []
     discard = page.locator(".toolbar button:text-is('Discard')")
     if discard.count():                   # an earlier step left the dashboard changed
@@ -464,6 +465,43 @@ def controls(page, out):
     page.get_by_role("dialog", name="Time range").wait_for()
     page.mouse.click(800, 600)
     page.get_by_role("dialog", name="Time range").wait_for(state="detached")
+
+    # leaving with unsaved changes asks first: Escape stays (focus on Stay), Leave goes
+    leave = page.get_by_role("alertdialog", name="Leave without saving?")
+    page.click(".brand")
+    leave.wait_for()
+    if page.evaluate("() => document.activeElement?.textContent") != "Stay":
+        found.append("leave page: focus doesn't start on Stay")
+    page.keyboard.press("Escape")
+    leave.wait_for(state="detached")
+    if not page.locator(".toolbar button:text-is('Discard')").count():
+        found.append("leave page: Escape didn't stay on the changed dashboard")
+    page.click(".brand")
+    leave.get_by_role("button", name="Leave").click()
+    page.wait_for_selector("text=New blank dashboard")
+
+    # deleting a dashboard asks first: Cancel keeps it, Delete removes it
+    rows = page.locator(".list tr:has(a:text-is('New dashboard'))")
+    rows.first.wait_for()
+    n = rows.count()
+    ask = page.get_by_role("alertdialog", name="Delete “New dashboard”?")
+    rows.first.locator("button:text-is('Delete')").click()
+    ask.wait_for()
+    page.screenshot(path=str(out / "9c-confirm.png"))
+    ask.get_by_role("button", name="Cancel").click()
+    ask.wait_for(state="detached")
+    if rows.count() != n:
+        found.append("delete: Cancel removed the dashboard")
+    rows.first.locator("button:text-is('Delete')").click()
+    ask.get_by_role("button", name="Delete").click()
+    ask.wait_for(state="detached")
+    try:
+        page.wait_for_function(
+            "n => [...document.querySelectorAll('.list tr a')]"
+            ".filter(a => a.textContent === 'New dashboard').length === n",
+            arg=n - 1, timeout=10_000)
+    except Exception:
+        found.append("delete: the dashboard is still listed after Delete")
     return found
 
 
@@ -496,6 +534,12 @@ def drive(page, url, email, temp, out, problems, nodes):
     page.wait_for_selector(".notice .secret")
     page.wait_for_selector(f"td:has-text('{email.replace('web-check', 'web-check-user')}')")
     page.screenshot(path=str(out / "1-accounts.png"))
+    # resetting a password asks first; Escape answers no
+    page.click(f"tr:has-text('{email.replace('web-check', 'web-check-user')}') button:text-is('Reset password')")
+    ask = page.get_by_role("alertdialog", name="Reset")
+    ask.wait_for()
+    page.keyboard.press("Escape")
+    ask.wait_for(state="detached")
     page.click(".brand")
 
     page.select_option("select.tenant", "3")

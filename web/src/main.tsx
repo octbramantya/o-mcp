@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ApiError } from './api/client';
 import { App } from './App';
+import { ConfirmHost } from './ui/confirm';
 import './styles.css';
 
 // A 401 anywhere means the session ended (expired, idle, or revoked by a reset): back to log-in.
@@ -24,6 +25,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={client}>
       <App />
+      <ConfirmHost />
     </QueryClientProvider>
   </StrictMode>,
 );

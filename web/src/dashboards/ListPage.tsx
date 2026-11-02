@@ -8,6 +8,7 @@ import { useMe, useTenant } from '../api/hooks';
 import type { DashboardFull, DashboardSummary } from '../api/types';
 import { templatesFor } from '../templates';
 import { stamp } from '../time/range';
+import { confirm } from '../ui/confirm';
 import type { Dashboard } from './document';
 import { blank, FORMAT_VERSION } from './document';
 import { parseImport } from './transfer';
@@ -69,7 +70,9 @@ export function ListPage() {
       <List tz={tenant.time_zone} q={mine.data?.dashboards} empty="No dashboards yet." render={(d) => (
         <>
           <button type="button" className="link" onClick={() => copy.mutate(d.id)}>Copy</button>
-          <button type="button" className="link" onClick={() => window.confirm(`Delete “${d.title}”?`) && remove.mutate(d.id)}>Delete</button>
+          <button type="button" className="link" onClick={async () => {
+            if (await confirm({ title: `Delete “${d.title}”?`, body: "It can't be restored.", action: 'Delete', danger: true })) remove.mutate(d.id);
+          }}>Delete</button>
         </>
       )} />
       {admin && (

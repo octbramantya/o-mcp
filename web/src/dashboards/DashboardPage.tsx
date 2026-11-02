@@ -9,6 +9,7 @@ import { useTenant } from '../api/hooks';
 import type { DashboardFull } from '../api/types';
 import { resolveRange } from '../time/range';
 import { RefreshPicker, TimePicker } from '../time/TimePicker';
+import { ConfirmDialog } from '../ui/confirm';
 import { NodeName } from '../widgets/common';
 import type { View } from '../widgets/contract';
 import { WIDGETS } from '../widgets/registry';
@@ -66,11 +67,6 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => s.dirty && currentLocation.pathname !== nextLocation.pathname);
   useEffect(() => {
-    if (blocker.state === 'blocked') {
-      if (window.confirm('This dashboard has unsaved changes. Leave without saving?')) blocker.proceed(); else blocker.reset();
-    }
-  }, [blocker]);
-  useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => { if (useDashboard.getState().dirty) e.preventDefault(); };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
@@ -118,6 +114,9 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
       </div>
       {error && <div className="error pad">{error} {error.includes('reload') && <button type="button" onClick={reload}>Reload</button>}</div>}
       <Canvas doc={doc} view={view} />
+      <ConfirmDialog isOpen={blocker.state === 'blocked'} title="Leave without saving?"
+                     body="This dashboard has unsaved changes." action="Leave" cancel="Stay" danger
+                     onAnswer={(leave) => { if (blocker.state !== 'blocked') return; if (leave) blocker.proceed(); else blocker.reset(); }} />
     </div>
   );
 }

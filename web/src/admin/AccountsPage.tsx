@@ -8,6 +8,7 @@ import { get, post } from '../api/client';
 import { useMe } from '../api/hooks';
 import type { Account, Role, Tenant } from '../api/types';
 import { stamp } from '../time/range';
+import { confirm } from '../ui/confirm';
 
 const ROLES: { role: Role; label: string }[] = [
   { role: 'user', label: 'User (one site)' },
@@ -102,8 +103,10 @@ export function AccountsPage() {
                 <td>
                   {u.id === me.user.id ? <>{u.role.replace('_', ' ')} <span className="muted">(you)</span></> : (
                     <RoleSite role={u.role} tenant={u.tenant_id} tenants={tenants}
-                              onChange={(role, tenant) => window.confirm(`Make ${u.email} ${role.replace('_', ' ')}${role === 'user' ? ` of ${siteName(tenant)}` : ''}? Their sessions end.`)
-                                && assign.mutate({ u, role, tenant })} />
+                              onChange={async (role, tenant) => {
+                                if (await confirm({ title: `Make ${u.email} ${role.replace('_', ' ')}${role === 'user' ? ` of ${siteName(tenant)}` : ''}?`,
+                                                    body: 'Their sessions end.', action: 'Change role' })) assign.mutate({ u, role, tenant });
+                              }} />
                   )}
                 </td>
                 <td className="muted">{u.last_login_at ? stamp(u.last_login_at, me.tenant?.time_zone) : 'never'}</td>
@@ -111,7 +114,9 @@ export function AccountsPage() {
                 <td className="actions">
                   {u.id !== me.user.id && (
                     <>
-                      <button type="button" className="link" onClick={() => window.confirm(`Reset ${u.email}'s password? Their sessions end.`) && reset.mutate(u)}>Reset password</button>
+                      <button type="button" className="link" onClick={async () => {
+                        if (await confirm({ title: `Reset ${u.email}'s password?`, body: 'Their sessions end.', action: 'Reset password' })) reset.mutate(u);
+                      }}>Reset password</button>
                       <button type="button" className="link" onClick={() => toggle.mutate(u)}>{u.disabled_at ? 'Enable' : 'Disable'}</button>
                     </>
                   )}
