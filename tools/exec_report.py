@@ -2,7 +2,7 @@
 """Gather one month's figures for the executive energy report (design/executive-report-draft.md).
 
     uv run python tools/exec_report.py --tenant 3 --tz Asia/Jakarta --month 2026-10 -e .env.prod-ro
-    uv run python tools/exec_report.py --tenant 3 --tz Asia/Jakarta --month 2026-10 --kvarh-price 1114.74
+    uv run python tools/exec_report.py --tenant 3 --tz Asia/Jakarta --month 2026-10 --kvarh-price 1114.75
 
 A working script: sections are added and changed as the report takes shape. It writes nothing: every
 statement runs in a transaction that is rolled back (the solver and graph.sankey need temporary
@@ -18,7 +18,8 @@ Writes to logs/<DB_LABEL>/exec_report_<month>/:
 Sections, in report order:
   1  supply         each source's energy (graph.sankey SUPPLY links), measured sources apart from
                     those the solver calculates (no meter of their own: the gas engine)
-  2  bill check     grid kWh and cost by PLN rate code (daily_energy_cost_summary)
+  2  bill check     grid kWh and cost by PLN rate code (daily_energy_cost_summary), plus the
+                    excess kVArh of §3 at --kvarh-price: a rough estimate of the reactive charge
   3  reactive       grid kVArh against 0.62 x kWh (PF 0.85); IDR only with --kvarh-price
   4  contract       peak 15-min kVA and kW at the grid incomer against contract_kva; hours of use
   5  PV value       PV kWh x the grid's LWBP rate (PV produces in LWBP hours)
@@ -496,18 +497,20 @@ def render(r):
     sk, psk = r["sankey"], r["prev_sankey"]
     w("## 1. Supply\n")
     metered = {x["node_name"] for x in r["plant"]["sources"] if x["device_id"]}
-    groups = [("Measured (a meter of its own)", [k for k in sk["supply"] if k in metered]),
-              ("Unmeasured (calculated by the solver)", [k for k in sk["supply"] if k not in metered])]
+    # a source with no SUPPLY link in one month (the gas engine at 0) still gets its row, so both columns add up
+    sources = list(sk["supply"]) + [k for k in psk["supply"] if k not in sk["supply"]]
+    groups = [("Measured (a meter of its own)", [k for k in sources if k in metered]),
+              ("Unmeasured (calculated by the solver)", [k for k in sources if k not in metered])]
     w(f"| source | {m} kWh | share | {pm} kWh | change |\n|---|--:|--:|--:|--:|")
     for label, keys in groups:
         if not keys:
             continue
         w(f"| *{label}* | | | | |")
-        for k in sorted(keys, key=lambda k_: -sk["supply"][k_]):
-            v = sk["supply"][k]
-            w(f"| {k} | {n0(v)} | {pct(v / sk['supply_total'])} | {n0(psk['supply'].get(k))} | "
+        for k in sorted(keys, key=lambda k_: (-sk["supply"].get(k_, 0), -psk["supply"].get(k_, 0))):
+            v = sk["supply"].get(k, 0)
+            w(f"| {k} | {n0(v)} | {pct(v / sk['supply_total'])} | {n0(psk['supply'].get(k, 0))} | "
               f"{delta(v, psk['supply'].get(k))} |")
-        cur, prv = sum(sk["supply"][k] for k in keys), sum(psk["supply"].get(k, 0) for k in keys)
+        cur, prv = sum(sk["supply"].get(k, 0) for k in keys), sum(psk["supply"].get(k, 0) for k in keys)
         w(f"| subtotal | {n0(cur)} | {pct(cur / sk['supply_total'])} | {n0(prv)} | {delta(cur, prv)} |")
     w(f"| **total** | **{n0(sk['supply_total'])}** | | {n0(psk['supply_total'])} | "
       f"{delta(sk['supply_total'], psk['supply_total'])} |\n")
@@ -525,10 +528,26 @@ def render(r):
     for x in b["by_rate"]:
         w(f"| {x['rate_code']} | {n0(x['rate'])} | {n0(x['kwh'])} | {n0(x['idr'])} |")
     avg = b["idr"] / b["kwh"] if b["kwh"] else None
-    w(f"| **total** | {n0(avg)} avg | **{n0(b['kwh'])}** | **{n0(b['idr'])}** |\n")
-    w(f"{pm}: {n0(pb['kwh'])} kWh, Rp {n0(pb['idr'])} ({delta(b['idr'], pb['idr'])}).\n")
+    w(f"| **energy** | {n0(avg)} avg | **{n0(b['kwh'])}** | **{n0(b['idr'])}** |")
+    rx, prx = r["reactive"], r["prev_reactive"]
+    if rx:
+        price = rx["kvarh_price"]
+        w(f"| reactive, excess kVArh (rough estimate) | {n0(price) if price else '—'} | "
+          f"{n0(rx['excess_kvarh'])} kVArh | {n0(rx['excess_idr']) if price else '—'} |")
+        if price:
+            w(f"| **energy + reactive** | | | **{n0(b['idr'] + rx['excess_idr'])}** |")
+    w("")
+    if rx:
+        w("Reactive: a rough estimate based on the power factor and reactive energy measured at this meter "
+          f"(kVArh above {PF_LIMIT_RATIO} × kWh, §3), not PLN's figure. "
+          + ("" if rx["kvarh_price"] else "IDR needs `--kvarh-price` from the invoice. ")
+          + "Energy and reactive charges only: no demand charge, taxes or fees.\n")
+    prev = f"{pm}: {n0(pb['kwh'])} kWh, Rp {n0(pb['idr'])} ({delta(b['idr'], pb['idr'])})"
+    if rx and prx and rx["kvarh_price"]:
+        prev += (f"; with reactive (rough estimate) Rp {n0(pb['idr'] + prx['excess_idr'])} "
+                 f"({delta(b['idr'] + rx['excess_idr'], pb['idr'] + prx['excess_idr'])})")
+    w(prev + ".\n")
 
-    rx = r["reactive"]
     w("## 3. Reactive energy (PF penalty exposure)\n")
     if rx:
         w(f"- {n0(rx['kvarh'])} kVArh against {n0(rx['kwh'])} kWh: {rx['kvarh_per_kwh']:.3f} kVArh/kWh, "
@@ -536,7 +555,6 @@ def render(r):
         w(f"- Allowance {n0(rx['allowance_kvarh'])} kVArh; **excess {n0(rx['excess_kvarh'])} kVArh**.")
         w(f"- At Rp {n0(rx['kvarh_price'])}/kVArh: Rp {n0(rx['excess_idr'])}." if rx["kvarh_price"]
           else "- IDR: pass `--kvarh-price` from the invoice.")
-        prx = r["prev_reactive"]
         if prx:
             w(f"- {pm}: PF {prx['pf']:.3f}, excess {n0(prx['excess_kvarh'])} kVArh.")
     w("")
