@@ -35,7 +35,8 @@ The single-line diagram with figures: INCOMING_PLN three levels down (121 nodes,
 click on a figure putting its node on the channel, and the legend shown under the drawing on request;
 and FACTORY_AB with readings at the range's end, LVA5's on its feeder rather than on LVMDB_A5,
 exported as one SVG with its figures, legend and caption. Then the React Aria controls by keyboard
-(design/frontend-aria.md), and last their overlays at a 400 px phone screen.
+(design/frontend-aria.md); one widget in full screen with its settings panel, back by the button
+and by the browser's Back; and last the controls' overlays at a 400 px phone screen.
 """
 import argparse
 import asyncio
@@ -752,6 +753,109 @@ def controls(page, out):
     return found
 
 
+def full_screen(page, out):
+    """One widget in full screen (design/frontend.md decision 31), on a new blank dashboard: ⤢ in edit
+    mode opens it at ?widget= with the settings panel on the right, the grid and Add a widget gone; a
+    title and a node set in the panel redraw the widget beside it; saved and reloaded it stays in full
+    screen, viewing, with no panel until Edit; "← Dashboard" goes back to the grid, as does the
+    browser's Back after ⤢ on hover; Remove in the panel closes it; at a 400 px screen the panel lies
+    under the widget and the page doesn't scroll sideways."""
+    found = []
+    discard = page.locator(".toolbar button:text-is('Discard')")
+    if discard.count():
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.click("text=New blank dashboard")
+    page.wait_for_selector(".toolbar")
+    page.click(".toolbar .range-button")
+    page.fill(".time-picker .custom label:nth-child(1) input", f"{DAY}T10:00")
+    page.fill(".time-picker .custom label:nth-child(2) input", f"{DAY}T12:00")
+    page.click(".time-picker .custom > button:text-is('Apply')")
+    if page.locator(".toolbar button:text-is('Edit')").count():
+        page.click(".toolbar button:text-is('Edit')")
+    add_widget(page, "stat")
+    add_widget(page, "readings")
+    page.locator(".widget").first.locator("header button[aria-label='Full screen']").click()
+    page.wait_for_url(lambda u: "widget=" in u)
+    panel = page.get_by_role("complementary", name="Widget settings")
+    panel.wait_for()
+    if page.locator(".widget").count() != 1:
+        found.append(f"full screen: {page.locator('.widget').count()} widgets drawn, not 1")
+    if page.locator(".toolbar button:has-text('Add a widget')").count():
+        found.append("full screen: Add a widget still in the toolbar")
+    widget = page.locator(".full-widget .widget")
+    wbox, pbox = widget.bounding_box(), panel.bounding_box()
+    if pbox["x"] < wbox["x"] + wbox["width"]:
+        found.append("full screen: the panel isn't on the widget's right")
+    panel.get_by_label("Title", exact=True).fill("Full check")
+    widget.locator("header .title:text-is('Full check')").wait_for()
+    box = panel.get_by_role("combobox", name="Find a node")
+    box.fill(INFO_NODE)
+    page.wait_for_selector(f"[role=listbox] [role=option]:has-text('{INFO_NODE}')")
+    box.press("ArrowDown")
+    box.press("Enter")
+    try:
+        figure = "document.querySelector('.full-widget .stat-figure')?.textContent ?? ''"
+        page.wait_for_function(f"() => /\\d/.test({figure})", timeout=60_000)
+    except Exception:
+        found.append("full screen: the widget didn't redraw with a figure for the node set in the panel")
+    page.screenshot(path=str(out / "13-full-screen.png"))
+
+    page.click(".toolbar button:text-is('Save')")
+    page.wait_for_selector(".toolbar button:has-text('Saved')")
+    page.reload()
+    page.wait_for_selector(".full-widget .widget header .title:text-is('Full check')")
+    if panel.count():
+        found.append("full screen: the settings panel shown while viewing")
+    page.click(".toolbar button:text-is('Edit')")
+    panel.wait_for()
+    page.click(".toolbar button:text-is('Done editing')")
+    panel.wait_for(state="detached")
+    page.click(".toolbar button.back")       # after a reload: replaces the entry, stays on the dashboard
+    page.wait_for_selector(".canvas")
+    if "widget=" in page.url or "/dashboards/" not in page.url:
+        found.append(f"full screen: ← Dashboard went to {page.url}")
+    if page.locator(".widget").count() != 2:
+        found.append(f"full screen: the grid came back with {page.locator('.widget').count()} widgets, not 2")
+    first = page.locator(".widget").first
+    first.locator("header").hover()
+    first.locator("header .hover-only button[aria-label='Full screen']").click()
+    page.wait_for_selector(".full-widget")
+    if panel.count():
+        found.append("full screen: ⤢ while viewing opened the panel")
+    page.go_back()
+    page.wait_for_selector(".canvas")
+    if "widget=" in page.url or "/dashboards/" not in page.url:
+        found.append(f"full screen: the browser's Back went to {page.url}")
+
+    page.click(".toolbar button:text-is('Edit')")
+    page.locator(".widget").first.locator("header button[aria-label='Full screen']").click()
+    panel.wait_for()
+    page.set_viewport_size({"width": 400, "height": 900})
+    if page.locator(".side-bar").count():        # on a phone it lies over the page
+        page.click(".side-bar .close")
+    page.wait_for_timeout(500)
+    wbox, pbox = widget.bounding_box(), panel.bounding_box()
+    if pbox["y"] < wbox["y"] + wbox["height"]:
+        found.append("full screen: at 400 px the panel isn't under the widget")
+    wide = page.evaluate("document.documentElement.scrollWidth")
+    if wide > 400:
+        found.append(f"full screen: at 400 px the page is {wide} px wide")
+    panel.scroll_into_view_if_needed()
+    page.screenshot(path=str(out / "13b-full-screen-phone.png"))
+    page.set_viewport_size({"width": 1600, "height": 1000})
+    panel.get_by_role("button", name="Remove the widget").click()
+    page.wait_for_selector(".canvas")
+    if "widget=" in page.url:
+        found.append("full screen: still at ?widget= after Remove")
+    if page.locator(".widget").count() != 1:
+        found.append(f"full screen: {page.locator('.widget').count()} widgets after Remove, not 1")
+    page.click(".toolbar button:text-is('Discard')")
+    page.wait_for_selector(".toolbar button:has-text('Saved')")
+    return found
+
+
 def phone(page, out):
     """The controls at a 400 px phone screen: the range and its calendar, Add a widget, a select's list,
     the multiple choice and the Reference search each open inside the screen, and the page never
@@ -954,6 +1058,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += calendar(page, out)
     found += sld_values(page, out, nodes)
     found += controls(page, out)
+    found += full_screen(page, out)
     found += phone(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 

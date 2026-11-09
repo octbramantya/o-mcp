@@ -1,9 +1,9 @@
-// One dashboard: its toolbar (title, time range, refresh, edit, save) and its canvas. Relative
-// ranges are resolved at each refresh tick; with refresh on, the tick moves every interval while
-// the tab is visible (design/frontend.md §3).
+// One dashboard: its toolbar (title, time range, refresh, edit, save) and its canvas, or one widget
+// in full screen at `?widget=<id>` (decision 31). Relative ranges are resolved at each refresh tick;
+// with refresh on, the tick moves every interval while the tab is visible (design/frontend.md §3).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useBlocker, useNavigate, useParams } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { get, post } from '../api/client';
 import { useTenant } from '../api/hooks';
 import type { DashboardFull } from '../api/types';
@@ -15,6 +15,7 @@ import { NodeName } from '../widgets/common';
 import type { View } from '../widgets/contract';
 import { WIDGETS } from '../widgets/registry';
 import { Canvas } from './Canvas';
+import { FullScreen } from './FullScreen';
 import type { ChannelId } from './document';
 import { CHANNELS, FORMAT_VERSION } from './document';
 import { useDashboard } from './store';
@@ -50,6 +51,18 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+
+  // full screen: one widget, while it exists (Remove or Discard may take it away)
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const fullId = params.get('widget');
+  const full = fullId ? doc.widgets.find((w) => w.id === fullId) : undefined;
+  useEffect(() => { if (fullId && !full) setParams({}, { replace: true }); }, [fullId, full, setParams]);
+  // Back steps back in history when the grid is the entry before, else (a link, a reload) replaces this one
+  const back = () => {
+    if ((location.state as { fromGrid?: boolean } | null)?.fromGrid) navigate(-1);
+    else setParams({}, { replace: true });
+  };
 
   // refresh: every interval while the tab is visible, and on coming back to a hidden tab
   const { refresh } = s;
@@ -87,8 +100,9 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
   });
 
   return (
-    <div className="dashboard">
+    <div className={`dashboard${full ? ' full' : ''}`}>
       <div className="toolbar">
+        {full && <button type="button" className="back" onClick={back} title="Back to the whole dashboard">← Dashboard</button>}
         {s.editing ? (
           <input className="title-input big" value={s.title} onChange={(e) => s.setTitle(e.target.value)} />
         ) : (
@@ -103,7 +117,7 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
           <button type="button" onClick={() => copy.mutate()}>Copy to my dashboards</button>
         ) : (
           <>
-            {s.editing && <AddWidget />}
+            {s.editing && !full && <AddWidget />}
             <button type="button" onClick={() => s.setEditing(!s.editing)}>{s.editing ? 'Done editing' : 'Edit'}</button>
             <button type="button" className="primary" disabled={!s.dirty || save.isPending} onClick={() => save.mutate()}>
               {save.isPending ? 'Saving…' : s.dirty ? 'Save' : 'Saved'}
@@ -114,7 +128,7 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
         )}
       </div>
       {error && <div className="error pad">{error} {error.includes('reload') && <button type="button" onClick={reload}>Reload</button>}</div>}
-      <Canvas doc={doc} view={view} />
+      {full ? <FullScreen widget={full} view={view} /> : <Canvas doc={doc} view={view} />}
       <ConfirmDialog isOpen={blocker.state === 'blocked'} title="Leave without saving?"
                      body="This dashboard has unsaved changes." action="Leave" cancel="Stay" danger
                      onAnswer={(leave) => { if (blocker.state !== 'blocked') return; if (leave) blocker.proceed(); else blocker.reset(); }} />

@@ -2,9 +2,10 @@
 // view in a resizable bar beside the page, and the icon of the open view closes it. Find, Categories
 // and Starred choose a node for the open dashboard; below the divider, Reference looks up a node, a
 // device or a quantity, on any page of the site.
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { useStars } from '../api/hooks';
 import { useDashboard } from '../dashboards/store';
+import { Resizer } from '../ui/Resizer';
 import { Toggle, ToggleGroup } from '../ui/toggles';
 import { CategoriesIcon, FindIcon, ReferenceIcon, StarIcon } from './icons';
 import { CategoryTree, ChannelTarget, Find, Starred } from './Pickers';
@@ -41,31 +42,13 @@ export function ActivityBar() {
   );
 }
 
-/** The bar's right edge: drag to resize, double-click for the initial width. */
-function Resizer() {
-  const setWidth = useSideBar((s) => s.setWidth);
-  const down = (e: ReactPointerEvent<HTMLDivElement>) => {
-    const from = e.clientX;
-    const start = useSideBar.getState().width;
-    const el = e.currentTarget;
-    el.setPointerCapture(e.pointerId);
-    const move = (m: PointerEvent) => setWidth(start + m.clientX - from);
-    const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
-    el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
-  };
-  return (
-    <div className="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the side bar"
-         title="Drag to resize; double-click to reset" onPointerDown={down} onDoubleClick={() => setWidth(WIDTH.initial)} />
-  );
-}
-
 export function SideBar() {
   const view = useSideBar((s) => s.view);
   const press = useSideBar((s) => s.press);
   const onDashboard = useDashboard((s) => s.doc !== null);
   const channel = useSideBar((s) => s.channel);
   const setChannel = useSideBar((s) => s.setChannel);
+  const setWidth = useSideBar((s) => s.setWidth);
   const stars = useStars();
   const target = onDashboard ? channel : null;
   const label = VIEWS.find((v) => v.id === view)!.label;
@@ -84,7 +67,8 @@ export function SideBar() {
         {view === 'starred' && <Starred stars={stars} target={target} />}
         {view === 'reference' && <Reference stars={stars} />}
       </div>
-      <Resizer />
+      <Resizer label="Resize the side bar" edge="right" width={() => useSideBar.getState().width}
+               setWidth={setWidth} initial={WIDTH.initial} />
     </aside>
   );
 }

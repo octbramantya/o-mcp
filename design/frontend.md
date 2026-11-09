@@ -42,6 +42,7 @@ This repository becomes a monorepo holding the MCP server and the frontend (§9)
 | 28 | **Dark theme only, for now.** The colours are the tokens on `:root` in `web/src/styles.css`, which every widget, chart and the single-line diagram read; there is no light theme and no switch, whatever the browser or OS prefers. Decided 2026-10-29 | the dark theme |
 | 29 | **An Activity Bar and a side bar replace the left panel, and Node information and Meters become one Reference view.** Find, Categories and Starred are icons on the bar, each opening its view in a resizable side bar; the icon of the open view closes it. Below a divider, Reference looks up a node, a device or a quantity as the plant is today, apart from any channel or range: one search over all three, every one on a page linking to its own page, Back and Forward. The bar is on every page of a site, not only dashboards. The two widgets are retired; a saved one is a placeholder pointing at Reference (§5, "The Activity Bar and side bar"). Decided 2026-10-30 | — |
 | 30 | **The controls move onto React Aria Components** (`react-aria-components`, pinned): popovers, menus, the node combobox, toggle and radio groups, dialogs in place of `window.confirm`, disclosure, and every native select, behind thin wrappers in `web/src/ui/`, styled by `styles.css` and its tokens alone. Plain buttons and the log-in forms stay native. **Done** 2026-11-02, on the branch `frontend-aria`: no `<select>`, `window.confirm` or `<details>` is left in `web/src`, nothing outside `web/src/ui/` imports React Aria, the three hints that carry content are tooltips, and the range's calendar is React Aria's `Calendar` and `TimeField`. `tools/web_check.py` drives the controls by keyboard and opens their overlays at a 400 px screen. The bundle went from 354 to 490 kB gzip, 49 kB of it the calendar's date library. The inventory, the phases and their findings are in `design/frontend-aria.md` (local, gitignored) | — |
+| 31 | **A widget's settings in two places: the quick edit in its cell, and full screen with a settings panel.** In edit mode, Settings still swaps the widget's body for its form in the grid, for small changes. ⤢ on any widget's header (beside Edit on hover, beside Settings in edit mode) shows that widget alone in place of the grid, at `?widget=<id>`, so the browser's Back closes it, a reload keeps it and a link opens it; the toolbar stays. In edit mode a resizable panel on the right holds the title, the channel, the widget's own settings and Remove, and the widget redraws beside it as they change; viewing, or on a read-only dashboard, the widget is alone. Below 768 px the panel lies under the widget. Leaving is by "← Dashboard" or the browser's Back, not Escape, which the controls inside already use. A widget following a channel shows the channel's node, which full screen can clear but not set: accepted for now. Decided and built 2026-11-09 (`web/src/dashboards/FullScreen.tsx`) | view panel, edit panel |
 
 Why 30 s: telemetry is polled every minute, and refreshing every 30 s catches data that arrives
 late without querying faster than data can change.
@@ -226,6 +227,11 @@ its widgets in one column instead of squeezing them.
 columns above 768 px, rows of 30 px, 8 px gaps. Below 768 px the widgets stack in reading order and
 can't be moved, so nothing laid out on a phone is saved. Widgets move by their header, and only
 in edit mode.
+
+**Full screen (decision 31, built 2026-11-09)** in `web/src/dashboards/FullScreen.tsx`: one widget in
+place of the grid at `?widget=<id>`, with the settings panel on its right in edit mode. The widget
+types are untouched: each type's `Settings` form takes only its settings, so the same form serves the
+quick edit in the grid's cell and the panel. The panel's width is remembered per browser.
 
 ## 5. What widgets show
 

@@ -57,7 +57,9 @@ input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-of
 .side-bar > header .close { background: none; border: none; padding: 0 6px; color: var(--muted); font-size: 15px; line-height: 1; }
 .side-body { flex: 1; min-height: 0; overflow: auto; }
 .side-bar input { width: 100%; }
-.resizer { position: absolute; top: 0; right: -3px; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; touch-action: none; }
+.resizer { position: absolute; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; touch-action: none; }
+.resizer.at-right { right: -3px; }
+.resizer.at-left { left: -3px; }
 .resizer:hover, .resizer:active { background: var(--accent); opacity: 0.5; }
 .node-list { list-style: none; margin: 0; padding: 0; }
 .node-list li { display: flex; align-items: center; }
@@ -158,6 +160,26 @@ main { grid-area: main; overflow: auto; min-width: 0; }
 @media (hover: none) { .widget header .hover-only { visibility: visible; } }
 .widget .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .widget .settings { padding: 8px; display: flex; flex-direction: column; gap: 10px; }
+
+/* one widget in full screen (decision 31): it fills the dashboard's area under the toolbar, with the
+   settings panel on its right in edit mode; on a phone the panel goes under it and the page scrolls */
+.dashboard.full { height: 100%; display: flex; flex-direction: column; }
+.toolbar .back { font-weight: 600; }
+.full-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.full-body.with-panel { grid-template-columns: minmax(0, 1fr) var(--panel-w); }
+.full-widget { min-width: 0; min-height: 0; }
+.widget-panel { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; }
+.widget-panel .panel-body { flex: 1; min-height: 0; overflow: auto; }
+.widget-panel .settings { padding: 10px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--border); }
+.widget-panel .settings:last-child { border-bottom: none; }
+.widget-panel h4 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.widget-panel .settings > button.danger { align-self: flex-start; }
+@media (max-width: 767px) {
+  .dashboard.full { height: auto; }
+  .full-body, .full-body.with-panel { display: flex; flex-direction: column; }
+  .full-widget { height: 70vh; }
+  .widget-panel .panel-body { overflow: visible; }
+}
 .scroll { overflow: auto; flex: 1; min-height: 0; }
 .stack { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .chart { flex: 1; min-height: 80px; }
