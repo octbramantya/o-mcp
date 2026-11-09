@@ -28,6 +28,9 @@ export interface WidgetProps<S> {
   select: ((e: Entity) => void) | null;
   view: View;
   editing: boolean;
+  /** Sets the dashboard's range to a span of it (site time, to the minute), remembering the one it
+   * replaces: a drag on a time chart (decision 32). */
+  zoom: (start: string, end: string) => void;
 }
 
 export interface SettingsProps<S> {

@@ -36,7 +36,8 @@ click on a figure putting its node on the channel, and the legend shown under th
 and FACTORY_AB with readings at the range's end, LVA5's on its feeder rather than on LVMDB_A5,
 exported as one SVG with its figures, legend and caption. Then the React Aria controls by keyboard
 (design/frontend-aria.md); one widget in full screen with its settings panel, back by the button
-and by the browser's Back; and last the controls' overlays at a 400 px phone screen.
+and by the browser's Back; a drag on Readings and Compare zooming the range, and ↶ back; and last the
+controls' overlays at a 400 px phone screen.
 """
 import argparse
 import asyncio
@@ -753,6 +754,114 @@ def controls(page, out):
     return found
 
 
+def zoom(page, out):
+    """Drag to zoom on a time chart (design/frontend.md decision 32), on a new blank dashboard over a day:
+    a mouse drag across a Readings chart sets the range to the span, to the minute, with ↶ beside it and
+    the dashboard changed; a second drag on a Compare chart zooms further; ↶ steps back one zoom at a
+    time and goes when there is none left; a drag under 5 px, Escape during a drag, and a touch drag
+    leave the range alone; a range chosen in the time picker forgets the zooms."""
+    found = []
+    discard = page.locator(".toolbar button:text-is('Discard')")
+    if discard.count():
+        discard.click()
+        discard.wait_for(state="detached")
+    page.click(".brand")
+    page.click("text=New blank dashboard")
+    page.wait_for_selector(".toolbar")
+    page.click(".toolbar .range-button")
+    page.fill(".time-picker .custom label:nth-child(1) input", f"{DAY}T00:00")
+    page.fill(".time-picker .custom label:nth-child(2) input", f"{DAY}T23:00")
+    page.click(".time-picker .custom > button:text-is('Apply')")
+    if page.locator(".toolbar button:text-is('Edit')").count():
+        page.click(".toolbar button:text-is('Edit')")
+    for kind in ("readings", "compare"):
+        w = add_widget(page, kind)
+        w.locator("header button:text-is('Settings')").click()
+        box = w.get_by_role("combobox", name="Find a node")
+        box.fill(INFO_NODE)
+        page.wait_for_selector(f"[role=listbox] [role=option]:has-text('{INFO_NODE}')")
+        box.press("ArrowDown")
+        box.press("Enter")
+        w.locator("header button:text-is('Done')").click()
+    page.click(".toolbar button:text-is('Done editing')")
+    page.click(".toolbar button:text-is('Save')")
+    page.wait_for_selector(".toolbar button:has-text('Saved')")
+    readings = page.locator(".widget").nth(0).locator(".chart canvas").first
+    compare = page.locator(".widget").nth(1).locator(".chart canvas").first
+    readings.wait_for()
+    compare.wait_for()
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=120_000)
+    rng = page.locator(".toolbar .range-button")
+    unzoom = page.locator(".toolbar button.unzoom")
+    day = rng.inner_text()
+
+    def drag(canvas, a, b, escape=False):
+        bb = canvas.bounding_box()
+        y = bb["y"] + bb["height"] * 0.55
+        page.mouse.move(bb["x"] + bb["width"] * a, y)
+        page.mouse.down()
+        page.mouse.move(bb["x"] + bb["width"] * (a + b) / 2, y, steps=4)
+        page.mouse.move(bb["x"] + bb["width"] * b, y, steps=4)
+        if escape:
+            page.keyboard.press("Escape")
+        page.mouse.up()
+
+    def minutes(text):
+        m = re.findall(r"(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2})", text)
+        return [f"{d}T{h}:{mi}" for d, h, mi in m]
+
+    bb = readings.bounding_box()
+    x = bb["x"] + bb["width"] * 0.5
+    page.mouse.move(x, bb["y"] + bb["height"] * 0.55)
+    page.mouse.down()
+    page.mouse.move(x + 3, bb["y"] + bb["height"] * 0.55, steps=2)
+    page.mouse.up()
+    drag(readings, 0.3, 0.6, escape=True)
+    cdp = page.context.new_cdp_session(page)
+    ty = bb["y"] + bb["height"] * 0.55
+    touch = (("touchStart", 0.3), ("touchMove", 0.4), ("touchMove", 0.5), ("touchMove", 0.6), ("touchEnd", None))
+    for kind, f in touch:
+        points = [] if f is None else [{"x": bb["x"] + bb["width"] * f, "y": ty}]
+        cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})
+    page.wait_for_timeout(500)
+    if rng.inner_text() != day or unzoom.count():
+        found.append(f"zoom: a click, Escape or a touch drag changed the range to {rng.inner_text()!r}")
+
+    drag(readings, 0.3, 0.7)
+    page.wait_for_function("d => document.querySelector('.toolbar .range-button')?.textContent !== d", arg=day)
+    first = rng.inner_text()
+    ends = minutes(first)
+    if len(ends) != 2 or not (f"{DAY}T00:00" < ends[0] < ends[1] < f"{DAY}T23:00"):
+        found.append(f"zoom: the drag gave {first!r}, not a span inside the day")
+    if not unzoom.count():
+        found.append("zoom: no ↶ after a zoom")
+    if not page.locator(".toolbar button:text-is('Save')").is_enabled():
+        found.append("zoom: the dashboard isn't marked changed")
+    page.wait_for_function("() => !document.querySelector('.loading')", timeout=120_000)
+    page.wait_for_timeout(800)
+    page.screenshot(path=str(out / "14-zoom.png"))
+    drag(compare, 0.4, 0.6)
+    page.wait_for_function("d => document.querySelector('.toolbar .range-button')?.textContent !== d", arg=first)
+    second = minutes(rng.inner_text())
+    if len(second) != 2 or not (ends[0] <= second[0] < second[1] <= ends[1]):
+        found.append(f"zoom: the Compare drag gave {rng.inner_text()!r}, not a span inside {first!r}")
+    unzoom.click()
+    if rng.inner_text() != first:
+        found.append(f"zoom: ↶ went to {rng.inner_text()!r}, not {first!r}")
+    unzoom.click()
+    if rng.inner_text() != day or unzoom.count():
+        found.append(f"zoom: the second ↶ went to {rng.inner_text()!r} or left ↶ shown")
+    drag(readings, 0.3, 0.7)
+    unzoom.wait_for()
+    page.click(".toolbar .range-button")
+    page.click(".time-picker .presets button:text-is('Last 24 hours')")
+    if unzoom.count():
+        found.append("zoom: ↶ still shown after a range from the time picker")
+    page.click(".toolbar button:text-is('Discard')")
+    page.wait_for_selector(".toolbar button:has-text('Saved')")
+    return found
+
+
 def full_screen(page, out):
     """One widget in full screen (design/frontend.md decision 31), on a new blank dashboard: ⤢ in edit
     mode opens it at ?widget= with the settings panel on the right, the grid and Add a widget gone; a
@@ -1059,6 +1168,7 @@ def drive(page, url, email, temp, out, problems, nodes):
     found += sld_values(page, out, nodes)
     found += controls(page, out)
     found += full_screen(page, out)
+    found += zoom(page, out)
     found += phone(page, out)
     return found + [f"widget error: {t}" for t in page.locator(".widget .error").all_inner_texts()]
 

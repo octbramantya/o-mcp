@@ -7,7 +7,7 @@ import { useBlocker, useLocation, useNavigate, useParams, useSearchParams } from
 import { get, post } from '../api/client';
 import { useTenant } from '../api/hooks';
 import type { DashboardFull } from '../api/types';
-import { resolveRange } from '../time/range';
+import { describe, resolveRange } from '../time/range';
 import { RefreshPicker, TimePicker } from '../time/TimePicker';
 import { ConfirmDialog } from '../ui/confirm';
 import { MenuButton } from '../ui/MenuButton';
@@ -110,7 +110,11 @@ function Opened({ tz, tenant, reload }: { tz: string; tenant: number; reload: ()
         )}
         <span className="spacer" />
         <Channels />
-        <TimePicker tz={tz} value={doc.time} onChange={(time) => s.change((d) => ({ ...d, time }))} />
+        <TimePicker tz={tz} value={doc.time} onChange={s.setTime} />
+        {s.zoomedFrom.length > 0 && (
+          <button type="button" className="unzoom" aria-label="Back to the range before the zoom"
+                  title={`Back to ${describe(s.zoomedFrom[s.zoomedFrom.length - 1])}`} onClick={s.unzoom}>↶</button>
+        )}
         <RefreshPicker value={doc.refresh} onChange={(refresh) => s.change((d) => ({ ...d, refresh }))} />
         <button type="button" onClick={() => refresh(true)} title="Resolve the range again and reload every widget">Refresh</button>
         {s.readOnly ? (

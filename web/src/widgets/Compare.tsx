@@ -51,7 +51,7 @@ export function nodeLines(code: string, r: Readings, kind: { counter: boolean; f
   }));
 }
 
-function View({ settings, entity, view: live }: WidgetProps<S>) {
+function View({ settings, entity, view: live, zoom }: WidgetProps<S>) {
   const linked = nodeOf(entity, null);
   const chosen = [...new Set(linked !== null ? [linked, ...settings.nodes] : settings.nodes)];
   const nodes = chosen.slice(0, MAX_NODES);
@@ -92,7 +92,7 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
     <div className={`stack${loading && answers.length ? ' stale' : ''}`}>
       {loading && <span className="badge loading">Loading…</span>}
       {first && lines.length > 0
-        ? <EChart option={timeOption(lines, 'auto', first.query.window, { text: textColor(), muted: mutedColor() })} group="readings" />
+        ? <EChart option={timeOption(lines, 'auto', first.query.window, { text: textColor(), muted: mutedColor() })} group="readings" onZoom={zoom} />
         : !loading && !errors.length && <Hint>No readings for these nodes.</Hint>}
       <div className="foot muted">
         {settings.quantity}

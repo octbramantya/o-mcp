@@ -21,6 +21,7 @@ export function WidgetFrame({ widget, view, full = false }: { widget: Widget; vi
   const removeWidget = useDashboard((s) => s.removeWidget);
   const setChannel = useDashboard((s) => s.setChannel);
   const setEditing = useDashboard((s) => s.setEditing);
+  const zoomTo = useDashboard((s) => s.zoom);
   const [showSettings, setShowSettings] = useState(false);
   const [, setParams] = useSearchParams();
   // `fromGrid` tells Back it may step back in history rather than replace the entry
@@ -70,7 +71,7 @@ export function WidgetFrame({ widget, view, full = false }: { widget: Widget; vi
             </div>
           )}>
             <type.View settings={settings} setSettings={setSettings} entity={entity}
-                       select={select} view={view} editing={editing} />
+                       select={select} view={view} editing={editing} zoom={(from, to) => zoomTo({ from, to })} />
           </ErrorBoundary>
         )}
       </div>

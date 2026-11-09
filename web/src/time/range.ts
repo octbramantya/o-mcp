@@ -82,6 +82,15 @@ export function param(d: Date): string {
   return d.toISOString().slice(0, 16);
 }
 
+/** A time on a chart's time axis as the API's site time, to the nearest minute. The charts are given
+ * site times without an offset, which ECharts and Date.parse read as the browser's local time, so the
+ * local clock's fields hold the site's wall clock here. */
+export function chartMinute(ms: number): string {
+  const d = new Date(Math.round(ms / 60000) * 60000);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
 export interface Window {
   start: string;
   end: string;

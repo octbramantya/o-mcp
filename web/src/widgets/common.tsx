@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { useNodes, useVocabulary } from '../api/hooks';
 import type { Finding } from '../api/types';
+import { chartMinute } from '../time/range';
 import type { Meters } from '../types/formats/meters';
 import type { Match } from '../ui/ComboBox';
 import { ComboBox } from '../ui/ComboBox';
@@ -164,24 +165,111 @@ function join(group: string, c: echarts.ECharts): () => void {
   };
 }
 
+type Rect = { x: number; y: number; width: number; height: number };
+
+type Grids = { getModel(): { getComponent(type: 'grid', i: number): { coordinateSystem?: { getRect(): Rect } } | undefined } };
+
+/** The plot areas of a chart, one per grid (a panel each in a chart of panels). ECharts has no public
+ * call for a grid's place; getModel is typed private but is how its own components read it. */
+function plots(c: echarts.ECharts): Rect[] {
+  const out: Rect[] = [];
+  for (let i = 0; ; i++) {
+    const g = (c as unknown as Grids).getModel().getComponent('grid', i);
+    if (!g) return out;
+    const r = g.coordinateSystem?.getRect();
+    if (r) out.push(r);
+  }
+}
+
+/** Below this many pixels a drag is a click, not a zoom. */
+const ZOOM_MIN_PX = 5;
+
+/** Drag to zoom on a time chart (decision 32), as in Grafana: a mouse drag across a plot area shades the
+ * span over every panel and, on release, gives its two ends on the time axis, in the axis's milliseconds.
+ * A mouse only, so a finger still scrolls the page; Escape while dragging, or a drag under ZOOM_MIN_PX,
+ * gives nothing. The tooltip is hidden while dragging, so it doesn't cover the span. */
+function zoomable(c: echarts.ECharts, onZoom: (start: number, end: number) => void): () => void {
+  const zr = c.getZr();
+  let stop: (() => void) | null = null;
+  const down = (e: { offsetX: number; offsetY: number; event?: Event }) => {
+    const ev = e.event as (MouseEvent & { pointerType?: string }) | undefined;
+    if (!ev || !('button' in ev) || ev.button !== 0 || (ev.pointerType && ev.pointerType !== 'mouse')) return;
+    const all = plots(c);
+    const i = all.findIndex((r) => e.offsetX >= r.x && e.offsetX <= r.x + r.width && e.offsetY >= r.y && e.offsetY <= r.y + r.height);
+    if (i < 0) return;
+    const plot = all[i];
+    const top = Math.min(...all.map((r) => r.y));
+    const bottom = Math.max(...all.map((r) => r.y + r.height));
+    const origin = c.getDom().getBoundingClientRect();
+    const x0 = e.offsetX;
+    let x1 = x0;
+    let band: InstanceType<typeof echarts.graphic.Rect> | null = null;
+    const move = (m: MouseEvent) => {
+      x1 = Math.min(plot.x + plot.width, Math.max(plot.x, m.clientX - origin.left));
+      if (Math.abs(x1 - x0) < ZOOM_MIN_PX) return;
+      if (!band) {
+        band = new echarts.graphic.Rect({ silent: true, z: 1000, style: { fill: accentColor(), opacity: 0.18 } });
+        zr.add(band);
+        c.setOption({ tooltip: { show: false } });
+        c.dispatchAction({ type: 'hideTip' });
+      }
+      band.setShape({ x: Math.min(x0, x1), y: top, width: Math.abs(x1 - x0), height: bottom - top });
+    };
+    const end = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('keydown', key);
+      if (band) {
+        zr.remove(band);
+        c.setOption({ tooltip: { show: true } });
+      }
+      stop = null;
+    };
+    const up = () => {
+      const zoomed = band !== null;
+      end();
+      if (!zoomed) return;
+      const [a, b] = [x0, x1].sort((p, q) => p - q);
+      onZoom(c.convertFromPixel({ xAxisIndex: i }, a), c.convertFromPixel({ xAxisIndex: i }, b));
+    };
+    const key = (k: KeyboardEvent) => { if (k.key === 'Escape') end(); };
+    ev.preventDefault();        // no text selection while dragging
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('keydown', key);
+    stop = end;
+  };
+  zr.on('mousedown', down);
+  return () => { zr.off('mousedown', down); stop?.(); };
+}
+
 /** An ECharts chart filling its box, resized with it and disposed with the component. Charts given
- *  the same `group` share their tooltip. */
-export function EChart({ option, onClick, group }: {
+ *  the same `group` share their tooltip. With `onZoom` (time charts), a mouse drag across the plot
+ *  gives the span dragged, in site time to the minute (decision 32). */
+export function EChart({ option, onClick, group, onZoom }: {
   option: echarts.EChartsCoreOption; onClick?: (p: echarts.ECElementEvent) => void; group?: string;
+  onZoom?: (start: string, end: string) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
   const click = useRef(onClick);
   click.current = onClick;
+  const zoom = useRef(onZoom);
+  zoom.current = onZoom;
+  const zooms = !!onZoom;
   useEffect(() => {
     const c = echarts.init(box.current!, undefined, { renderer: 'canvas' });
     chart.current = c;
     c.on('click', (p) => click.current?.(p));
     const leave = group ? join(group, c) : null;
+    const unzoom = zooms ? zoomable(c, (a, b) => {
+      const start = chartMinute(a), end = chartMinute(b);
+      if (start < end) zoom.current?.(start, end);
+    }) : null;
     const ro = new ResizeObserver(() => c.resize());
     ro.observe(box.current!);
-    return () => { ro.disconnect(); leave?.(); c.dispose(); chart.current = null; };
-  }, [group]);
+    return () => { ro.disconnect(); unzoom?.(); leave?.(); c.dispose(); chart.current = null; };
+  }, [group, zooms]);
   useEffect(() => { chart.current?.setOption(option, true); }, [option]);
   return <div ref={box} className="chart" />;
 }

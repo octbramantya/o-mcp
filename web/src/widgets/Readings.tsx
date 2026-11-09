@@ -36,7 +36,7 @@ function lines(r: R): Line[] {
   }));
 }
 
-function View({ settings, entity, view: live }: WidgetProps<S>) {
+function View({ settings, entity, view: live, zoom }: WidgetProps<S>) {
   const node = nodeOf(entity, settings.node);
   const [view, track] = useHeldView(live, [settings, node]);
   const q = useQuery({
@@ -54,7 +54,7 @@ function View({ settings, entity, view: live }: WidgetProps<S>) {
     <Pending q={q}>
       {(r) => (
         <div className="stack">
-          <EChart option={timeOption(lines(r), settings.axes, r.query.window, { text: textColor(), muted: mutedColor() })} group="readings" />
+          <EChart option={timeOption(lines(r), settings.axes, r.query.window, { text: textColor(), muted: mutedColor() })} group="readings" onZoom={zoom} />
           <div className="foot muted"><NodeName id={node} /> · {r.query.interval} points from {show(r.query.window.start)}</div>
           <Findings findings={r.findings} />
         </div>

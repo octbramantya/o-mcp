@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValid, pickerValue, resolveInstant, resolveRange, siteNow } from './range';
+import { chartMinute, isValid, pickerValue, resolveInstant, resolveRange, siteNow } from './range';
 
 // Wednesday 2026-10-21 14:37:20 site time, as a site date (UTC fields hold the wall clock)
 const NOW = new Date(Date.UTC(2026, 9, 21, 14, 37, 20));
@@ -68,4 +68,13 @@ describe('picker values', () => {
     expect(pickerValue('now/d', 'to', NOW)).toBe('2026-10-22T00:00');
   });
   it('is empty for what is not a time', () => expect(pickerValue('yesterday', 'from', NOW)).toBe(''));
+});
+
+describe('a chart time as site time', () => {
+  it('reads back what the chart was given, to the nearest minute', () => {
+    expect(chartMinute(Date.parse('2026-10-21T10:15'))).toBe('2026-10-21T10:15');
+    expect(chartMinute(Date.parse('2026-10-21T10:15') + 29_000)).toBe('2026-10-21T10:15');
+    expect(chartMinute(Date.parse('2026-10-21T10:15') + 31_000)).toBe('2026-10-21T10:16');
+    expect(chartMinute(Date.parse('2026-12-31T23:59') + 40_000)).toBe('2027-01-01T00:00');
+  });
 });
