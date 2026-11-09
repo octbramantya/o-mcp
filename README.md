@@ -69,13 +69,13 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (dev and production, 2026-10-22)
+## Current state of the model (dev and production, 2026-11-09)
 
-Tenant 3, after migration 065, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 066, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19, 057 the same day, and 058–062 on
-2026-10-22 (below).
+2026-10-22, 063–065 on 2026-10-27 and 066 on 2026-11-09 (below).
 
 - **188 nodes and 192 edges in effect** (190 and 227 rows; 223 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
@@ -196,7 +196,7 @@ Migration 046 moves device 28 (LVMDB A5) from the node `LVMDB_A5` to its feeder 
 `FACTORY_AB → LVMDB_A5`, as a documentation correction (node rows `effective_to = '-infinity'`,
 edge rows from `'-infinity'`). PLTS A5 joins after the meter, so 28 reads the net grid draw: the
 solver now gives A5 = 28 + 27 (61,188 kWh in September, against 11,424 before). `THD_VOLTAGE_LN`
-(1119) stays on the node. Migration 047 swaps the codes and names of `WTP_1` and `WTP_2`, so
+(1119) stays on the node. **Reversed by 066 (2026-11-09):** the site's account was wrong. Migration 047 swaps the codes and names of `WTP_1` and `WTP_2`, so
 device 92 is "WTP 1" and 91 "WTP 2", as `public.devices` has them. Both come from the Sankey
 reconcile (`design/graph-reconcile.md`, local). The September
 run that checked them, and the open corrections it found, are in `design/graph-sankey.md` §9.
@@ -361,6 +361,25 @@ frontend or the agent asked for timed out. "A reading at or before the start" re
 On dev the 597 device totals over 2026-10-21 17:00 to 22:59 are the same before and after; on
 production, applied the same day, the 598 over 2026-10-26 23:00 to 2026-10-27 04:59, and an hour's
 minute totals as `prs_frontend` take 94 ms. Backup first: `logs/prod/graph_backup_pre065.20261027-124011.dump`.
+
+## Migration 066 (on production since 2026-11-09)
+
+Migration 066 puts device 28 (LVMDB A5) back on the node `LVMDB_A5`, reversing 046 as a documentation
+correction: its seven node rows are reopened and the feeder rows 046 added are marked never true
+(`'-infinity'`). The meter never sees PV A5's output (its current stays flat while device 27 makes
+about 310 A a phase at noon, and its received register hasn't moved in 15 months), and 27's voltage
+THD tracks 28's at 0.99 per phase: PV A5 joins A5's LV bus above CT 28, and its surplus goes back up
+A5's transformer to `FACTORY_AB`. With 28 on the feeder the solver counted PV A5 twice, once in A5's
+load and once as gas engine output. Now `LVMDB_A5` = 28 and the feeder `FACTORY_AB → LVMDB_A5` =
+28 − 27, negative when PV A5 exports (reverse flow, a `NEGATIVE_FLOW` diagnostic). In October 2026
+the gas engine falls from 11,189 kWh to 0, `LVMDB_A5` from 64,279 to 10,847, and the feeder is
+−42,586; the feeders to A1–A3 take what the engine loses. 1–3 November still gives the engine 579 kWh
+(6,106 before). Every A5 result since 046 was applied is retroactively wrong.
+
+Applied on a fresh copy of production (telemetry 2026-10-01 to 2026-11-04), then on production the
+same day with the same 29 before/after rows. Backup first:
+`logs/prod/graph_backup_pre066.20261109-143350.dump` (taken with the write account: `grafReader`
+can't read the `graph` sequences).
 
 ## Two rules worth not rediscovering
 
