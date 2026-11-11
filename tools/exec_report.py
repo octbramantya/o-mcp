@@ -22,7 +22,9 @@ Sections, in report order:
                     excess kVArh of §3 at --kvarh-price: a rough estimate of the reactive charge
   3  reactive       grid kVArh against 0.62 x kWh (PF 0.85); IDR only with --kvarh-price
   4  contract       peak 15-min kVA and kW at the grid incomer against contract_kva; hours of use
-  5  PV value       PV kWh x the grid's LWBP rate (PV produces in LWBP hours)
+  5  PV value       per plant: kWh, specific yield (kWh/kWp, from rated_kwp) and capacity factor; the PV
+                    bill at each plant's rate (public.utility_rates through device_utility_mappings),
+                    against the same kWh at the grid's LWBP rate (PV produces in LWBP hours)
   6  where it goes  the category tree (graph.sankey CATEGORY links)
   7  per shift      graph.solve_flow per day and shift; each node's own value, weighted into its
                     categories by graph.sankey_nodes over the month, as graph.sankey does
@@ -124,7 +126,8 @@ def plant(conn, t, as_of):
     if len(grid) != 1:
         sys.exit(f"exec_report.py: expected one metered GRID_INCOMER, found {len(grid)}; extend the script")
     sources = q(conn, f"""
-        SELECT n.node_code, n.node_name, n.node_type, m.device_id
+        SELECT n.node_code, n.node_name, n.node_type, m.device_id,
+               (n.attrs->>'rated_kwp')::numeric AS rated_kwp
         FROM graph.node n LEFT JOIN graph.measurement m
           ON m.node_id = n.id AND m.quantity_id = {ENERGY} AND {eff('m')}
         WHERE n.tenant_id = %(tenant)s AND n.node_class = 'SOURCE' AND {eff('n')}
@@ -230,13 +233,65 @@ def diagnostics(conn, t, start, end):
             for r in rows]
 
 
-def pv_value(sk, sources, bill):
-    names = {s["node_name"] for s in sources if s["node_type"] == "PV_PLANT"}
-    pv = {k: v for k, v in sk["supply"].items() if k in names}
+def pv_rates(conn, t, devices, as_of):
+    """Each PV device's rate in effect on as_of: the rate the cost refresh applies (public.get_utility_rate
+    picks by priority, then the highest rate; PV produces in daylight, so the hour is noon)."""
+    if not devices:
+        return {}
+    rows = q(conn, f"""
+        SELECT DISTINCT ON (dum.device_id) dum.device_id, us.source_code, ur.rate_code, ur.rate_per_unit
+        FROM public.device_utility_mappings dum
+        JOIN public.utility_sources us ON us.id = dum.utility_source_id AND us.tenant_id = %(t)s AND us.is_active
+        JOIN public.utility_rates ur ON ur.utility_source_id = us.id AND ur.tenant_id = %(t)s AND {eff('ur')}
+         AND (ur.rate_structure = 'FLAT' OR (ur.rate_structure = 'TIME_OF_USE' AND (
+              (ur.start_hour < ur.end_hour AND 12 >= ur.start_hour AND 12 < ur.end_hour)
+              OR (ur.start_hour > ur.end_hour AND (12 >= ur.start_hour OR 12 < ur.end_hour)))))
+        WHERE dum.device_id = ANY(%(d)s) AND {eff('dum')}
+        ORDER BY dum.device_id, dum.priority_order, ur.rate_per_unit DESC""",
+             {"t": t, "d": devices, "as_of": as_of})
+    return {r["device_id"]: {"source_code": r["source_code"], "rate_code": r["rate_code"],
+                             "rate": f(r["rate_per_unit"])} for r in rows}
+
+
+def pv_value(sk, sources, bill, rates, days):
+    """Per plant: energy, specific yield and capacity factor from rated_kwp, and its price. The plants
+    share one site's sun, so their yields compare without an irradiance sensor."""
     lwbp = [r["rate"] for r in bill["by_rate"] if r["rate_code"].startswith("LWBP") and r["rate"]]
-    rate = max(lwbp) if lwbp else None
-    total = sum(pv.values())
-    return {"by_plant": pv, "kwh": total, "lwbp_rate": rate, "avoided_idr": total * rate if rate else None}
+    lwbp = max(lwbp) if lwbp else None
+    plants = []
+    for s in sources:
+        if s["node_type"] != "PV_PLANT":
+            continue
+        kwh = sk["supply"].get(s["node_name"], 0)
+        kwp = f(s["rated_kwp"])
+        rt = rates.get(s["device_id"]) or {}
+        rate = rt.get("rate")
+        plants.append({
+            "node_code": s["node_code"], "node_name": s["node_name"], "device": s["device_id"], "kwh": kwh,
+            "rated_kwp": kwp,
+            "yield_kwh_kwp": kwh / kwp if kwp else None,
+            "yield_per_day": kwh / kwp / days if kwp else None,
+            "capacity_factor": kwh / (kwp * 24 * days) if kwp else None,
+            "rate_code": rt.get("rate_code"), "source_code": rt.get("source_code"), "rate": rate,
+            "rate_of_lwbp": rate / lwbp if rate and lwbp else None,
+            "bill_idr": kwh * rate if rate is not None else None,
+            "avoided_idr": kwh * lwbp if lwbp else None,
+        })
+    plants.sort(key=lambda x: -(x["yield_kwh_kwp"] or -1))
+    best = plants[0]["yield_kwh_kwp"] if plants and plants[0]["yield_kwh_kwp"] else None
+    for x in plants:
+        x["yield_of_best"] = x["yield_kwh_kwp"] / best if best and x["yield_kwh_kwp"] else None
+    total = sum(x["kwh"] for x in plants)
+    kwp = sum(x["rated_kwp"] or 0 for x in plants)
+    unpriced = [x["node_code"] for x in plants if x["rate"] is None]
+    billed = sum(x["bill_idr"] or 0 for x in plants)
+    avoided = total * lwbp if lwbp else None
+    return {"plants": plants, "by_plant": {x["node_name"]: x["kwh"] for x in plants}, "kwh": total,
+            "rated_kwp": kwp, "days": days,
+            "yield_kwh_kwp": total / kwp if kwp else None, "yield_per_day": total / kwp / days if kwp else None,
+            "capacity_factor": total / (kwp * 24 * days) if kwp and total else None,
+            "lwbp_rate": lwbp, "avoided_idr": avoided, "bill_idr": billed, "unpriced": unpriced,
+            "saving_idr": avoided - billed if avoided is not None and not unpriced else None}
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +468,10 @@ def n0(x):
     return "—" if x is None else f"{x:,.0f}"
 
 
+def d2(x):
+    return f"{x:.2f}" if x else "—"
+
+
 def pct(x, d=1):
     return "—" if x is None else f"{100 * x:.{d}f}%"
 
@@ -569,11 +628,30 @@ def render(r):
         w(f"- Peak active power {n0(pk['kw']['max'])} kW at {pk['kw']['at']}; P95 {n0(pk['kw']['p95'])} kW.")
     w(f"- Hours of use (jam nyala): {n0(pk['hours_of_use'])} h (grid kWh / contract kVA).\n")
 
-    pv = r["pv"]
+    pv, ppv = r["pv"], r["prev_pv"]
     w("## 5. PV value\n")
-    w(f"- PV {n0(pv['kwh'])} kWh ({pct(pv['kwh'] / sk['supply_total'])} of supply). At the grid's LWBP rate "
-      f"(Rp {n0(pv['lwbp_rate'])}) that is **Rp {n0(pv['avoided_idr'])}** of grid energy not bought.")
-    w("- Before any saving is claimed: what does the PV cost per kWh (PPA/lease, or owned)? See draft §6.3.\n")
+    head = f"- PV {n0(pv['kwh'])} kWh ({pct(pv['kwh'] / sk['supply_total'])} of supply)"
+    if pv["yield_per_day"]:
+        w(f"{head} from {n0(pv['rated_kwp'])} kWp: **{pv['yield_per_day']:.2f} kWh/kWp a day**, capacity factor "
+          f"{pct(pv['capacity_factor'])} ({pm}: {d2(ppv['yield_per_day'])}, {pct(ppv['capacity_factor'])}).")
+    else:
+        w(f"{head}; rated_kwp is missing on a plant.")
+    w(f"- At the grid's LWBP rate (Rp {n0(pv['lwbp_rate'])}) that energy would cost Rp {n0(pv['avoided_idr'])}; "
+      f"at the PV rates, Rp {n0(pv['bill_idr'])}"
+      + (f": **Rp {n0(pv['saving_idr'])} saved**." if pv["saving_idr"] is not None
+         else f". Not priced in `public.utility_rates`: {', '.join(pv['unpriced'])}, so no saving is claimed."))
+    w(f"\n| plant | kWp | {m} kWh | kWh/kWp | a day | of best | capacity factor | {pm} a day | rate | of LWBP "
+      "| PV bill IDR |\n|---|--:|--:|--:|--:|--:|--:|--:|---|--:|--:|")
+    prev = {x["node_code"]: x for x in ppv["plants"]}
+    for x in pv["plants"]:
+        px = prev.get(x["node_code"], {})
+        rate = f"{x['rate_code']} Rp {x['rate']:,.2f}" if x["rate"] is not None else "none"
+        w(f"| {x['node_name']} | {n0(x['rated_kwp'])} | {n0(x['kwh'])} | {n0(x['yield_kwh_kwp'])} | "
+          f"{d2(x['yield_per_day'])} | {pct(x['yield_of_best'], 0)} | {pct(x['capacity_factor'])} | "
+          f"{d2(px.get('yield_per_day'))} | {rate} | {pct(x['rate_of_lwbp'])} | {n0(x['bill_idr'])} |")
+    w("\nkWh/kWp is the plant's energy over its DC rating (`rated_kwp`). The plants share one site's sun, so a "
+      "plant well below the best one is losing energy (soiling, an inverter down, shading, clipping); no "
+      "irradiance sensor is needed for that comparison, but one would be needed for a performance ratio.\n")
 
     w("## 6. Where the energy goes\n")
     prev_cats = {(s, t_): v for s, t_, v in psk["categories"]}
@@ -657,13 +735,16 @@ def main():
         sk, psk = sankey(conn, a.tenant, start, end), sankey(conn, a.tenant, pstart, pend)
         bill, pbill = grid_bill(conn, a.tenant, gdev, start, end), grid_bill(conn, a.tenant, gdev, pstart, pend)
         devs = {"grid": gdev, "all": [s["device_id"] for s in pl["sources"] if s["device_id"]]}
+        rates = pv_rates(conn, a.tenant, [s["device_id"] for s in pl["sources"]
+                                          if s["node_type"] == "PV_PLANT" and s["device_id"]], end)
         r = {
             "tenant": a.tenant, "month": a.month, "prev_month": pstart.strftime("%Y-%m"), "db_label": c["LABEL"],
             "generated": dt.datetime.now().isoformat(timespec="seconds"), "plant": pl,
             "sankey": sk, "prev_sankey": psk, "bill": bill, "prev_bill": pbill,
             "reactive": reactive(bill, a.kvarh_price), "prev_reactive": reactive(pbill, a.kvarh_price),
             "peak": peak(conn, a.tenant, gdev, uw, tz, pl["grid"]["contract_kva"], bill["kwh"]),
-            "pv": pv_value(sk, pl["sources"], bill),
+            "pv": pv_value(sk, pl["sources"], bill, rates, (end - start).days + 1),
+            "prev_pv": pv_value(psk, pl["sources"], pbill, rates, (pend - pstart).days + 1),
             "floor": floor_load(conn, a.tenant, devs, uw, tz, sk["supply_total"]),
             "transformers": transformers(conn, a.tenant, pl["boards"], uw),
             "diagnostics": diagnostics(conn, a.tenant, start, end),

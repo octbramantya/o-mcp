@@ -23,8 +23,8 @@ files was rewritten, in both directions; nothing points at a stale location.
 | `reference/wtp-pid.xml` | the water P&ID (draw.io), source for the water graph |
 | `reference/graph_sankey_{assigned,categories,orphan}.csv` | category assignment and the orphan review export |
 | `reference/production_nodes.csv` | node → device → department mapping |
-| `migrations/` | every migration that touches the `graph` schema: `008–013`, `016–021`, `023–065`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
-| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, `public.tenant_shift_periods`, `frontend.tenant` (the rest of `frontend` as structure only), the roles' per-database settings, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
+| `migrations/` | every migration that touches the `graph` schema (and 068, the PV tariffs in `public`): `008–013`, `016–021`, `023–068`, plus `028_pre_solver_bodies.sql` (an undo helper, never run forward) and `rollback_graph.sql` |
+| `tools/dev_refresh.sh` | rebuilds the dev database from production: all structure, the data of `graph`, `public.devices`, `public.quantities`, `public.tenant_shift_periods`, the tariffs (`public.utility_sources`, `utility_rates`, `device_utility_mappings`, since 068), `frontend.tenant` (the rest of `frontend` as structure only), the roles' per-database settings, and optionally one window of telemetry and `daily_energy_cost_summary`, and up to 2 days of minute `telemetry_data` (`--raw`) |
 | `tools/migrate.sh` | applies migrations one at a time and records each in the target database's ledger, `graph.schema_migration`. See "Databases and migrations" |
 | `tools/gen_030.py` | renders migration 030 from `design/draft_load_types.csv`. Regenerate; never hand-edit the `.sql` |
 | `tools/gen_037.py` | renders migration 037 from `design/quantity_terms.csv`. Same rule |
@@ -69,13 +69,13 @@ maintenance and cleanup notes, the Grafana/Sankey visualisation docs
 (`docs/prs/sankey*.md`), and `scripts/` — `graph_seed_export.py` and `wages_sync.py` are
 graph authoring tools but they import `scripts/db.py`, so they move only together with it.
 
-## Current state of the model (dev and production, 2026-11-09)
+## Current state of the model (dev and production, 2026-11-11)
 
-Tenant 3, after migration 066, on dev and production alike. Migrations 031–042 were rehearsed
+Tenant 3, after migration 068, on dev and production alike. Migrations 031–042 were rehearsed
 on a fresh copy of production and replayed there on 2026-10-07 (below); production's ledger
 starts with `baseline 030`. Backup taken first: `logs/prod/graph_backup_pre031.20261007-113054.dump`.
 Migrations 046–056 were applied to production on 2026-10-19, 057 the same day, and 058–062 on
-2026-10-22, 063–065 on 2026-10-27 and 066 on 2026-11-09 (below).
+2026-10-22, 063–065 on 2026-10-27, 066 on 2026-11-09 and 067–068 on 2026-11-11 (below).
 
 - **188 nodes and 192 edges in effect** (190 and 227 rows; 223 edges have `is_active`).
   Every node carries a `node_type`; `graph.v_edge_gaps` is empty. 97 nodes are metered (103
@@ -83,7 +83,7 @@ Migrations 046–056 were applied to production on 2026-10-19, 057 the same day,
 - **Ontology:** 7 node classes (`SOURCE / BUS / CONVERSION / TREATMENT / STORAGE / LOAD / SINK`),
   27 node types (2 abstract, `SWITCHBOARD` and `WATER_TREATMENT`, parents of 8 subtypes),
   3 edge classes, 11 edge types with 77 endpoint rules, and 27 properties on 90 type links
-  (12 REQUIRED). Classes, types and properties are tables with a description each; endpoint
+  (13 REQUIRED). Classes, types and properties are tables with a description each; endpoint
   rules, attrs and abstract types are checked by trigger.
 - **Vocabularies:** 34 Brick/SAREF alignment rows (`graph.vocabulary_alignment`), 97 quantity
   terms (`graph.quantity_term`), 10 solver rules (`graph.quantity_rule`), 1 alias and 1 derived
@@ -380,6 +380,29 @@ Applied on a fresh copy of production (telemetry 2026-10-01 to 2026-11-04), then
 same day with the same 29 before/after rows. Backup first:
 `logs/prod/graph_backup_pre066.20261109-143350.dump` (taken with the write account: `grafReader`
 can't read the `graph` sequences).
+
+## Migrations 067 and 068 (on production since 2026-11-11)
+
+Migration 067 records the four PV plants' DC capacity in `rated_kwp`, as the site gave it on
+2026-11-11 (A4 1,082.75, A5 495.72, B2 845.64, Texture 1,094.34 kWp; 3,518.45 in all), and makes
+`rated_kwp` REQUIRED on `PV_PLANT`. Its reader is `tools/exec_report.py`, which gives each plant's
+specific yield (kWh/kWp) and capacity factor. October 2026: 3.39–3.58 kWh/kWp a day.
+
+Migration 068 prices the PV under its PPA, as the site gave it on 2026-11-11: a discount on PLN's LWBP
+(Rp 1,035.78). PLTS A4 and PLTS Texture are at −10% (Rp 932.20) from 2026-08-18, under a new source,
+`SOLAR_PV_LWBP10`, with a FLAT rate. Until now devices 167 and 168 had no `device_utility_mappings`
+row, so the cost refresh priced them at 0. PLTS A5 and PLTS B2 keep `SOLAR_PV`'s Rp 968.45 (−6.5%).
+Both PV rates record their basis in `rate_parameters`: when PLN changes LWBP, change them too. 068
+reprices 167's and 168's `daily_energy_cost_summary` rows since 2026-08-18 (`refresh_method`
+`MIGRATION_068`). These are `public` tables in this repository's sequence, and `tools/dev_refresh.sh`
+now copies the three tariff tables. `public.get_utility_rate` picks rates by `CURRENT_DATE`, not the
+reading's time, so effective dates there are a record, not a switch.
+
+Both applied on dev (refreshed with telemetry 2026-10-01 to 2026-11-10), then on production on
+2026-11-11, where 068 repriced 2,008 rows. October 2026: PV bill Rp 361.3 M against Rp 395.8 M at
+LWBP, Rp 34.4 M saved. Backup first: `logs/prod/graph_backup_pre067.20261111-165639.dump`, the
+tariff tables in `logs/prod/tariffs_backup_pre067.20261111-165639.dump`, and 167's and 168's cost rows
+in `logs/prod/decs_167_168_pre068.20261111-165639.csv`.
 
 ## Two rules worth not rediscovering
 

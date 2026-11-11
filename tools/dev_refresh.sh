@@ -2,7 +2,9 @@
 # Rebuild the development database from production: the whole structure, the
 # data of the graph schema, public.devices, public.quantities and
 # public.tenant_shift_periods (the solver's "every shift" comes from it; without it
-# every daily electricity value is NONE), and optionally one window of telemetry.
+# every daily electricity value is NONE), the tariffs (public.utility_sources,
+# utility_rates, device_utility_mappings: the cost refresh's rates, which migrations
+# from 068 change), and optionally one window of telemetry.
 #
 #   tools/dev_refresh.sh -s SOURCE_ENV [-t TARGET_ENV] [--telemetry FROM TO] [--raw FROM TO] --confirm LABEL
 #
@@ -156,7 +158,8 @@ missing=$(src -tAq -c "
     SELECT string_agg(format('%I.%I', n.nspname, c.relname), ', ' ORDER BY 1)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE (   (n.nspname = 'graph' AND c.relkind IN ('r','p'))
-           OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods'))
+           OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods',
+                                                   'utility_sources','utility_rates','device_utility_mappings'))
            OR ($NEED_TEL AND n.nspname = 'public' AND c.relname IN ('telemetry_15min_agg', 'daily_energy_cost_summary'))
            OR ($NEED_RAW AND n.nspname = 'public' AND c.relname = 'telemetry_data'))
       AND NOT has_table_privilege(c.oid, 'SELECT')")
@@ -170,7 +173,8 @@ COPY_TABLES=$(src -tAq -c "
     SELECT format('%I.%I', n.nspname, c.relname)
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE ((n.nspname = 'graph' AND c.relkind IN ('r','p'))
-        OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods'))
+        OR (n.nspname = 'public' AND c.relname IN ('devices','quantities','tenant_shift_periods',
+                                                   'utility_sources','utility_rates','device_utility_mappings'))
         OR (n.nspname = 'frontend' AND c.relname = 'tenant' AND has_schema_privilege(n.oid, 'USAGE')
             AND has_table_privilege(c.oid, 'SELECT')))
       AND NOT c.relispartition
@@ -225,7 +229,7 @@ for nsp in $NOUSAGE; do excl+=(-N "$nsp"); done
 echo "dumping structure..."
 src_dump -Fc --schema-only "${excl[@]}" -f "$WORK/schema.dump"
 echo "reading data: $(echo $COPY_TABLES | wc -w | tr -d ' ') tables (graph.*, public.devices, public.quantities,"
-echo "  public.tenant_shift_periods)..."
+echo "  public.tenant_shift_periods, the three tariff tables)..."
 # COPY, not pg_dump --data-only: pg_dump also reads every owned sequence, which
 # needs SELECT on it. One REPEATABLE READ transaction keeps the tables consistent.
 mkdir "$WORK/data"
@@ -380,6 +384,8 @@ COUNTS_SQL="SELECT format('SELECT %L || '' '' || count(*) FROM %s;', t, t) FROM 
     SELECT format('%I.%I', schemaname, tablename) t FROM pg_tables WHERE schemaname = 'graph'
     UNION ALL SELECT 'public.devices' UNION ALL SELECT 'public.quantities'
     UNION ALL SELECT 'public.tenant_shift_periods'
+    UNION ALL SELECT 'public.utility_sources' UNION ALL SELECT 'public.utility_rates'
+    UNION ALL SELECT 'public.device_utility_mappings'
     UNION ALL SELECT 'frontend.tenant' WHERE has_schema_privilege(to_regnamespace('frontend'), 'USAGE')
                                          AND has_table_privilege(to_regclass('frontend.tenant'), 'SELECT')) x ORDER BY 1"
 src -tAq -c "$COUNTS_SQL" > "$WORK/counts.sql"
